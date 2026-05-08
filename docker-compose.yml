@@ -1,0 +1,85 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: studio-pm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-studio_pm}
+      POSTGRES_USER: ${DB_USER:-studio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./seeds/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    networks:
+      - studio-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-studio} -d ${DB_NAME:-studio_pm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: studio-pm-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-studio_pm}
+      DB_USER: ${DB_USER:-studio}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - studio-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    container_name: studio-pm-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    depends_on:
+      - backend
+    networks:
+      - studio-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: studio-pm-nginx
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - uploads_data:/app/uploads:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - studio-net
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  studio-net:
+    driver: bridge
