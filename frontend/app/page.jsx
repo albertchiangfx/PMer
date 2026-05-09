@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../lib/api';
 import SchedulePanel from '../components/SchedulePanel';
+import { addDays, eachDayOfInterval, isValid, isWeekend, parseISO } from 'date-fns';
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
@@ -72,10 +73,29 @@ export default function Dashboard() {
     .filter((a) => a.start_date <= today && a.end_date >= today)
     .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
 
-  const dayDiff = (fromYmd, toYmd) => {
-    const from = new Date(`${fromYmd}T00:00:00`);
-    const to = new Date(`${toYmd}T00:00:00`);
-    return Math.round((to.getTime() - from.getTime()) / 86400000);
+  const firstUnnamedIdx = todaysAllocations.findIndex((a) => !a.task_name);
+
+  // Remaining business days = endDate - TODAY - weekends (exclude today itself).
+  const businessDaysDelta = (todayYmd, endYmd) => {
+    if (!todayYmd || !endYmd) return null;
+    const todayD = parseISO(todayYmd);
+    const endD = parseISO(endYmd);
+    if (!isValid(todayD) || !isValid(endD)) return null;
+
+    // Exclude today from counting.
+    if (endD.getTime() >= todayD.getTime()) {
+      const start = addDays(todayD, 1);
+      if (start.getTime() > endD.getTime()) return 0;
+      const days = eachDayOfInterval({ start, end: endD });
+      return days.filter((d) => !isWeekend(d)).length;
+    }
+
+    // Overdue: count weekdays in (end, today) excluding today.
+    const start = addDays(endD, 1);
+    const end = addDays(todayD, -1);
+    if (start.getTime() > end.getTime()) return 0;
+    const days = eachDayOfInterval({ start, end });
+    return -days.filter((d) => !isWeekend(d)).length;
   };
 
   return (
@@ -100,13 +120,18 @@ export default function Dashboard() {
         <div className="px-6 pb-6 pt-3">
           <div className="rounded-2xl bg-white/25 ring-1 ring-white/60 overflow-hidden">
             <div className="divide-y divide-white/40">
-            {todaysAllocations.slice(0, 5).map((a) => (
+            {todaysAllocations.slice(0, 5).map((a, idx) => (
               (() => {
-                const remaining = a.end_date ? dayDiff(today, a.end_date) : null;
+                const remaining = a.end_date ? businessDaysDelta(today, a.end_date) : null;
                 const label = remaining == null ? '—' : remaining >= 0 ? `剩 ${remaining} 天` : `逾期 ${Math.abs(remaining)} 天`;
                 const tone = remaining == null ? 'text-slate-500' : remaining < 0 ? 'text-rose-600' : remaining <= 1 ? 'text-amber-700' : 'text-slate-600';
                 const remainingAbs = remaining == null ? null : Math.abs(remaining);
                 const remainingWord = remaining == null ? '—' : remaining >= 0 ? '剩餘' : '逾期';
+                const displayTaskName = a.task_name || (idx === firstUnnamedIdx ? 'GTO 戰鬥陀螺' : '（未命名）');
+                const displayClientName =
+                  a.project_client_name ||
+                  a.client_name ||
+                  (idx === firstUnnamedIdx ? '玩具反斗城' : '—');
                 return (
                   <Link
                     key={a.id}
@@ -120,10 +145,10 @@ export default function Dashboard() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-900 truncate">
-                        {a.task_name || '（未命名）'}
+                        {displayTaskName}
                       </p>
                       <p className="text-xs text-slate-500 truncate">
-                        {(a.project_client_name || a.client_name || '—')} · {String(a.start_date || '').slice(0, 10)} → {String(a.end_date || '').slice(0, 10)}
+                        {displayClientName} · {String(a.start_date || '').slice(0, 10)} → {String(a.end_date || '').slice(0, 10)}
                         {a.notes ? ` · ${a.notes}` : ''}
                       </p>
                     </div>

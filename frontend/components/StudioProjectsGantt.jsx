@@ -65,7 +65,21 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
   const [dragging, setDragging] = useState(null);
   const [ghost, setGhost] = useState(null);
   const [tooltip, setTooltip] = useState(null);
+  const tooltipBoxRef = useRef(null);
+  const [tooltipSize, setTooltipSize] = useState({ w: 0, h: 0 });
+  const [scrollLeft, setScrollLeft] = useState(0);
   const today = useMemo(() => new Date(), []);
+
+  useEffect(() => {
+    if (!tooltip) return;
+    const raf = window.requestAnimationFrame(() => {
+      const el = tooltipBoxRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setTooltipSize({ w: r.width, h: r.height });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [tooltip?.project?.id, tooltip?.span?.start, tooltip?.span?.end]);
 
   const allocsByProject = useMemo(() => {
     const m = {};
@@ -238,25 +252,38 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     syncingRef.current = true;
     if (containerRef.current) containerRef.current.scrollLeft = 0;
     if (hScrollRef.current) hScrollRef.current.scrollLeft = 0;
+    setScrollLeft(0);
     syncingRef.current = false;
   }, []);
 
   return (
     <div className="surface rounded-[22px] overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
-      {/* Pinned today indicator (fixed, does not scroll horizontally) */}
-      <button
-        type="button"
-        onClick={scrollToToday}
-        className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
-        style={{ left: LABEL_W + 8 }}
-        title="回到今天"
-      >
-        {format(today, 'MMM d')}
-      </button>
-      <div
-        className="absolute z-30 bg-indigo-400/60"
-        style={{ left: LABEL_W + DAY_W / 2, top: HEADER_H, width: 1.5, bottom: 10 }}
-      />
+      {/* Today indicator: tracks today's column with horizontal scroll, and
+          hides once today's column would slip behind the label column
+          (i.e. "vanishing point" sits at the first calendar column). */}
+      {(() => {
+        const todayCenterInTimeline = dateToX(today) + DAY_W / 2;
+        const todayCenterX = LABEL_W + todayCenterInTimeline - scrollLeft;
+        const visible = todayCenterX >= LABEL_W + DAY_W / 2 - 0.5;
+        if (!visible) return null;
+        return (
+          <>
+            <button
+              type="button"
+              onClick={scrollToToday}
+              className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
+              style={{ left: todayCenterX - 18 }}
+              title="回到今天"
+            >
+              {format(today, 'MMM d')}
+            </button>
+            <div
+              className="absolute z-30 bg-indigo-400/60 pointer-events-none"
+              style={{ left: todayCenterX, top: HEADER_H, width: 1.5, bottom: 10 }}
+            />
+          </>
+        );
+      })()}
 
       <div
         ref={containerRef}
@@ -265,7 +292,9 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
         onScroll={() => {
           if (syncingRef.current) return;
           syncingRef.current = true;
-          if (hScrollRef.current) hScrollRef.current.scrollLeft = containerRef.current?.scrollLeft || 0;
+          const sl = containerRef.current?.scrollLeft || 0;
+          setScrollLeft(sl);
+          if (hScrollRef.current) hScrollRef.current.scrollLeft = sl;
           syncingRef.current = false;
         }}
       >
@@ -388,6 +417,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                         }}
                         onMouseDown={(e) => handleBarMouseDown(e, rowIdx, { project, span }, 'move')}
                         onMouseEnter={(e) => setTooltip({ project, span, x: e.clientX, y: e.clientY })}
+                        onMouseMove={(e) => setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))}
                         onMouseLeave={() => setTooltip(null)}
                       >
                         <div
@@ -410,7 +440,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                             pointerEvents: 'none',
                           }}
                         >
-                          {span.start} → {span.end}
+                          {project.name}
                         </span>
                         <div
                           style={{ position: 'absolute', right: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
@@ -469,16 +499,31 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
         onScroll={() => {
           if (syncingRef.current) return;
           syncingRef.current = true;
-          if (containerRef.current) containerRef.current.scrollLeft = hScrollRef.current?.scrollLeft || 0;
+          const sl = hScrollRef.current?.scrollLeft || 0;
+          setScrollLeft(sl);
+          if (containerRef.current) containerRef.current.scrollLeft = sl;
           syncingRef.current = false;
         }}
       >
         <div style={{ width: totalW, height: 10 }} />
       </div>
 
-      {tooltip && !dragging && (
-        <div style={{ position: 'fixed', left: tooltip.x + 12, top: tooltip.y - 56, zIndex: 100, pointerEvents: 'none' }}>
-          <div className="bg-gray-900/90 text-white rounded-lg px-3 py-2 text-xs shadow-xl backdrop-blur max-w-xs">
+      {tooltip && !dragging && (() => {
+        const OFFSET = 12;
+        const PAD = 8;
+        const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+        const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+        let left = tooltip.x + OFFSET;
+        let top = tooltip.y + OFFSET;
+        if (vw && vh && tooltipSize.w && tooltipSize.h) {
+          left = Math.min(left, vw - tooltipSize.w - PAD);
+          top = Math.min(top, vh - tooltipSize.h - PAD);
+          left = Math.max(PAD, left);
+          top = Math.max(PAD, top);
+        }
+        return (
+          <div style={{ position: 'fixed', left, top, zIndex: 100, pointerEvents: 'none' }}>
+            <div ref={tooltipBoxRef} className="bg-gray-900/90 text-white rounded-lg px-3 py-2 text-xs shadow-xl backdrop-blur max-w-xs">
             <p className="font-semibold">{tooltip.project.name}</p>
             <p className="text-gray-300">{tooltip.project.client_name || '無客戶'}</p>
             {tooltip.span.start && tooltip.span.end && (
@@ -487,9 +532,10 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                 {tooltip.span.source === 'allocations' ? '（依分配推算）' : ''}
               </p>
             )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
