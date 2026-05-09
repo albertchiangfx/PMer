@@ -13,7 +13,7 @@ function memberKey(alloc) {
   return alloc.member_id || alloc.team_member_id;
 }
 
-/** One timeline row per allocation so the same person can appear on multiple rows (multi-project). */
+/** One timeline row per member; that member's allocations render as bars on the same row. */
 export default function Gantt({
   members = [],
   allocations = [],
@@ -33,7 +33,6 @@ export default function Gantt({
   const [tooltip, setTooltip] = useState(null);
   const tooltipBoxRef = useRef(null);
   const [tooltipSize, setTooltipSize] = useState({ w: 0, h: 0 });
-  const [scrollLeft, setScrollLeft] = useState(0);
   const today = useMemo(() => new Date(), []);
 
   useEffect(() => {
@@ -49,24 +48,26 @@ export default function Gantt({
 
   const memberById = useMemo(() => Object.fromEntries(members.map((m) => [m.id, m])), [members]);
 
-  const rows = useMemo(() => {
-    return allocations
-      .filter((a) => a.start_date && a.end_date)
-      .map((a) => {
-        const mid = memberKey(a);
-        const member = memberById[mid];
-        if (!member) return null;
-        const alloc = { ...a, member_id: mid, team_member_id: mid };
-        return { allocation: alloc, member };
-      })
-      .filter(Boolean)
-      .sort((A, B) => {
-        const na = A.member.name.localeCompare(B.member.name);
-        if (na !== 0) return na;
-        const pa = (A.allocation.project_name || '').localeCompare(B.allocation.project_name || '');
-        if (pa !== 0) return pa;
-        return String(A.allocation.start_date).localeCompare(String(B.allocation.start_date));
+  /** One row per member; contains every allocation that belongs to that member. */
+  const memberRows = useMemo(() => {
+    const map = new Map();
+    for (const a of allocations) {
+      if (!a.start_date || !a.end_date) continue;
+      const mid = memberKey(a);
+      if (!mid) continue;
+      const member = memberById[mid];
+      if (!member) continue;
+      if (!map.has(mid)) map.set(mid, { member, allocations: [] });
+      map.get(mid).allocations.push({ ...a, member_id: mid, team_member_id: mid });
+    }
+    for (const v of map.values()) {
+      v.allocations.sort((a, b) => {
+        const ps = (a.project_name || '').localeCompare(b.project_name || '');
+        if (ps !== 0) return ps;
+        return String(a.start_date).localeCompare(String(b.start_date));
       });
+    }
+    return Array.from(map.values()).sort((A, B) => A.member.name.localeCompare(B.member.name));
   }, [allocations, memberById]);
 
   useEffect(() => {
@@ -167,10 +168,10 @@ export default function Gantt({
 
         const newRowIdx = Math.max(
           0,
-          Math.min(rowIdx + Math.round(dy / ROW_H), Math.max(rows.length - 1, 0))
+          Math.min(rowIdx + Math.round(dy / ROW_H), Math.max(memberRows.length - 1, 0))
         );
         ghostRowIdx = newRowIdx;
-        newMemberId = rows[newRowIdx]?.member?.id || memberKey(origAlloc);
+        newMemberId = memberRows[newRowIdx]?.member?.id || memberKey(origAlloc);
       } else if (type === 'resize-right') {
         newStart = parseISO(origAlloc.start_date);
         const snappedDx = Math.round(dx / DAY_W) * DAY_W;
@@ -231,7 +232,7 @@ export default function Gantt({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [dragging, xToDate, rows, checkGhostConflict, onUpdate]);
+  }, [dragging, xToDate, memberRows, checkGhostConflict, onUpdate]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -276,38 +277,25 @@ export default function Gantt({
     syncingRef.current = true;
     if (containerRef.current) containerRef.current.scrollLeft = 0;
     if (hScrollRef.current) hScrollRef.current.scrollLeft = 0;
-    setScrollLeft(0);
     syncingRef.current = false;
   }, []);
 
   return (
     <div className="surface rounded-[22px] overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
-      {/* Today indicator: tracks today's column with horizontal scroll, and
-          hides once today's column would slip behind the label column
-          (i.e. "vanishing point" sits at the first calendar column). */}
-      {(() => {
-        const todayCenterInTimeline = dateToX(today) + DAY_W / 2;
-        const todayCenterX = LABEL_W + todayCenterInTimeline - scrollLeft;
-        const visible = todayCenterX >= LABEL_W + DAY_W / 2 - 0.5;
-        if (!visible) return null;
-        return (
-          <>
-            <button
-              type="button"
-              onClick={scrollToToday}
-              className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
-              style={{ left: todayCenterX - 18 }}
-              title="回到今天"
-            >
-              {format(today, 'MMM d')}
-            </button>
-            <div
-              className="absolute z-30 bg-indigo-400/60 pointer-events-none"
-              style={{ left: todayCenterX, top: HEADER_H, width: 1.5, bottom: 10 }}
-            />
-          </>
-        );
-      })()}
+      {/* Pinned today indicator (fixed, does not scroll horizontally) */}
+      <button
+        type="button"
+        onClick={scrollToToday}
+        className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
+        style={{ left: LABEL_W + 8 }}
+        title="回到今天"
+      >
+        {format(today, 'MMM d')}
+      </button>
+      <div
+        className="absolute z-30 bg-indigo-400/60 pointer-events-none"
+        style={{ left: LABEL_W + DAY_W / 2, top: HEADER_H, width: 1.5, bottom: 10 }}
+      />
 
       <div
         ref={containerRef}
@@ -316,13 +304,11 @@ export default function Gantt({
         onScroll={() => {
           if (syncingRef.current) return;
           syncingRef.current = true;
-          const sl = containerRef.current?.scrollLeft || 0;
-          setScrollLeft(sl);
-          if (hScrollRef.current) hScrollRef.current.scrollLeft = sl;
+          if (hScrollRef.current) hScrollRef.current.scrollLeft = containerRef.current?.scrollLeft || 0;
           syncingRef.current = false;
         }}
       >
-        <div style={{ width: LABEL_W + totalW, minHeight: HEADER_H + Math.max(rows.length, 1) * ROW_H }}>
+        <div style={{ width: LABEL_W + totalW, minHeight: HEADER_H + Math.max(memberRows.length, 1) * ROW_H }}>
 
           <div className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60" style={{ height: HEADER_H }}>
             <div style={{ display: 'flex', height: '100%' }}>
@@ -370,28 +356,20 @@ export default function Gantt({
             </div>
           </div>
 
-          {rows.map(({ allocation: alloc, member }, rowIdx) => {
+          {memberRows.map(({ member, allocations: memberAllocs }, rowIdx) => {
             const bg = member.avatar_color || 'var(--apple-blue)';
             const ini = initials(member.name);
-            const rawX = dateToX(alloc.start_date);
-            const rawXEnd = dateToX(alloc.end_date) + DAY_W;
-            const x = Math.max(0, rawX);
-            const xEnd = Math.max(x, rawXEnd);
-            const w = xEnd - x;
-            const isDragging = dragging?.id === alloc.id;
-            const hasConflict = conflicts[alloc.id];
-            const color = alloc.project_color || 'var(--apple-blue)';
-            const labelPrimary = alloc.project_name || member.name;
-            const labelSecondary = alloc.task_name ? alloc.task_name : '';
             const barBg = {
               backgroundImage: 'linear-gradient(90deg, rgba(17,24,39,0.67), rgba(17,24,39,0.50))',
             };
+            const BAR_H = 14;
+            const BAR_TOP = Math.round((ROW_H - BAR_H) / 2);
 
             return (
               <div
-                key={alloc.id}
+                key={member.id}
                 style={{ display: 'flex', height: ROW_H }}
-                className={`border-b border-white/40 ${rowIdx % 2 === 0 ? 'bg-white/25' : 'bg-white/15'}`}
+                className={`border-b border-slate-200/60 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
               >
                 <div
                   style={{ width: LABEL_W, minWidth: LABEL_W }}
@@ -405,22 +383,11 @@ export default function Gantt({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-slate-800 truncate">{member.name}</p>
-                    <p className="text-[10px] text-slate-500 truncate" title={labelPrimary}>
-                      {labelPrimary}
-                      {labelSecondary ? ` · ${labelSecondary}` : ''}
+                    <p className="text-[10px] text-slate-500 truncate" title={member.role}>
+                      {member.role}
+                      {memberAllocs.length > 1 ? ` · ${memberAllocs.length} 個專案` : ''}
                     </p>
                   </div>
-                  {showRowDelete && (
-                    <button
-                      type="button"
-                      title="刪除此列（時間分配）"
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => handleDeleteRow(e, alloc)}
-                      className="shrink-0 rounded-lg px-1.5 py-1 text-[11px] font-medium text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                    >
-                      刪除
-                    </button>
-                  )}
                 </div>
 
                 <div style={{ position: 'relative', width: totalW, height: ROW_H }}>
@@ -434,76 +401,103 @@ export default function Gantt({
                     ) : null
                   )}
 
-                  {(() => {
-                    // today marker is pinned outside the scroll area
-                    return null;
-                  })()}
+                  {memberAllocs.map((alloc) => {
+                    const rawX = dateToX(alloc.start_date);
+                    const rawXEnd = dateToX(alloc.end_date) + DAY_W;
+                    const x = Math.max(0, rawX);
+                    const xEnd = Math.max(x, rawXEnd);
+                    const w = xEnd - x;
+                    if (w <= 0) return null;
+                    const isDragging = dragging?.id === alloc.id;
+                    const hasConflict = conflicts[alloc.id];
+                    const projColor = alloc.project_color || 'var(--apple-blue)';
 
-                  {w > 0 && (
-                    <div style={{ position: 'absolute', left: x + 2, top: 14, width: w - 4, height: 28, zIndex: isDragging ? 20 : 5 }}>
+                    return (
                       <div
-                        style={{
-                          ...barBg,
-                          borderRadius: 6,
-                          height: '100%',
-                          width: '100%',
-                          opacity: isDragging ? 0.4 : 1,
-                          boxShadow: hasConflict ? '0 0 0 2px #FF3B30' : '0 1px 3px rgba(0,0,0,0.15)',
-                          cursor: 'grab',
-                          display: 'flex',
-                          alignItems: 'center',
-                          overflow: 'hidden',
-                          position: 'relative',
-                        }}
-                        onMouseDown={(e) => handleBarMouseDown(e, rowIdx, alloc, 'move')}
-                        onMouseEnter={(e) => setTooltip({ alloc, member, x: e.clientX, y: e.clientY })}
-                        onMouseMove={(e) => setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))}
-                        onMouseLeave={() => setTooltip(null)}
+                        key={alloc.id}
+                        className="group"
+                        style={{ position: 'absolute', left: x + 2, top: BAR_TOP, width: w - 4, height: BAR_H, zIndex: isDragging ? 20 : 5 }}
                       >
                         <div
-                          style={{ position: 'absolute', left: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleBarMouseDown(e, rowIdx, alloc, 'resize-left');
-                          }}
-                        />
-                        <span
                           style={{
-                            color: 'white',
-                            fontSize: 11,
-                            fontWeight: 600,
-                            paddingLeft: 8,
-                            paddingRight: 8,
-                            whiteSpace: 'nowrap',
+                            ...barBg,
+                            borderRadius: 4,
+                            height: '100%',
+                            width: '100%',
+                            opacity: isDragging ? 0.4 : 1,
+                            boxShadow: hasConflict ? '0 0 0 2px #FF3B30' : '0 1px 3px rgba(0,0,0,0.15)',
+                            cursor: 'grab',
+                            display: 'flex',
+                            alignItems: 'center',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            pointerEvents: 'none',
+                            position: 'relative',
                           }}
+                          onMouseDown={(e) => handleBarMouseDown(e, rowIdx, alloc, 'move')}
+                          onMouseEnter={(e) => setTooltip({ alloc, member, x: e.clientX, y: e.clientY })}
+                          onMouseMove={(e) => setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))}
+                          onMouseLeave={() => setTooltip(null)}
                         >
-                          {alloc.task_name || alloc.project_name || '—'}
-                        </span>
-                        <div
-                          style={{ position: 'absolute', right: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleBarMouseDown(e, rowIdx, alloc, 'resize-right');
-                          }}
-                        />
+                          {/* Project color stripe so different projects in the same row are distinguishable. */}
+                          <div
+                            style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: projColor, pointerEvents: 'none' }}
+                          />
+                          <div
+                            style={{ position: 'absolute', left: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleBarMouseDown(e, rowIdx, alloc, 'resize-left');
+                            }}
+                          />
+                          <span
+                            style={{
+                              color: 'white',
+                              fontSize: 10,
+                              fontWeight: 600,
+                              lineHeight: 1,
+                              paddingLeft: 9,
+                              paddingRight: 8,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            {alloc.task_name || alloc.project_name || '—'}
+                          </span>
+                          <div
+                            style={{ position: 'absolute', right: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleBarMouseDown(e, rowIdx, alloc, 'resize-right');
+                            }}
+                          />
+                        </div>
+                        {showRowDelete && (
+                          <button
+                            type="button"
+                            title="刪除此分配"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => handleDeleteRow(e, alloc)}
+                            className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] leading-none font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow z-30 flex items-center justify-center"
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })}
 
-                  {ghost && dragging?.id === alloc.id && ghost.rowIdx === rowIdx && (() => {
+                  {ghost && ghost.rowIdx === rowIdx && (() => {
                     const gx = dateToX(ghost.startDate);
                     const gxEnd = dateToX(ghost.endDate) + DAY_W;
                     const gw = gxEnd - gx;
                     if (gw <= 0) return null;
                     return (
-                      <div style={{ position: 'absolute', left: gx + 2, top: 14, width: gw - 4, height: 28, zIndex: 30, pointerEvents: 'none' }}>
+                      <div style={{ position: 'absolute', left: gx + 2, top: BAR_TOP, width: gw - 4, height: BAR_H, zIndex: 30, pointerEvents: 'none' }}>
                         <div
                           style={{
                             ...barBg,
-                            borderRadius: 6,
+                            borderRadius: 4,
                             height: '100%',
                             boxShadow: ghost.conflict ? '0 0 0 2px #FF3B30, 0 4px 12px rgba(0,0,0,0.2)' : '0 4px 12px rgba(0,0,0,0.2)',
                             opacity: 0.85,
@@ -511,7 +505,7 @@ export default function Gantt({
                             alignItems: 'center',
                           }}
                         >
-                          <span style={{ color: 'white', fontSize: 11, fontWeight: 600, paddingLeft: 8, whiteSpace: 'nowrap' }}>
+                          <span style={{ color: 'white', fontSize: 10, fontWeight: 600, lineHeight: 1, paddingLeft: 8, whiteSpace: 'nowrap' }}>
                             {ghost.title}
                             {ghost.conflict && <span style={{ marginLeft: 4 }}>⚠</span>}
                           </span>
@@ -524,7 +518,7 @@ export default function Gantt({
             );
           })}
 
-          {rows.length === 0 && (
+          {memberRows.length === 0 && (
             <div className="flex items-center justify-center py-20 text-slate-400 text-sm px-4 text-center">
               {emptyHint ?? '尚無時間分配（請在專案頁或使用「新增分配」建立）'}
             </div>
@@ -540,9 +534,7 @@ export default function Gantt({
         onScroll={() => {
           if (syncingRef.current) return;
           syncingRef.current = true;
-          const sl = hScrollRef.current?.scrollLeft || 0;
-          setScrollLeft(sl);
-          if (containerRef.current) containerRef.current.scrollLeft = sl;
+          if (containerRef.current) containerRef.current.scrollLeft = hScrollRef.current?.scrollLeft || 0;
           syncingRef.current = false;
         }}
       >

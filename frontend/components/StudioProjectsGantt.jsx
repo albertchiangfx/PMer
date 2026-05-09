@@ -67,7 +67,6 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
   const [tooltip, setTooltip] = useState(null);
   const tooltipBoxRef = useRef(null);
   const [tooltipSize, setTooltipSize] = useState({ w: 0, h: 0 });
-  const [scrollLeft, setScrollLeft] = useState(0);
   const today = useMemo(() => new Date(), []);
 
   useEffect(() => {
@@ -252,38 +251,25 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     syncingRef.current = true;
     if (containerRef.current) containerRef.current.scrollLeft = 0;
     if (hScrollRef.current) hScrollRef.current.scrollLeft = 0;
-    setScrollLeft(0);
     syncingRef.current = false;
   }, []);
 
   return (
     <div className="surface rounded-[22px] overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
-      {/* Today indicator: tracks today's column with horizontal scroll, and
-          hides once today's column would slip behind the label column
-          (i.e. "vanishing point" sits at the first calendar column). */}
-      {(() => {
-        const todayCenterInTimeline = dateToX(today) + DAY_W / 2;
-        const todayCenterX = LABEL_W + todayCenterInTimeline - scrollLeft;
-        const visible = todayCenterX >= LABEL_W + DAY_W / 2 - 0.5;
-        if (!visible) return null;
-        return (
-          <>
-            <button
-              type="button"
-              onClick={scrollToToday}
-              className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
-              style={{ left: todayCenterX - 18 }}
-              title="回到今天"
-            >
-              {format(today, 'MMM d')}
-            </button>
-            <div
-              className="absolute z-30 bg-indigo-400/60 pointer-events-none"
-              style={{ left: todayCenterX, top: HEADER_H, width: 1.5, bottom: 10 }}
-            />
-          </>
-        );
-      })()}
+      {/* Pinned today indicator (fixed, does not scroll horizontally) */}
+      <button
+        type="button"
+        onClick={scrollToToday}
+        className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
+        style={{ left: LABEL_W + 8 }}
+        title="回到今天"
+      >
+        {format(today, 'MMM d')}
+      </button>
+      <div
+        className="absolute z-30 bg-indigo-400/60 pointer-events-none"
+        style={{ left: LABEL_W + DAY_W / 2, top: HEADER_H, width: 1.5, bottom: 10 }}
+      />
 
       <div
         ref={containerRef}
@@ -292,9 +278,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
         onScroll={() => {
           if (syncingRef.current) return;
           syncingRef.current = true;
-          const sl = containerRef.current?.scrollLeft || 0;
-          setScrollLeft(sl);
-          if (hScrollRef.current) hScrollRef.current.scrollLeft = sl;
+          if (hScrollRef.current) hScrollRef.current.scrollLeft = containerRef.current?.scrollLeft || 0;
           syncingRef.current = false;
         }}
       >
@@ -499,9 +483,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
         onScroll={() => {
           if (syncingRef.current) return;
           syncingRef.current = true;
-          const sl = hScrollRef.current?.scrollLeft || 0;
-          setScrollLeft(sl);
-          if (containerRef.current) containerRef.current.scrollLeft = sl;
+          if (containerRef.current) containerRef.current.scrollLeft = hScrollRef.current?.scrollLeft || 0;
           syncingRef.current = false;
         }}
       >
