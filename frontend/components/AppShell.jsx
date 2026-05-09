@@ -11,6 +11,72 @@ const NAV = [
   { href: '/invoices', label: '發票', icon: IconReceipt },
 ];
 
+/**
+ * Knobs for the floating left nav. All values are Tailwind class strings
+ * (literals so the JIT scanner can find them). Edit a value here and the
+ * dev server (http://localhost:3000) will hot-reload.
+ *
+ * Both NavRail (collapsed, icon-only) and NavSidebar (expanded, with labels)
+ * read the same constants so the two states always stay in sync.
+ */
+const NAV_STYLE = {
+  // ── Widths ───────────────────────────────────────────────
+  /** Collapsed icon-rail width. */
+  railWidth: 'w-[74px]',
+  /** Expanded sidebar width (hover or pinned). */
+  sidebarWidth: 'w-[242px]',
+
+  // ── Outer plaster (light) cards ──────────────────────────
+  /** Top plaster card corner radius. */
+  topCardRadius: 'rounded-[12px]',
+  /** Bottom (settings) plaster card corner radius. */
+  bottomCardRadius: 'rounded-[12px]',
+  /** Padding between plaster outer and dark inner pill (per side). */
+  cardPadding: 'p-2',
+  /** Vertical gap between the top and bottom plaster cards. */
+  cardGap: 'gap-2',
+  /** Top : Bottom plaster height ratio. Tailwind arbitrary flex syntax:
+   *  [flex:GROW_SHRINK_BASIS]. Default 7:3. */
+  topFlex: '[flex:6.18_0_0]',
+  bottomFlex: '[flex:3.82_0_0]',
+
+  // ── Inner dark pills ─────────────────────────────────────
+  /** Top dark pill (icons / nav rows) corner radius. */
+  topPillRadius: 'rounded-[8px]',
+  /** Bottom dark pod (settings) corner radius. */
+  bottomPillRadius: 'rounded-[8px]',
+  /** How far the top pill visibly extends past the last item.
+   *  Used as bottom-padding on the top dark pill.
+   *  Any Tailwind padding works:
+   *    - preset scale (every 4px): pb-12 (48px), pb-20 (80px), pb-40 (160px)…
+   *    - arbitrary value: pb-[33px], pb-[100px], pb-[5rem]
+   *  Same for cardPadding / cardGap / radii / widths above. */
+  pillTailPad: 'pb-28',
+
+  // ── Colors ───────────────────────────────────────────────
+  // Deep theme colors (plaster card bg, dark pill bg, divider) live in
+  // frontend/app/globals.css :root as CSS variables (--nav-plaster-from /
+  // --nav-plaster-to / --nav-pill-bg / --nav-divider). Edit those there.
+  // The Tailwind-class colors below cover everything that sits on top.
+
+  /** Brand "SP" button background (Tailwind gradient). */
+  brandBg: 'bg-gradient-to-br from-indigo-500 to-purple-600',
+  /** Brand "SP" button drop shadow (uses brand color). */
+  brandShadow: 'shadow-[0_2px_6px_rgba(79,70,229,0.45)]',
+  /** Left-edge accent bar shown on the active nav item. */
+  activeAccent: 'bg-indigo-400/90',
+  /** Active item background + ring inside the dark pill. */
+  activeBg: 'bg-white/10 ring-1 ring-white/15',
+  /** Inactive item text color (icon + label). */
+  itemTextDim: 'text-white/55',
+  /** Active item text color. */
+  itemTextActive: 'text-white',
+  /** Hover background applied to non-active items. */
+  itemBgHover: 'hover:bg-white/[0.06]',
+  /** Hover text color applied to non-active items. */
+  itemTextHover: 'hover:text-white/90',
+};
+
 export default function AppShell({ children }) {
   const path = usePathname();
   const [navCollapsed, setNavCollapsed] = useState(false);
@@ -96,15 +162,15 @@ export default function AppShell({ children }) {
  *  70% if the icon pill needs more room on short pages). */
 function NavRail({ path, onExpand }) {
   return (
-    <div className="flex w-[88px] flex-1 flex-col gap-3">
-      {/* TOP plaster card (≈70% height). Dark pill flush to top edge with
-          extra bottom padding so it visibly extends past the last icon. */}
-      <div className="nav-plaster rounded-[18px] p-3 flex flex-col [flex:7_0_0] min-h-fit">
-        <div className="nav-pill rounded-[12px] flex flex-col items-center gap-1 pt-3 pb-12">
+    <div className={`flex flex-1 flex-col ${NAV_STYLE.railWidth} ${NAV_STYLE.cardGap}`}>
+      {/* TOP plaster card. Dark pill flush to top edge with extra bottom
+          padding (NAV_STYLE.pillTailPad) so it extends past the last icon. */}
+      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}>
+        <div className={`nav-pill flex flex-col items-center gap-1 pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}>
           <button
             type="button"
             onClick={onExpand}
-            className="h-10 w-10 rounded-[12px] grid place-items-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-[0_2px_6px_rgba(79,70,229,0.45)] hover:brightness-110"
+            className={`h-10 w-10 rounded-[12px] grid place-items-center text-white hover:brightness-110 ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
             aria-label="展開導覽"
             title="展開導覽"
           >
@@ -120,9 +186,9 @@ function NavRail({ path, onExpand }) {
         </div>
       </div>
 
-      {/* BOTTOM plaster card (≈30% height). Dark pod anchored to bottom edge. */}
-      <div className="nav-plaster rounded-[14px] p-3 flex flex-col [flex:3_0_0] min-h-fit">
-        <div className="nav-pill rounded-[10px] grid place-items-center py-1.5 mt-auto">
+      {/* BOTTOM plaster card. Dark pod anchored to bottom edge. */}
+      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}>
+        <div className={`nav-pill grid place-items-center py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}>
           <RailItem href="/settings" active={path.startsWith('/settings')} label="設定"><IconGear /></RailItem>
         </div>
       </div>
@@ -133,13 +199,13 @@ function NavRail({ path, onExpand }) {
 /** Expanded sidebar with labels. Same two-card / 7:3 split as NavRail. */
 function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
   return (
-    <div className="flex w-[272px] flex-1 flex-col gap-3">
-      {/* TOP plaster card (≈70% height). Dark pill flush to top edge with
-          extra bottom padding so it visibly extends past the last nav row. */}
-      <div className="nav-plaster rounded-[18px] p-3 flex flex-col [flex:7_0_0] min-h-fit">
-        <div className="nav-pill rounded-[12px] flex flex-col px-3 pt-4 pb-40 text-white/85">
+    <div className={`flex flex-1 flex-col ${NAV_STYLE.sidebarWidth} ${NAV_STYLE.cardGap}`}>
+      {/* TOP plaster card. Dark pill flush to top edge with extra bottom
+          padding (NAV_STYLE.pillTailPad) so it extends past the last nav row. */}
+      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}>
+        <div className={`nav-pill flex flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-[12px] bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-[11px] font-bold tracking-wide shadow-[0_2px_6px_rgba(79,70,229,0.45)]">
+            <div className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[11px] font-bold tracking-wide ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}>
               SP
             </div>
             <div className="min-w-0 flex-1">
@@ -170,9 +236,9 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
         </div>
       </div>
 
-      {/* BOTTOM plaster card (≈30% height). Dark pod anchored to bottom edge. */}
-      <div className="nav-plaster rounded-[14px] p-3 flex flex-col [flex:3_0_0] min-h-fit">
-        <div className="nav-pill rounded-[10px] px-2 py-1.5 mt-auto">
+      {/* BOTTOM plaster card. Dark pod anchored to bottom edge. */}
+      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}>
+        <div className={`nav-pill px-2 py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}>
           <SidebarLink href="/settings" label="設定" active={path.startsWith('/settings')} icon={<IconGear />} />
         </div>
       </div>
@@ -190,12 +256,12 @@ function RailItem({ children, href, active, label }) {
       className={[
         'relative h-10 w-10 rounded-[12px] grid place-items-center transition-apple',
         active
-          ? 'bg-white/10 ring-1 ring-white/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]'
-          : 'text-white/55 hover:bg-white/[0.06] hover:text-white/90',
+          ? `${NAV_STYLE.activeBg} ${NAV_STYLE.itemTextActive} shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]`
+          : `${NAV_STYLE.itemTextDim} ${NAV_STYLE.itemBgHover} ${NAV_STYLE.itemTextHover}`,
       ].join(' ')}
     >
       {active && (
-        <span className="absolute left-[3px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-indigo-400/90" />
+        <span className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full ${NAV_STYLE.activeAccent}`} />
       )}
       <span className="h-[18px] w-[18px]">{children}</span>
     </Link>
@@ -209,14 +275,14 @@ function SidebarLink({ href, label, icon, active }) {
       className={[
         'relative flex items-center gap-2.5 rounded-[12px] px-3 py-2 text-[13px] transition-apple',
         active
-          ? 'bg-white/10 text-white ring-1 ring-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]'
-          : 'text-white/70 hover:bg-white/[0.06] hover:text-white/95',
+          ? `${NAV_STYLE.activeBg} ${NAV_STYLE.itemTextActive} shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]`
+          : `${NAV_STYLE.itemTextDim} ${NAV_STYLE.itemBgHover} ${NAV_STYLE.itemTextHover}`,
       ].join(' ')}
     >
       {active && (
-        <span className="absolute left-[5px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-indigo-400/90" />
+        <span className={`absolute left-[5px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full ${NAV_STYLE.activeAccent}`} />
       )}
-      <span className={active ? 'text-white' : 'text-white/55'}>{icon}</span>
+      <span className={active ? NAV_STYLE.itemTextActive : NAV_STYLE.itemTextDim}>{icon}</span>
       <span className="truncate">{label}</span>
     </Link>
   );
