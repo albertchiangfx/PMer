@@ -58,129 +58,162 @@ export default function AppShell({ children }) {
   return (
     <div className="app-bg app-blobs min-h-screen text-slate-900">
       <div className="relative z-[1] mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-10">
-        <div className="shell relative flex min-h-[720px] w-full overflow-hidden rounded-[28px]">
+        <div className="flex min-h-[720px] w-full gap-4 sm:gap-5">
+          {/* Floating two-layer nav (separated from main content). */}
           <div
-            className="relative self-stretch"
+            className="hidden sm:flex shrink-0 flex-col self-stretch"
             onMouseEnter={() => setNavHover(true)}
             onMouseLeave={() => setNavHover(false)}
           >
-            {/* icon rail (only when collapsed and not hovering) */}
-            <aside
-              className={[
-                'hidden sm:flex w-[74px] shrink-0 flex-col items-center gap-4 bg-[#111827] py-5 text-white/80 h-full',
-                showRail ? '' : 'sm:hidden',
-              ].join(' ')}
-            >
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                className="mt-1 h-9 w-9 rounded-2xl bg-white/10 ring-1 ring-white/10 grid place-items-center hover:bg-white/15 transition"
-                aria-label="展開導覽"
-                title="展開導覽"
-              >
-                <span className="h-5 w-5"><IconExpand /></span>
-              </button>
-              <span className="text-[10px] font-semibold text-white/55 -mt-2">MENU</span>
-
-              <div className="mt-2 flex flex-col gap-3">
-                <RailIcon active={path === '/'} href="/" label="Dashboard"><IconGrid /></RailIcon>
-                <RailIcon active={path.startsWith('/projects')} href="/projects" label="專案"><IconFolder /></RailIcon>
-                <RailIcon active={path.startsWith('/team')} href="/team" label="成員"><IconUsersMini /></RailIcon>
-                <RailIcon active={path.startsWith('/contracts')} href="/contracts" label="合約"><IconDocMini /></RailIcon>
-                <RailIcon active={path.startsWith('/invoices')} href="/invoices" label="發票"><IconReceiptMini /></RailIcon>
-              </div>
-
-              <div className="mt-auto pb-2">
-                <RailIcon href="/settings" active={path.startsWith('/settings')} label="設定"><IconGear /></RailIcon>
-              </div>
-            </aside>
-
-            {/* sidebar (show when expanded OR hovered while collapsed) */}
-            <aside
-              className={[
-                'w-[280px] shrink-0 border-r border-white/10 bg-[#111827] px-5 py-6 text-white/85 hidden md:block h-full',
-                showSidebar ? '' : 'md:hidden',
-              ].join(' ')}
-            >
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-white/10 ring-1 ring-white/10 grid place-items-center">
-                <span className="text-xs font-semibold text-white/90">SP</span>
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white/90">{viewerTitle || 'Studio PM'}</p>
-                <p className="truncate text-xs text-white/55">{viewerRole || '3D Animation'}</p>
-              </div>
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                className="ml-auto h-9 w-9 rounded-2xl bg-white/10 ring-1 ring-white/15 grid place-items-center text-white/80 hover:bg-white/15 transition"
-                aria-label="收合導覽"
-                title="收合導覽"
-              >
-                <span className="h-5 w-5"><IconCollapse /></span>
-              </button>
-            </div>
-
-            <div className="mt-6 flex h-[calc(100%-56px)] flex-col">
-              <p className="text-[11px] font-semibold tracking-wide text-white/45">Navigation</p>
-              <div className="mt-3 space-y-3">
-                {NAV.map((n) => {
-                  const active = n.href === '/' ? path === '/' : path.startsWith(n.href);
-                  const Icon = n.icon;
-                  return (
-                    <SidebarLink key={n.href} href={n.href} label={n.label} active={active} icon={<Icon />} dark />
-                  );
-                })}
-              </div>
-
-              <div className="mt-auto pt-4">
-                <SidebarLink href="/settings" label="設定" active={path.startsWith('/settings')} icon={<IconGear />} dark />
-              </div>
-            </div>
-          </aside>
+            {showRail ? (
+              <NavRail path={path} onExpand={toggleCollapsed} />
+            ) : (
+              <NavSidebar
+                path={path}
+                onCollapse={toggleCollapsed}
+                viewerTitle={viewerTitle}
+                viewerRole={viewerRole}
+                navItems={NAV}
+              />
+            )}
           </div>
 
-          {/* content */}
-          <main className="relative flex-1 px-5 py-6 sm:px-8 sm:py-8 overflow-auto">
-            {children}
-          </main>
+          {/* Content shell */}
+          <div className="shell relative flex-1 overflow-hidden rounded-[28px]">
+            <main className="relative flex-1 px-5 py-6 sm:px-8 sm:py-8 overflow-auto h-full">
+              {children}
+            </main>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function RailIcon({ children, href, active, label }) {
+/** Collapsed icon rail. Two-layer card: plaster outer + dark inner pill. */
+function NavRail({ path, onExpand }) {
+  return (
+    <div className="flex w-[88px] flex-col flex-1 gap-3">
+      {/* Top nav card (auto height; sits at top edge). */}
+      <div className="nav-plaster rounded-[18px] p-3">
+        <div className="nav-pill rounded-[12px] flex flex-col items-center gap-1 py-3">
+          <button
+            type="button"
+            onClick={onExpand}
+            className="h-10 w-10 rounded-[12px] grid place-items-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-[0_2px_6px_rgba(79,70,229,0.45)] hover:brightness-110"
+            aria-label="展開導覽"
+            title="展開導覽"
+          >
+            <span className="text-[11px] font-bold tracking-wide">SP</span>
+          </button>
+          <div className="nav-divider w-[44px]" />
+          <RailItem active={path === '/'} href="/" label="Dashboard"><IconGrid /></RailItem>
+          <RailItem active={path.startsWith('/projects')} href="/projects" label="專案"><IconFolder /></RailItem>
+          <div className="nav-divider w-[44px]" />
+          <RailItem active={path.startsWith('/team')} href="/team" label="成員"><IconUsersMini /></RailItem>
+          <RailItem active={path.startsWith('/contracts')} href="/contracts" label="合約"><IconDocMini /></RailItem>
+          <RailItem active={path.startsWith('/invoices')} href="/invoices" label="發票"><IconReceiptMini /></RailItem>
+        </div>
+      </div>
+
+      {/* Bottom settings pod, pushed to bottom edge of sidebar column. */}
+      <div className="nav-plaster rounded-[14px] p-3 mt-auto">
+        <div className="nav-pill rounded-[10px] grid place-items-center py-1.5">
+          <RailItem href="/settings" active={path.startsWith('/settings')} label="設定"><IconGear /></RailItem>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Expanded sidebar with labels. Same two-card structure as NavRail so the
+ *  visual mass stays consistent across hover/expand toggles (top card hugs
+ *  the top edge, settings pod sticks to the bottom edge via mt-auto). */
+function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
+  return (
+    <div className="flex w-[272px] flex-col flex-1 gap-3">
+      {/* Top main card (auto height). */}
+      <div className="nav-plaster rounded-[18px] p-3">
+        <div className="nav-pill rounded-[12px] flex flex-col px-3 py-4 text-white/85">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-[12px] bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-[11px] font-bold tracking-wide shadow-[0_2px_6px_rgba(79,70,229,0.45)]">
+              SP
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-white/95">{viewerTitle || 'Studio PM'}</p>
+              <p className="truncate text-[11px] text-white/55">{viewerRole || '3D Animation'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="h-8 w-8 rounded-[10px] bg-white/[0.08] ring-1 ring-white/10 grid place-items-center text-white/75 hover:bg-white/[0.12] hover:text-white transition-apple"
+              aria-label="收合導覽"
+              title="收合導覽"
+            >
+              <span className="h-4 w-4"><IconCollapse /></span>
+            </button>
+          </div>
+
+          <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-white/40">NAVIGATION</p>
+          <div className="mt-2 flex flex-col gap-1">
+            {navItems.map((n) => {
+              const active = n.href === '/' ? path === '/' : path.startsWith(n.href);
+              const Icon = n.icon;
+              return (
+                <SidebarLink key={n.href} href={n.href} label={n.label} active={active} icon={<Icon />} />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom settings pod – same two-layer structure, pushed to bottom. */}
+      <div className="nav-plaster rounded-[14px] p-3 mt-auto">
+        <div className="nav-pill rounded-[10px] px-2 py-1.5">
+          <SidebarLink href="/settings" label="設定" active={path.startsWith('/settings')} icon={<IconGear />} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Single icon button used inside the dark pill (collapsed rail). */
+function RailItem({ children, href, active, label }) {
   return (
     <Link
-      aria-label={label}
       href={href}
+      aria-label={label}
+      title={label}
       className={[
-        'h-11 w-11 rounded-2xl grid place-items-center transition',
-        active ? 'bg-white/12 ring-1 ring-white/15 text-white' : 'hover:bg-white/10 text-white/75',
+        'relative h-10 w-10 rounded-[12px] grid place-items-center transition-apple',
+        active
+          ? 'bg-white/10 ring-1 ring-white/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]'
+          : 'text-white/55 hover:bg-white/[0.06] hover:text-white/90',
       ].join(' ')}
     >
-      <span className="h-5 w-5">{children}</span>
+      {active && (
+        <span className="absolute left-[3px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-indigo-400/90" />
+      )}
+      <span className="h-[18px] w-[18px]">{children}</span>
     </Link>
   );
 }
 
-function SidebarLink({ href, label, icon, active, dark }) {
+function SidebarLink({ href, label, icon, active }) {
   return (
     <Link
       href={href}
       className={[
-        'flex items-center gap-2 rounded-2xl px-3 py-2 text-sm transition',
-        dark
-          ? active
-            ? 'bg-white/12 text-white ring-1 ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]'
-            : 'bg-white/0 text-white/80 hover:bg-white/10'
-          : active
-            ? 'bg-white/70 ring-1 ring-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] text-slate-900'
-            : 'bg-white/35 ring-1 ring-white/50 text-slate-700 hover:bg-white/55',
+        'relative flex items-center gap-2.5 rounded-[12px] px-3 py-2 text-[13px] transition-apple',
+        active
+          ? 'bg-white/10 text-white ring-1 ring-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]'
+          : 'text-white/70 hover:bg-white/[0.06] hover:text-white/95',
       ].join(' ')}
     >
-      <span className={dark ? 'text-white/65' : 'text-slate-500'}>{icon}</span>
+      {active && (
+        <span className="absolute left-[5px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-indigo-400/90" />
+      )}
+      <span className={active ? 'text-white' : 'text-white/55'}>{icon}</span>
       <span className="truncate">{label}</span>
     </Link>
   );
