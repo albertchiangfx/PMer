@@ -34,6 +34,11 @@
   --nav-pill-shadow-blur:    16px;
   --nav-pill-shadow-spread:  -4px;
   --nav-pill-shadow-color:   rgba(15, 23, 42, 0.527);
+
+  /* Gantt timeline: alternating-week tint and weekend tint.
+     Both are translucent overlays drawn on top of the row's base bg. */
+  --gantt-alt-week-tint: rgba(15, 23, 42, 0.05);
+  --gantt-weekend-tint:  rgba(255, 187, 187, 0.315); /* slate-400 @ ~22% */
 }
 
 * { box-sizing: border-box; }
@@ -143,6 +148,10 @@ body {
   background: var(--nav-divider);
   margin: 6px 8px;
 }
+
+/* Gantt week stripe overlays. */
+.gantt-alt-week { background: var(--gantt-alt-week-tint); }
+.gantt-weekend  { background: var(--gantt-weekend-tint); }
 
 /* Smooth transitions */
 * { transition-property: none; }

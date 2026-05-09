@@ -59,7 +59,7 @@ function buildUpdatePayload(project, startDate, endDate) {
  * Studio-wide Gantt: one row per project, bar = project dates or inferred from allocations.
  * Drag bar to update project start/end (writes official project dates).
  */
-export default function StudioProjectsGantt({ projects = [], allocations = [], onUpdate, rangeWeeks = 16 }) {
+export default function StudioProjectsGantt({ projects = [], allocations = [], onUpdate, rangeWeeks = 16, pastWeeks = 4 }) {
   const containerRef = useRef(null);
   const hScrollRef = useRef(null);
   const syncingRef = useRef(false);
@@ -72,6 +72,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
   const [dayW, setDayW] = useState(DEFAULT_DAY_W);
   const dayWRef = useRef(dayW);
   useEffect(() => { dayWRef.current = dayW; }, [dayW]);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const today = useMemo(() => new Date(), []);
 
   useEffect(() => {
@@ -118,15 +119,15 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     ghostRef.current = ghost;
   }, [ghost]);
 
-  // Timeline starts at "today" (not start-of-week)
+  // Timeline starts `pastWeeks` weeks before today (snapped to Monday) so
+  // recent history is visible. Total visible span = pastWeeks + rangeWeeks.
   const rangeStart = useMemo(() => {
-    const d = new Date(today);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, [today]);
+    return startOfWeek(addDays(today, -pastWeeks * 7), { weekStartsOn: 1 });
+  }, [today, pastWeeks]);
+  const totalDays = (pastWeeks + rangeWeeks) * 7 - 1;
   const days = useMemo(
-    () => eachDayOfInterval({ start: rangeStart, end: addDays(rangeStart, rangeWeeks * 7 - 1) }),
-    [rangeStart, rangeWeeks]
+    () => eachDayOfInterval({ start: rangeStart, end: addDays(rangeStart, totalDays) }),
+    [rangeStart, totalDays]
   );
   const totalW = days.length * dayW;
 
@@ -230,8 +231,13 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
 
   useEffect(() => {
     if (containerRef.current) {
+      // Initial scroll: place today near the left edge but keep ~80px of past
+      // visible so users see continuity without burying today off-screen.
       const todayX = dateToX(format(today, 'yyyy-MM-dd'));
-      containerRef.current.scrollLeft = Math.max(0, todayX - 160);
+      const initial = Math.max(0, todayX - 80);
+      containerRef.current.scrollLeft = initial;
+      setScrollLeft(initial);
+      if (hScrollRef.current) hScrollRef.current.scrollLeft = initial;
     }
   }, [dateToX, today]);
 
@@ -274,12 +280,20 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
   const weekGroups = useMemo(() => {
     const groups = [];
     let cur = null;
+    let lastMonth = null;
+    let weekNoInMonth = 0;
     for (const d of days) {
       const isStartOfWeek = d.getDay() === 1;
       if (isStartOfWeek || !cur) {
-        // Show month on every Monday.
+        const month = d.getMonth();
+        if (month !== lastMonth) {
+          weekNoInMonth = 1;
+          lastMonth = month;
+        } else {
+          weekNoInMonth += 1;
+        }
         const label = isStartOfWeek ? format(d, 'MMM') : '';
-        cur = { label, days: 1 };
+        cur = { label, days: 1, weekNo: weekNoInMonth };
         groups.push(cur);
       } else {
         cur.days++;
@@ -288,38 +302,77 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     return groups;
   }, [days]);
 
+  // Alternating-week tint stripes. Only weekdays of "odd" weeks are tinted
+  // so weekend cells stay clean (and get only the weekend overlay on top).
+  // Color is controlled by --gantt-alt-week-tint in globals.css.
+  const altWeekStripes = useMemo(() => {
+    const stripes = [];
+    let weekIdx = -1;
+    let runStart = -1;
+    let runSpan = 0;
+    days.forEach((d, i) => {
+      const isMonday = d.getDay() === 1;
+      if (isMonday || i === 0) weekIdx += 1;
+      const isAlt = weekIdx % 2 === 1;
+      const isWeekday = !isWeekend(d);
+      if (isAlt && isWeekday) {
+        if (runStart === -1) { runStart = i; runSpan = 1; }
+        else runSpan += 1;
+      } else if (runStart !== -1) {
+        stripes.push({ startIdx: runStart, span: runSpan });
+        runStart = -1;
+        runSpan = 0;
+      }
+    });
+    if (runStart !== -1) stripes.push({ startIdx: runStart, span: runSpan });
+    return stripes;
+  }, [days]);
+
   const scrollToToday = useCallback(() => {
+    const todayX = dateToX(format(today, 'yyyy-MM-dd'));
+    const target = Math.max(0, todayX - 80);
     syncingRef.current = true;
-    if (containerRef.current) containerRef.current.scrollLeft = 0;
-    if (hScrollRef.current) hScrollRef.current.scrollLeft = 0;
+    if (containerRef.current) containerRef.current.scrollLeft = target;
+    if (hScrollRef.current) hScrollRef.current.scrollLeft = target;
+    setScrollLeft(target);
     syncingRef.current = false;
-  }, []);
+  }, [dateToX, today]);
 
   return (
     <div className="surface overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
-      {/* Pinned today indicator (fixed, does not scroll horizontally) */}
+      {/* Pinned today indicator (fixed, does not scroll horizontally).
+          Placed inside the label column, anchored to its right edge. */}
       <button
         type="button"
         onClick={scrollToToday}
-        className="absolute z-40 top-[8px] text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
-        style={{ left: LABEL_W + 8 }}
+        className="absolute z-40 top-[8px] -translate-x-full text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
+        style={{ left: LABEL_W - 8 }}
         title="回到今天"
       >
         {format(today, 'MMM d')}
       </button>
-      <div
-        className="absolute z-30 bg-indigo-400/60 pointer-events-none"
-        style={{ left: LABEL_W + dayW / 2, top: HEADER_H, width: 1.5, bottom: 10 }}
-      />
+      {(() => {
+        const todayPx = dateToX(format(today, 'yyyy-MM-dd')) + dayW / 2;
+        const screenX = LABEL_W + todayPx - scrollLeft;
+        if (screenX < LABEL_W) return null;
+        return (
+          <div
+            className="absolute z-30 bg-indigo-400/60 pointer-events-none"
+            style={{ left: screenX, top: HEADER_H, width: 1.5, bottom: 10 }}
+          />
+        );
+      })()}
 
       <div
         ref={containerRef}
         className="overflow-x-auto overflow-y-auto gantt-scroll gantt-main-scroll"
         style={{ maxHeight: 'calc(100vh - 280px)' }}
         onScroll={() => {
+          const sl = containerRef.current?.scrollLeft || 0;
+          setScrollLeft(sl);
           if (syncingRef.current) return;
           syncingRef.current = true;
-          if (hScrollRef.current) hScrollRef.current.scrollLeft = containerRef.current?.scrollLeft || 0;
+          if (hScrollRef.current) hScrollRef.current.scrollLeft = sl;
           syncingRef.current = false;
         }}
       >
@@ -338,9 +391,10 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                     <div
                       key={i}
                       style={{ width: g.days * dayW, minWidth: g.days * dayW }}
-                      className="text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
+                      className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
                     >
-                      {g.label}
+                      <span>{g.label}</span>
+                      <span className="text-[9px] font-medium text-slate-400 tabular-nums">W{g.weekNo}</span>
                     </div>
                   ))}
                 </div>
@@ -380,8 +434,10 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
             const isDragging = dragging?.projectId === project.id;
             const muted = project.status === 'cancelled';
 
+            // Solid (opaque) gradient so bars sit on top of the row's
+            // alt-week / weekend tints without being color-shifted by them.
             const barBg = {
-              backgroundImage: 'linear-gradient(90deg, rgba(17,24,39,0.67), rgba(17,24,39,0.50))',
+              backgroundImage: 'linear-gradient(90deg, #1f2937, #374151)',
             };
 
             return (
@@ -409,12 +465,20 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                 </div>
 
                 <div style={{ position: 'relative', width: totalW, height: ROW_H }}>
+                  {/* Alternating-week tint (drawn first, behind weekend stripes). */}
+                  {altWeekStripes.map((s, i) => (
+                    <div
+                      key={`altw-${i}`}
+                      style={{ position: 'absolute', left: s.startIdx * dayW, top: 0, width: s.span * dayW, height: '100%' }}
+                      className="gantt-alt-week"
+                    />
+                  ))}
                   {days.map((d, i) =>
                     isWeekend(d) ? (
                       <div
                         key={i}
                         style={{ position: 'absolute', left: i * dayW, top: 0, width: dayW, height: '100%' }}
-                        className="bg-slate-200/35"
+                        className="gantt-weekend"
                       />
                     ) : null
                   )}
@@ -522,9 +586,11 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
         className="overflow-x-auto gantt-scroll"
         style={{ marginLeft: LABEL_W }}
         onScroll={() => {
+          const sl = hScrollRef.current?.scrollLeft || 0;
+          setScrollLeft(sl);
           if (syncingRef.current) return;
           syncingRef.current = true;
-          if (containerRef.current) containerRef.current.scrollLeft = hScrollRef.current?.scrollLeft || 0;
+          if (containerRef.current) containerRef.current.scrollLeft = sl;
           syncingRef.current = false;
         }}
       >
