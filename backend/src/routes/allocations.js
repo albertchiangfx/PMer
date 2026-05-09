@@ -32,10 +32,11 @@ router.get('/', async (req, res, next) => {
     const { project_id, member_id, from, to } = req.query;
     let q = `
       SELECT a.*,
-        p.name AS project_name, p.client_name AS project_client_name, p.color AS project_color,
+        p.name AS project_name, c.name AS project_client_name, p.color AS project_color,
         tm.name AS member_name, tm.role AS member_role, tm.avatar_color, tm.hourly_rate
       FROM allocations a
       JOIN projects p ON p.id = a.project_id
+      LEFT JOIN clients c ON c.id = p.client_id
       JOIN team_members tm ON tm.id = a.member_id
       WHERE 1=1
     `;
