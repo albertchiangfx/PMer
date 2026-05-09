@@ -12,11 +12,28 @@
      Edit these to retheme the sidebar's plaster card, dark pill, and divider.
      Foreground colors (brand gradient, active accent, item text) live in
      NAV_STYLE.colors inside frontend/components/AppShell.jsx. */
-  --nav-plaster-from: #F4F0E7;     /* outer gypsum/plaster card top color    */
-  --nav-plaster-to:   #EBE6DB;     /* outer gypsum/plaster card bottom color */
+  --nav-plaster-from: #c7c7c7;     /* outer gypsum/plaster card top color    */
+  --nav-plaster-to:   #cfcfcf;     /* outer gypsum/plaster card bottom color */
   --nav-plaster-border: rgba(15, 23, 42, 0.06);
   --nav-pill-bg:      #1B1F26;     /* inner dark pill                        */
   --nav-divider:      rgba(255, 255, 255, 0.06);
+
+  /* Dark pill outer drop shadow.
+       offset-x  : horizontal direction. +right / -left.
+       offset-y  : vertical direction.   +down  / -up.   (combined x/y = 角度)
+       blur      : softness. larger = softer/more diffuse.
+       spread    : width. positive grows the shadow, negative shrinks it.
+       color     : RGB + alpha at the end controls opacity.
+     Example presets:
+       crisp lift   : x 0 / y 4 / blur 12 / spread 0 / alpha 0.30
+       soft float   : x 0 / y 10 / blur 30 / spread -2 / alpha 0.18
+       side-lit     : x 8 / y 6 / blur 24 / spread 0 / alpha 0.22
+   */
+  --nav-pill-shadow-x:       -6px;
+  --nav-pill-shadow-y:       20px;
+  --nav-pill-shadow-blur:    16px;
+  --nav-pill-shadow-spread:  -4px;
+  --nav-pill-shadow-color:   rgba(15, 23, 42, 0.527);
 }
 
 * { box-sizing: border-box; }
@@ -111,7 +128,13 @@ body {
 }
 .nav-pill {
   background: var(--nav-pill-bg);
+  /* First shadow = adjustable outer drop (controls 角度/寬度/softness/opacity
+     via the --nav-pill-shadow-* variables in :root). The two inset shadows
+     stay fixed so the pill keeps its top highlight + concave bottom feel. */
   box-shadow:
+    var(--nav-pill-shadow-x) var(--nav-pill-shadow-y)
+      var(--nav-pill-shadow-blur) var(--nav-pill-shadow-spread)
+      var(--nav-pill-shadow-color),
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     inset 0 -16px 28px rgba(0, 0, 0, 0.28);
 }
