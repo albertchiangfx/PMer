@@ -137,7 +137,7 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
       {/* TOP plaster card (≈70% height). Dark pill flush to top edge with
           extra bottom padding so it visibly extends past the last nav row. */}
       <div className="nav-plaster rounded-[18px] p-3 flex flex-col [flex:7_0_0] min-h-fit">
-        <div className="nav-pill rounded-[12px] flex flex-col px-3 pt-4 pb-12 text-white/85">
+        <div className="nav-pill rounded-[12px] flex flex-col px-3 pt-4 pb-40 text-white/85">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-[12px] bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-[11px] font-bold tracking-wide shadow-[0_2px_6px_rgba(79,70,229,0.45)]">
               SP
