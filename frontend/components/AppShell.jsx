@@ -90,13 +90,17 @@ export default function AppShell({ children }) {
   );
 }
 
-/** Collapsed icon rail. Two-layer card: plaster outer + dark inner pill. */
+/** Collapsed icon rail. Two SEPARATE plaster cards, each with its own dark
+ *  pill inside. Top plaster card height : Bottom plaster card height ≈ 7:3
+ *  (enforced via flex grow ratios; min-h-fit lets the top card grow beyond
+ *  70% if the icon pill needs more room on short pages). */
 function NavRail({ path, onExpand }) {
   return (
-    <div className="flex w-[88px] flex-col flex-1 gap-3">
-      {/* Top nav card (auto height; sits at top edge). */}
-      <div className="nav-plaster rounded-[18px] p-3">
-        <div className="nav-pill rounded-[12px] flex flex-col items-center gap-1 py-3">
+    <div className="flex w-[88px] flex-1 flex-col gap-3">
+      {/* TOP plaster card (≈70% height). Dark pill flush to top edge with
+          extra bottom padding so it visibly extends past the last icon. */}
+      <div className="nav-plaster rounded-[18px] p-3 flex flex-col [flex:7_0_0] min-h-fit">
+        <div className="nav-pill rounded-[12px] flex flex-col items-center gap-1 pt-3 pb-12">
           <button
             type="button"
             onClick={onExpand}
@@ -116,9 +120,9 @@ function NavRail({ path, onExpand }) {
         </div>
       </div>
 
-      {/* Bottom settings pod, pushed to bottom edge of sidebar column. */}
-      <div className="nav-plaster rounded-[14px] p-3 mt-auto">
-        <div className="nav-pill rounded-[10px] grid place-items-center py-1.5">
+      {/* BOTTOM plaster card (≈30% height). Dark pod anchored to bottom edge. */}
+      <div className="nav-plaster rounded-[14px] p-3 flex flex-col [flex:3_0_0] min-h-fit">
+        <div className="nav-pill rounded-[10px] grid place-items-center py-1.5 mt-auto">
           <RailItem href="/settings" active={path.startsWith('/settings')} label="設定"><IconGear /></RailItem>
         </div>
       </div>
@@ -126,15 +130,14 @@ function NavRail({ path, onExpand }) {
   );
 }
 
-/** Expanded sidebar with labels. Same two-card structure as NavRail so the
- *  visual mass stays consistent across hover/expand toggles (top card hugs
- *  the top edge, settings pod sticks to the bottom edge via mt-auto). */
+/** Expanded sidebar with labels. Same two-card / 7:3 split as NavRail. */
 function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
   return (
-    <div className="flex w-[272px] flex-col flex-1 gap-3">
-      {/* Top main card (auto height). */}
-      <div className="nav-plaster rounded-[18px] p-3">
-        <div className="nav-pill rounded-[12px] flex flex-col px-3 py-4 text-white/85">
+    <div className="flex w-[272px] flex-1 flex-col gap-3">
+      {/* TOP plaster card (≈70% height). Dark pill flush to top edge with
+          extra bottom padding so it visibly extends past the last nav row. */}
+      <div className="nav-plaster rounded-[18px] p-3 flex flex-col [flex:7_0_0] min-h-fit">
+        <div className="nav-pill rounded-[12px] flex flex-col px-3 pt-4 pb-12 text-white/85">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-[12px] bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-[11px] font-bold tracking-wide shadow-[0_2px_6px_rgba(79,70,229,0.45)]">
               SP
@@ -167,9 +170,9 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
         </div>
       </div>
 
-      {/* Bottom settings pod – same two-layer structure, pushed to bottom. */}
-      <div className="nav-plaster rounded-[14px] p-3 mt-auto">
-        <div className="nav-pill rounded-[10px] px-2 py-1.5">
+      {/* BOTTOM plaster card (≈30% height). Dark pod anchored to bottom edge. */}
+      <div className="nav-plaster rounded-[14px] p-3 flex flex-col [flex:3_0_0] min-h-fit">
+        <div className="nav-pill rounded-[10px] px-2 py-1.5 mt-auto">
           <SidebarLink href="/settings" label="設定" active={path.startsWith('/settings')} icon={<IconGear />} />
         </div>
       </div>
