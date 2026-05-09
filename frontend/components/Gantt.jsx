@@ -8,6 +8,21 @@ const DAY_W = 44;
 const ROW_H = 56;
 const HEADER_H = 80;
 const LABEL_W = 228;
+const BAR_H = 14;
+const BAR_GAP = 4;
+const LANE_PITCH = BAR_H + BAR_GAP; // vertical distance between adjacent lanes
+
+/** Row height grows with lane count so overlapping allocations can stack vertically. */
+function rowHeightForLanes(laneCount) {
+  return ROW_H + Math.max(0, laneCount - 1) * LANE_PITCH;
+}
+
+/** Vertical offset of a given lane inside a row of the given total height. */
+function barTopForLane(rowH, laneCount, lane) {
+  const barsHeight = laneCount * BAR_H + Math.max(0, laneCount - 1) * BAR_GAP;
+  const padTop = Math.round((rowH - barsHeight) / 2);
+  return padTop + lane * LANE_PITCH;
+}
 
 function memberKey(alloc) {
   return alloc.member_id || alloc.team_member_id;
@@ -48,7 +63,8 @@ export default function Gantt({
 
   const memberById = useMemo(() => Object.fromEntries(members.map((m) => [m.id, m])), [members]);
 
-  /** One row per member; contains every allocation that belongs to that member. */
+  /** One row per member; contains every allocation that belongs to that member.
+   *  Allocations that overlap in time are placed in different lanes (vertical stacking). */
   const memberRows = useMemo(() => {
     const map = new Map();
     for (const a of allocations) {
@@ -61,14 +77,34 @@ export default function Gantt({
       map.get(mid).allocations.push({ ...a, member_id: mid, team_member_id: mid });
     }
     for (const v of map.values()) {
+      // Sort by start_date so the lane-packing algorithm can sweep left-to-right.
       v.allocations.sort((a, b) => {
-        const ps = (a.project_name || '').localeCompare(b.project_name || '');
-        if (ps !== 0) return ps;
-        return String(a.start_date).localeCompare(String(b.start_date));
+        const sa = String(a.start_date).localeCompare(String(b.start_date));
+        if (sa !== 0) return sa;
+        return (a.project_name || '').localeCompare(b.project_name || '');
       });
+      // Greedy first-fit lane assignment: reuse the topmost lane whose last bar
+      // ends strictly before this allocation starts; otherwise open a new lane.
+      const laneEnds = [];
+      for (const a of v.allocations) {
+        let lane = -1;
+        for (let i = 0; i < laneEnds.length; i++) {
+          if (laneEnds[i] < a.start_date) { lane = i; break; }
+        }
+        if (lane < 0) { lane = laneEnds.length; laneEnds.push(a.end_date); }
+        else { laneEnds[lane] = a.end_date; }
+        a._lane = lane;
+      }
+      v.laneCount = Math.max(1, laneEnds.length);
+      v.rowH = rowHeightForLanes(v.laneCount);
     }
     return Array.from(map.values()).sort((A, B) => A.member.name.localeCompare(B.member.name));
   }, [allocations, memberById]);
+
+  const totalRowsHeight = useMemo(
+    () => memberRows.reduce((s, r) => s + r.rowH, 0),
+    [memberRows]
+  );
 
   useEffect(() => {
     ghostRef.current = ghost;
@@ -149,6 +185,13 @@ export default function Gantt({
   useEffect(() => {
     if (!dragging) return;
 
+    // Precompute cumulative Y offsets so a vertical drag can correctly hit-test
+    // rows even when they have different heights (multi-lane rows are taller).
+    const yOffsets = [0];
+    for (const r of memberRows) yOffsets.push(yOffsets[yOffsets.length - 1] + r.rowH);
+    const srcRow = memberRows[dragging.rowIdx];
+    const origRowMidY = srcRow ? yOffsets[dragging.rowIdx] + srcRow.rowH / 2 : 0;
+
     const onMove = (e) => {
       const dx = e.clientX - dragging.origClientX;
       const dy = e.clientY - dragging.origClientY;
@@ -166,10 +209,12 @@ export default function Gantt({
         newStart = xToDate(newStartX);
         newEnd = xToDate(newEndX - DAY_W);
 
-        const newRowIdx = Math.max(
-          0,
-          Math.min(rowIdx + Math.round(dy / ROW_H), Math.max(memberRows.length - 1, 0))
-        );
+        const targetY = origRowMidY + dy;
+        let newRowIdx = rowIdx;
+        for (let i = 0; i < memberRows.length; i++) {
+          if (targetY >= yOffsets[i] && targetY < yOffsets[i + 1]) { newRowIdx = i; break; }
+        }
+        newRowIdx = Math.max(0, Math.min(newRowIdx, Math.max(memberRows.length - 1, 0)));
         ghostRowIdx = newRowIdx;
         newMemberId = memberRows[newRowIdx]?.member?.id || memberKey(origAlloc);
       } else if (type === 'resize-right') {
@@ -206,20 +251,19 @@ export default function Gantt({
         return;
       }
       const { origAlloc } = dragging;
-      if (!g.conflict) {
-        try {
-          await api.updateAllocation(origAlloc.id, {
-            project_id: origAlloc.project_id,
-            member_id: g.memberId,
-            start_date: format(g.startDate, 'yyyy-MM-dd'),
-            end_date: format(g.endDate, 'yyyy-MM-dd'),
-            notes: origAlloc.notes ?? null,
-          });
-          onUpdate?.();
-        } catch (err) {
-          if (err.status === 409) {
-            setConflicts((prev) => ({ ...prev, [origAlloc.id]: true }));
-          }
+      // Always attempt to save: overlaps are now expected (they stack in lanes).
+      try {
+        await api.updateAllocation(origAlloc.id, {
+          project_id: origAlloc.project_id,
+          member_id: g.memberId,
+          start_date: format(g.startDate, 'yyyy-MM-dd'),
+          end_date: format(g.endDate, 'yyyy-MM-dd'),
+          notes: origAlloc.notes ?? null,
+        });
+        onUpdate?.();
+      } catch (err) {
+        if (err.status === 409) {
+          setConflicts((prev) => ({ ...prev, [origAlloc.id]: true }));
         }
       }
       setDragging(null);
@@ -281,7 +325,7 @@ export default function Gantt({
   }, []);
 
   return (
-    <div className="surface rounded-[22px] overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
+    <div className="surface overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
       {/* Pinned today indicator (fixed, does not scroll horizontally) */}
       <button
         type="button"
@@ -308,7 +352,7 @@ export default function Gantt({
           syncingRef.current = false;
         }}
       >
-        <div style={{ width: LABEL_W + totalW, minHeight: HEADER_H + Math.max(memberRows.length, 1) * ROW_H }}>
+        <div style={{ width: LABEL_W + totalW, minHeight: HEADER_H + Math.max(totalRowsHeight, ROW_H) }}>
 
           <div className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60" style={{ height: HEADER_H }}>
             <div style={{ display: 'flex', height: '100%' }}>
@@ -356,19 +400,17 @@ export default function Gantt({
             </div>
           </div>
 
-          {memberRows.map(({ member, allocations: memberAllocs }, rowIdx) => {
+          {memberRows.map(({ member, allocations: memberAllocs, laneCount, rowH }, rowIdx) => {
             const bg = member.avatar_color || 'var(--apple-blue)';
             const ini = initials(member.name);
             const barBg = {
               backgroundImage: 'linear-gradient(90deg, rgba(17,24,39,0.67), rgba(17,24,39,0.50))',
             };
-            const BAR_H = 14;
-            const BAR_TOP = Math.round((ROW_H - BAR_H) / 2);
 
             return (
               <div
                 key={member.id}
-                style={{ display: 'flex', height: ROW_H }}
+                style={{ display: 'flex', height: rowH }}
                 className={`border-b border-slate-200/60 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
               >
                 <div
@@ -390,7 +432,7 @@ export default function Gantt({
                   </div>
                 </div>
 
-                <div style={{ position: 'relative', width: totalW, height: ROW_H }}>
+                <div style={{ position: 'relative', width: totalW, height: rowH }}>
                   {days.map((d, i) =>
                     isWeekend(d) ? (
                       <div
@@ -411,12 +453,13 @@ export default function Gantt({
                     const isDragging = dragging?.id === alloc.id;
                     const hasConflict = conflicts[alloc.id];
                     const projColor = alloc.project_color || 'var(--apple-blue)';
+                    const barTop = barTopForLane(rowH, laneCount, alloc._lane || 0);
 
                     return (
                       <div
                         key={alloc.id}
                         className="group"
-                        style={{ position: 'absolute', left: x + 2, top: BAR_TOP, width: w - 4, height: BAR_H, zIndex: isDragging ? 20 : 5 }}
+                        style={{ position: 'absolute', left: x + 2, top: barTop, width: w - 4, height: BAR_H, zIndex: isDragging ? 20 : 5 }}
                       >
                         <div
                           style={{
@@ -492,8 +535,13 @@ export default function Gantt({
                     const gxEnd = dateToX(ghost.endDate) + DAY_W;
                     const gw = gxEnd - gx;
                     if (gw <= 0) return null;
+                    // Keep ghost in the dragged bar's original lane when it stays
+                    // on the source row; otherwise sit in the top lane of the target.
+                    const onOriginalRow = dragging?.rowIdx === rowIdx;
+                    const ghostLane = onOriginalRow ? (dragging?.origAlloc?._lane || 0) : 0;
+                    const ghostTop = barTopForLane(rowH, laneCount, ghostLane);
                     return (
-                      <div style={{ position: 'absolute', left: gx + 2, top: BAR_TOP, width: gw - 4, height: BAR_H, zIndex: 30, pointerEvents: 'none' }}>
+                      <div style={{ position: 'absolute', left: gx + 2, top: ghostTop, width: gw - 4, height: BAR_H, zIndex: 30, pointerEvents: 'none' }}>
                         <div
                           style={{
                             ...barBg,

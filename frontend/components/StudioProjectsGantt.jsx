@@ -255,7 +255,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
   }, []);
 
   return (
-    <div className="surface rounded-[22px] overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
+    <div className="surface overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
       {/* Pinned today indicator (fixed, does not scroll horizontally) */}
       <button
         type="button"
