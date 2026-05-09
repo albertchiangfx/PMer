@@ -14,7 +14,9 @@ import {
 } from 'date-fns';
 import { api } from '../lib/api';
 
-const DAY_W = 44;
+const DEFAULT_DAY_W = 44;
+const MIN_DAY_W = 16;
+const MAX_DAY_W = 80;
 const ROW_H = 56;
 const HEADER_H = 80;
 const LABEL_W = 260;
@@ -67,6 +69,9 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
   const [tooltip, setTooltip] = useState(null);
   const tooltipBoxRef = useRef(null);
   const [tooltipSize, setTooltipSize] = useState({ w: 0, h: 0 });
+  const [dayW, setDayW] = useState(DEFAULT_DAY_W);
+  const dayWRef = useRef(dayW);
+  useEffect(() => { dayWRef.current = dayW; }, [dayW]);
   const today = useMemo(() => new Date(), []);
 
   useEffect(() => {
@@ -123,23 +128,23 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     () => eachDayOfInterval({ start: rangeStart, end: addDays(rangeStart, rangeWeeks * 7 - 1) }),
     [rangeStart, rangeWeeks]
   );
-  const totalW = days.length * DAY_W;
+  const totalW = days.length * dayW;
 
   const dateToX = useCallback(
     (dateStr) => {
       if (!dateStr) return 0;
       const d = typeof dateStr === 'string' ? parseISO(dateStr) : dateStr;
-      return differenceInDays(d, rangeStart) * DAY_W;
+      return differenceInDays(d, rangeStart) * dayW;
     },
-    [rangeStart]
+    [rangeStart, dayW]
   );
 
   const xToDate = useCallback(
     (x) => {
-      const dayIdx = Math.round(x / DAY_W);
+      const dayIdx = Math.round(x / dayW);
       return addDays(rangeStart, Math.max(0, Math.min(dayIdx, days.length - 1)));
     },
-    [rangeStart, days.length]
+    [rangeStart, days.length, dayW]
   );
 
   const handleBarMouseDown = useCallback(
@@ -156,7 +161,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
         origProject: row.project,
         origSpan: span,
         startX: dateToX(span.start),
-        endX: dateToX(span.end) + DAY_W,
+        endX: dateToX(span.end) + dayW,
         rowIdx,
       });
       setGhost(null);
@@ -177,19 +182,19 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
       let newEnd;
 
       if (type === 'move') {
-        const snappedDx = Math.round(dx / DAY_W) * DAY_W;
+        const snappedDx = Math.round(dx / dayW) * dayW;
         const newStartX = startX + snappedDx;
         const newEndX = endX + snappedDx;
         newStart = xToDate(newStartX);
-        newEnd = xToDate(newEndX - DAY_W);
+        newEnd = xToDate(newEndX - dayW);
       } else if (type === 'resize-right') {
         newStart = origStart;
-        const snappedDx = Math.round(dx / DAY_W) * DAY_W;
-        newEnd = xToDate(Math.max(endX + snappedDx - DAY_W, startX + DAY_W - 1));
+        const snappedDx = Math.round(dx / dayW) * dayW;
+        newEnd = xToDate(Math.max(endX + snappedDx - dayW, startX + dayW - 1));
       } else {
         newEnd = origEnd;
-        const snappedDx = Math.round(dx / DAY_W) * DAY_W;
-        newStart = xToDate(Math.min(startX + snappedDx, endX - DAY_W));
+        const snappedDx = Math.round(dx / dayW) * dayW;
+        newStart = xToDate(Math.min(startX + snappedDx, endX - dayW));
       }
 
       setGhost({
@@ -230,6 +235,42 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     }
   }, [dateToX, today]);
 
+  // Wheel: vertical wheel -> horizontal scroll; Ctrl+wheel -> zoom timeline density.
+  // React's onWheel is passive in modern react-dom, so we attach a native non-passive
+  // listener via useEffect to be able to call preventDefault().
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const cur = dayWRef.current;
+        const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+        const next = Math.max(MIN_DAY_W, Math.min(MAX_DAY_W, cur * factor));
+        if (Math.abs(next - cur) < 0.5) return;
+        const rect = el.getBoundingClientRect();
+        const cursorInTimeline = e.clientX - rect.left + el.scrollLeft - LABEL_W;
+        const dayUnderCursor = cursorInTimeline / cur;
+        setDayW(next);
+        requestAnimationFrame(() => {
+          if (!containerRef.current) return;
+          const newScrollLeft = dayUnderCursor * next + LABEL_W - (e.clientX - rect.left);
+          containerRef.current.scrollLeft = Math.max(0, newScrollLeft);
+          if (hScrollRef.current) hScrollRef.current.scrollLeft = containerRef.current.scrollLeft;
+        });
+        return;
+      }
+      if (e.shiftKey) return;
+      const dy = e.deltaY;
+      if (dy === 0) return;
+      e.preventDefault();
+      el.scrollLeft += dy;
+      if (hScrollRef.current) hScrollRef.current.scrollLeft = el.scrollLeft;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const weekGroups = useMemo(() => {
     const groups = [];
     let cur = null;
@@ -268,7 +309,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
       </button>
       <div
         className="absolute z-30 bg-indigo-400/60 pointer-events-none"
-        style={{ left: LABEL_W + DAY_W / 2, top: HEADER_H, width: 1.5, bottom: 10 }}
+        style={{ left: LABEL_W + dayW / 2, top: HEADER_H, width: 1.5, bottom: 10 }}
       />
 
       <div
@@ -296,7 +337,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                   {weekGroups.map((g, i) => (
                     <div
                       key={i}
-                      style={{ width: g.days * DAY_W, minWidth: g.days * DAY_W }}
+                      style={{ width: g.days * dayW, minWidth: g.days * dayW }}
                       className="text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
                     >
                       {g.label}
@@ -310,7 +351,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                     return (
                       <div
                         key={i}
-                        style={{ width: DAY_W, minWidth: DAY_W }}
+                        style={{ width: dayW, minWidth: dayW }}
                         className={`flex flex-col items-center justify-center h-full border-r border-white/30 ${isWknd ? 'opacity-40' : ''}`}
                       >
                         <span className="text-[9px] text-slate-400 uppercase">{format(d, 'EEE')[0]}</span>
@@ -332,7 +373,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
             const color = project.color || 'var(--apple-blue)';
             const hasBar = span.start && span.end;
             const rawX = hasBar ? dateToX(span.start) : 0;
-            const rawXEnd = hasBar ? dateToX(span.end) + DAY_W : 0;
+            const rawXEnd = hasBar ? dateToX(span.end) + dayW : 0;
             const x = Math.max(0, rawX);
             const xEnd = Math.max(x, rawXEnd);
             const w = hasBar ? xEnd - x : 0;
@@ -372,7 +413,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                     isWeekend(d) ? (
                       <div
                         key={i}
-                        style={{ position: 'absolute', left: i * DAY_W, top: 0, width: DAY_W, height: '100%' }}
+                        style={{ position: 'absolute', left: i * dayW, top: 0, width: dayW, height: '100%' }}
                         className="bg-slate-200/35"
                       />
                     ) : null
@@ -439,7 +480,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
 
                   {ghost && dragging?.projectId === project.id && ghost.rowIdx === rowIdx && (() => {
                     const gx = dateToX(format(ghost.startDate, 'yyyy-MM-dd'));
-                    const gxEnd = dateToX(format(ghost.endDate, 'yyyy-MM-dd')) + DAY_W;
+                    const gxEnd = dateToX(format(ghost.endDate, 'yyyy-MM-dd')) + dayW;
                     const gw = gxEnd - gx;
                     if (gw <= 0) return null;
                     return (
