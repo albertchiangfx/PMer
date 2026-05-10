@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../../lib/api';
 import { fmtCurrency, statusStyle, fmt, initials } from '../../../lib/utils';
@@ -13,10 +13,12 @@ const TASK_STATUSES = ['todo', 'in-progress', 'review', 'done'];
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [projectAllocations, setProjectAllocations] = useState([]);
+  const [allProjects, setAllProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [taskModal, setTaskModal] = useState(null);
   const [allocModalOpen, setAllocModalOpen] = useState(false);
@@ -24,6 +26,8 @@ export default function ProjectDetailPage() {
   const [allocForm, setAllocForm] = useState(defaultAllocForm());
   const [tab, setTab] = useState('tasks');
   const [ganttWeeks, setGanttWeeks] = useState(12);
+  const [projDropdownOpen, setProjDropdownOpen] = useState(false);
+  const projDropdownRef = useRef(null);
 
   function defaultTaskForm() {
     return {
@@ -42,19 +46,33 @@ export default function ProjectDetailPage() {
   }
 
   const load = useCallback(async () => {
-    const [proj, taskList, memberList, allocs] = await Promise.all([
+    const [proj, taskList, memberList, allocs, projList] = await Promise.all([
       api.getProject(id),
       api.getTasks({ project_id: id }),
       api.getTeamMembers(),
       api.getProjectAllocations(id),
+      api.getProjects(),
     ]);
     setProject(proj);
     setTasks(taskList);
     setMembers(memberList);
     setProjectAllocations(allocs);
+    setAllProjects(projList);
   }, [id]);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+
+  // Close dropdown when clicking outside.
+  useEffect(() => {
+    if (!projDropdownOpen) return;
+    const onDocClick = (e) => {
+      if (projDropdownRef.current && !projDropdownRef.current.contains(e.target)) {
+        setProjDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [projDropdownOpen]);
 
   const saveTask = async (e) => {
     e.preventDefault();
@@ -136,11 +154,67 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto animate-fade-in">
-      {/* Breadcrumb */}
+      {/* Breadcrumb — current project name is a dropdown that lets you switch
+          to another project without going back to the projects list. */}
       <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
         <Link href="/projects" className="hover:text-gray-600">專案</Link>
         <span>/</span>
-        <span className="text-gray-700">{project.name}</span>
+        <div className="relative" ref={projDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setProjDropdownOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-gray-700 font-medium hover:text-indigo-600 focus:outline-none"
+          >
+            <span>{project.name}</span>
+            <svg
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`transition-transform ${projDropdownOpen ? 'rotate-180' : ''}`}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {projDropdownOpen && (
+            <div className="absolute left-0 top-full mt-2 z-30 w-72 bg-white rounded-apple-xl shadow-apple-lg ring-1 ring-black/5 py-1.5 max-h-80 overflow-y-auto">
+              {allProjects.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-gray-400">無其他專案</div>
+              ) : (
+                allProjects.map((p) => {
+                  const isCurrent = p.id === project.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setProjDropdownOpen(false);
+                        if (!isCurrent) router.push(`/projects/${p.id}`);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 ${isCurrent ? 'bg-indigo-50/60' : ''}`}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: p.color || '#6366f1' }}
+                      />
+                      <span className={`flex-1 truncate ${isCurrent ? 'text-indigo-700 font-semibold' : 'text-gray-700'}`}>
+                        {p.name}
+                      </span>
+                      {p.client_name && (
+                        <span className="text-[11px] text-gray-400 truncate max-w-[40%]">
+                          {p.client_name}
+                        </span>
+                      )}
+                      {isCurrent && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 shrink-0">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Header */}

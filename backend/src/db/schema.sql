@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS team_members (
   role VARCHAR(100) DEFAULT 'Team Member',
   hourly_rate DECIMAL(10, 2) DEFAULT 0,
   status VARCHAR(50) DEFAULT 'active',
+  -- Employment classification: 'permanent' (固定) or 'freelance'.
+  employment_type VARCHAR(20) NOT NULL DEFAULT 'permanent',
   email VARCHAR(255),
   phone VARCHAR(20),
   avatar_color VARCHAR(7) DEFAULT '#6366f1',

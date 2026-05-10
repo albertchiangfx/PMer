@@ -43,11 +43,18 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
     setAllocations(a);
   }, []);
 
+  // Only show the full-page spinner on the very first load. Subsequent
+  // refreshes (e.g. after dragging a bar) should silently update data without
+  // unmounting the Gantt — otherwise the Gantt would be remounted and lose
+  // its internal scroll/zoom state.
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     load()
       .catch((e) => console.error(e))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [load, version]);
 
   const refresh = () => setVersion((v) => v + 1);

@@ -14,8 +14,8 @@ import {
 } from 'date-fns';
 import { api } from '../lib/api';
 
-const DEFAULT_DAY_W = 44;
-const MIN_DAY_W = 16;
+const DEFAULT_DAY_W = 18; // start zoomed-out so users see many days; ctrl+wheel zooms in
+const MIN_DAY_W = 12;
 const MAX_DAY_W = 80;
 const ROW_H = 56;
 const HEADER_H = 80;
@@ -229,17 +229,21 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
     };
   }, [dragging, xToDate, onUpdate]);
 
+  // Initial scroll runs ONCE on mount only. We intentionally do NOT depend on
+  // dateToX/today, otherwise zoom/range-changes would force the view back to
+  // today and undo the user's manual scroll/zoom interactions.
+  const initialScrolledRef = useRef(false);
   useEffect(() => {
-    if (containerRef.current) {
-      // Initial scroll: place today near the left edge but keep ~80px of past
-      // visible so users see continuity without burying today off-screen.
-      const todayX = dateToX(format(today, 'yyyy-MM-dd'));
-      const initial = Math.max(0, todayX - 80);
-      containerRef.current.scrollLeft = initial;
-      setScrollLeft(initial);
-      if (hScrollRef.current) hScrollRef.current.scrollLeft = initial;
-    }
-  }, [dateToX, today]);
+    if (initialScrolledRef.current) return;
+    if (!containerRef.current) return;
+    const todayX = dateToX(format(today, 'yyyy-MM-dd'));
+    const initial = Math.max(0, todayX - 80);
+    containerRef.current.scrollLeft = initial;
+    setScrollLeft(initial);
+    if (hScrollRef.current) hScrollRef.current.scrollLeft = initial;
+    initialScrolledRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Wheel: vertical wheel -> horizontal scroll; Ctrl+wheel -> zoom timeline density.
   // React's onWheel is passive in modern react-dom, so we attach a native non-passive
@@ -464,7 +468,7 @@ export default function StudioProjectsGantt({ projects = [], allocations = [], o
                   )}
                 </div>
 
-                <div style={{ position: 'relative', width: totalW, height: ROW_H }}>
+                <div style={{ position: 'relative', width: totalW, height: ROW_H, isolation: 'isolate' }}>
                   {/* Alternating-week tint (drawn first, behind weekend stripes). */}
                   {altWeekStripes.map((s, i) => (
                     <div

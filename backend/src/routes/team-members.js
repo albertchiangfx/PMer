@@ -35,17 +35,20 @@ router.get('/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// employment_type accepts only 'permanent' or 'freelance'; anything else falls back to 'permanent'.
+const normalizeEmploymentType = (v) => (v === 'freelance' ? 'freelance' : 'permanent');
+
 router.post('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { name, role, hourly_rate, status, email, phone, avatar_color } = req.body;
+    const { name, role, hourly_rate, status, email, phone, avatar_color, employment_type } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
     const color = avatar_color || colors[Math.floor(Math.random() * colors.length)];
     const { rows } = await db.query(`
-      INSERT INTO team_members (name, role, hourly_rate, status, email, phone, avatar_color)
-      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
-    `, [name, role || 'Team Member', hourly_rate || 0, status || 'active', email, phone, color]);
+      INSERT INTO team_members (name, role, hourly_rate, status, email, phone, avatar_color, employment_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+    `, [name, role || 'Team Member', hourly_rate || 0, status || 'active', email, phone, color, normalizeEmploymentType(employment_type)]);
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 });
@@ -53,11 +56,11 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { name, role, hourly_rate, status, email, phone, avatar_color } = req.body;
+    const { name, role, hourly_rate, status, email, phone, avatar_color, employment_type } = req.body;
     const { rows } = await db.query(`
-      UPDATE team_members SET name=$1, role=$2, hourly_rate=$3, status=$4, email=$5, phone=$6, avatar_color=$7
-      WHERE id=$8 RETURNING *
-    `, [name, role, hourly_rate, status, email, phone, avatar_color, req.params.id]);
+      UPDATE team_members SET name=$1, role=$2, hourly_rate=$3, status=$4, email=$5, phone=$6, avatar_color=$7, employment_type=$8
+      WHERE id=$9 RETURNING *
+    `, [name, role, hourly_rate, status, email, phone, avatar_color, normalizeEmploymentType(employment_type), req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Team member not found' });
     res.json(rows[0]);
   } catch (e) { next(e); }

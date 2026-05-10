@@ -1,27 +1,45 @@
 'use client';
 import { fmtCurrency, initials } from '../lib/utils';
 
-export default function TeamMemberCard({ member, onEdit, onDelete }) {
+export default function TeamMemberCard({ member, onEdit }) {
   const ini = initials(member.name);
   const bg = member.avatar_color || '#6366f1';
+  const isFreelance = member.employment_type === 'freelance';
 
   return (
-    <div className="surface rounded-[22px] p-5 surface-hover transition group">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onEdit?.(member)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onEdit?.(member);
+        }
+      }}
+      className="surface rounded-[22px] p-5 surface-hover transition group cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+    >
       <div className="flex items-start gap-4">
         <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-base font-bold shrink-0 shadow-[0_12px_24px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.35)]"
           style={{ backgroundColor: bg }}>
           {ini}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">{member.name}</h3>
-              <p className="text-xs text-slate-500 mt-0.5">{member.role}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-slate-900 truncate">{member.name}</h3>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">{member.role}</p>
             </div>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium
-              ${member.status === 'active' ? 'bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-200/60' : 'bg-slate-900/5 text-slate-600 ring-1 ring-white/60'}`}>
-              {member.status}
-            </span>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium
+                ${member.status === 'active' ? 'bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-200/60' : 'bg-slate-900/5 text-slate-600 ring-1 ring-white/60'}`}>
+                {member.status}
+              </span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium
+                ${isFreelance ? 'bg-amber-500/15 text-amber-700 ring-1 ring-amber-200/60' : 'bg-indigo-500/15 text-indigo-700 ring-1 ring-indigo-200/60'}`}>
+                {isFreelance ? 'Freelance' : '固定'}
+              </span>
+            </div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -58,13 +76,8 @@ export default function TeamMemberCard({ member, onEdit, onDelete }) {
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-3 mt-4 pt-4 border-t border-white/50 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={() => onEdit?.(member)}
-          className="text-xs text-slate-700 hover:text-slate-950 font-semibold">編輯</button>
-        <button onClick={() => onDelete?.(member)}
-          className="text-xs text-rose-600 hover:text-rose-700 font-semibold">刪除</button>
-      </div>
+      {/* Click anywhere on the card to edit. The card itself is the button —
+          delete now lives inside the edit modal behind the lock toggle. */}
     </div>
   );
 }
