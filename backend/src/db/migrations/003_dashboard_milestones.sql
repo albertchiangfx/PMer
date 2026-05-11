@@ -30,7 +30,7 @@ BEGIN NEW.updated_at = CURRENT_TIMESTAMP; RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_updated_at ON project_milestones;
-CREATE TRIGGER trg_updated_at BEFORE UPDATE ON project_milestones FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_updated_at BEFORE UPDATE ON project_milestones FOR EACH ROW EXECUTE PROCEDURE update_updated_at();
 
 DROP TRIGGER IF EXISTS trg_updated_at ON member_personal_tasks;
-CREATE TRIGGER trg_updated_at BEFORE UPDATE ON member_personal_tasks FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_updated_at BEFORE UPDATE ON member_personal_tasks FOR EACH ROW EXECUTE PROCEDURE update_updated_at();

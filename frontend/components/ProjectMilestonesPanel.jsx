@@ -20,6 +20,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
   const [templateChoice, setTemplateChoice] = useState('generic');
   const [newMilestoneLabel, setNewMilestoneLabel] = useState('');
   const [reordering, setReordering] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
 
   const {
     data: milestones = [],
@@ -53,6 +54,21 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
     } finally {
       setReordering(false);
     }
+  };
+
+  const onDropOnRow = async (e, targetId) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData('application/x-milestone-id');
+    setDraggingId(null);
+    if (!draggedId || draggedId === targetId || reordering) return;
+    const ids = sortedMilestones.map((m) => m.id);
+    const from = ids.indexOf(draggedId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    const next = [...ids];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    await persistOrder(next);
   };
 
   const moveMilestone = async (milestoneId, delta) => {
@@ -169,7 +185,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
       </div>
 
       <p className="text-xs text-gray-500">
-        使用「上移／下移」調整順序（會同步存進資料庫）
+        按住左側「⠿」拖曳排序，或使用「上移／下移」（會同步存進資料庫）
         {projectName ? ` · ${projectName}` : ''}
       </p>
 
@@ -177,27 +193,49 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
         {sortedMilestones.map((m, idx) => (
           <li
             key={m.id}
-            className="flex items-start gap-2 group rounded-lg px-2 py-1.5 transition-colors bg-white/80"
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={(e) => onDropOnRow(e, m.id)}
+            className={`flex items-start gap-2 group rounded-lg px-2 py-1.5 transition-colors bg-white/80 ${
+              draggingId === m.id ? 'opacity-50 ring-2 ring-indigo-200' : ''
+            }`}
           >
-            <div className="flex flex-col shrink-0 gap-0.5 mt-0.5" aria-label="排序">
-              <button
-                type="button"
-                disabled={reordering || idx === 0}
-                onClick={() => moveMilestone(m.id, -1)}
-                className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                title="上移"
+            <div className="flex flex-row shrink-0 gap-1 mt-0.5 items-start" aria-label="排序">
+              <span
+                title="拖曳排序"
+                draggable={!reordering}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('application/x-milestone-id', m.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  setDraggingId(m.id);
+                }}
+                onDragEnd={() => setDraggingId(null)}
+                className="cursor-grab active:cursor-grabbing leading-none px-1 py-1 text-xs rounded border border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 select-none touch-none"
               >
-                ↑
-              </button>
-              <button
-                type="button"
-                disabled={reordering || idx === sortedMilestones.length - 1}
-                onClick={() => moveMilestone(m.id, 1)}
-                className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                title="下移"
-              >
-                ↓
-              </button>
+                ⠿
+              </span>
+              <div className="flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  disabled={reordering || idx === 0}
+                  onClick={() => moveMilestone(m.id, -1)}
+                  className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="上移"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={reordering || idx === sortedMilestones.length - 1}
+                  onClick={() => moveMilestone(m.id, 1)}
+                  className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="下移"
+                >
+                  ↓
+                </button>
+              </div>
             </div>
             <div className="flex items-start gap-2 flex-1 min-w-0">
               <input

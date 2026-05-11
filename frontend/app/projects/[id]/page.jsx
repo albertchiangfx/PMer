@@ -89,7 +89,9 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     const syncHash = () => {
       if (typeof window === 'undefined') return;
-      if (window.location.hash === '#milestones') setTab('milestones');
+      const h = window.location.hash;
+      if (h === '#milestones') setTab('milestones');
+      else if (h === '#tasks') setTab('tasks');
     };
     syncHash();
     window.addEventListener('hashchange', syncHash);
@@ -299,7 +301,7 @@ export default function ProjectDetailPage() {
             <div>
               <h2 className="text-base font-semibold text-gray-900">專案里程碑</h2>
               <p className="text-xs text-gray-500 mt-1">
-                套用公版、調整順序與勾選完成度會反映在 Dashboard「專案進度」上。
+                套用公版、調整順序與勾選完成度會反映在 Dashboard「專案進度」與本頁「專案」列表的進度條上。
               </p>
             </div>
           </div>
@@ -308,7 +310,7 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === 'tasks' && (
-        <div>
+        <div id="tasks" className="scroll-mt-24">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-gray-900">任務清單</h2>
             <button onClick={() => { setTaskForm(defaultTaskForm()); setTaskModal('create'); }}

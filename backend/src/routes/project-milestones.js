@@ -30,6 +30,30 @@ router.get('/by-projects', async (req, res, next) => {
   }
 });
 
+/** Full milestone rows keyed by project_id (for Dashboard chips). */
+router.get('/list-by-projects', async (req, res, next) => {
+  try {
+    const db = req.app.locals.db;
+    const raw = req.query.ids || '';
+    const ids = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!ids.length) return res.json({});
+    const { rows } = await db.query(
+      `SELECT * FROM project_milestones WHERE project_id = ANY($1::uuid[])
+       ORDER BY sort_order ASC, created_at ASC`,
+      [ids]
+    );
+    const map = {};
+    for (const r of rows) {
+      const k = String(r.project_id);
+      if (!map[k]) map[k] = [];
+      map[k].push(r);
+    }
+    res.json(map);
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;

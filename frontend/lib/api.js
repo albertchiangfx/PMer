@@ -110,6 +110,11 @@ export const api = {
       '/project-milestones/by-projects' +
         (projectIds?.length ? `?ids=${projectIds.map(encodeURIComponent).join(',')}` : '')
     ),
+  getProjectMilestonesByProjects: (projectIds) =>
+    request(
+      '/project-milestones/list-by-projects' +
+        (projectIds?.length ? `?ids=${projectIds.map(encodeURIComponent).join(',')}` : '')
+    ),
   getProjectMilestones: (projectId) =>
     request(`/project-milestones?project_id=${encodeURIComponent(projectId)}`),
   createProjectMilestone: (data) => request('/project-milestones', { method: 'POST', body: data }),

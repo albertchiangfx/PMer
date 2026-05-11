@@ -37,10 +37,10 @@ function statusZh(s) {
 }
 
 /**
- * Dashboard：僅檢視各專案里程碑完成度（進度條）與今日相關排程／提醒細字。
- * 不包含展開編輯；里程碑與個人提醒管理請至專案頁或任務頁。
+ * Dashboard：各專案里程碑完成度（進度條）與今日被指派的任務列。
+ * 里程碑勾選請至「專案」列表或專案頁「里程碑」分頁。
  *
- * @param {object[]} [todayAssignments] — 今日與分配區間重疊的列（含 projectId）
+ * @param {object[]} [todayAssignments] — 今日與分配區間重疊的列（含 projectId、kind）
  */
 export default function DashboardProjectWidget({ viewerId, projects, todayAssignments = [] }) {
   const projectIds = useMemo(() => projects.map((p) => p.id).filter(Boolean), [projects]);
@@ -81,16 +81,6 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
   const { data: personalTasks = [] } = useSWR(viewerId ? ['personal-tasks', viewerId] : null, () =>
     api.getPersonalTasks({ member_id: viewerId })
   );
-
-  const tasksByProject = useMemo(() => {
-    const map = {};
-    for (const t of personalTasks) {
-      const pid = String(t.project_id).toLowerCase();
-      if (!map[pid]) map[pid] = [];
-      map[pid].push(t);
-    }
-    return map;
-  }, [personalTasks]);
 
   const footerTodayChips = useMemo(() => {
     const list = [];
@@ -149,7 +139,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
             專案進度
           </h2>
           <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
-            僅顯示里程碑完成度；若要套用公版或調整細項請至各專案「里程碑」分頁
+            依里程碑完成度顯示進度條；勾選里程碑請至「專案」列表或專案內「里程碑」
           </p>
         </div>
         <Link href="/tasks" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1">
@@ -162,16 +152,16 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
           const idLc = String(p.id).toLowerCase();
           const { pct, empty } = progressFor(p.id);
           const dayRows = todayByProject[idLc] || [];
-          const ptasks = tasksByProject[idLc] || [];
-          const hasSubtitles = dayRows.length > 0 || ptasks.length > 0;
+          const taskAssignmentRows = dayRows.filter((r) => r.kind === 'task');
+          const showTaskStrip = taskAssignmentRows.length > 0;
           const st = String(p.status || '').toLowerCase();
 
           return (
-            <div key={p.id} className="py-3">
-              <div className="w-full grid grid-cols-[1fr_auto_auto] gap-3 sm:gap-5 items-center text-left py-2 rounded-lg min-h-[52px] relative z-[1]">
+            <div key={p.id} className="py-3 [contain:layout]">
+              <div className="w-full grid grid-cols-[1fr_auto_auto] gap-3 sm:gap-5 items-start text-left py-2 rounded-lg min-h-[52px] relative z-[1]">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    {hasSubtitles && (
+                    {showTaskStrip && (
                       <span
                         className="w-1.5 h-1.5 rounded-full shrink-0"
                         style={{
@@ -182,7 +172,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                     )}
                     <Link
                       href={`/projects/${p.id}#milestones`}
-                      className="truncate font-medium text-slate-900 hover:text-indigo-700 transition-colors"
+                      className="truncate font-medium text-slate-900 hover:text-indigo-700"
                       style={{
                         fontFamily: "'Noto Sans TC', ui-sans-serif, system-ui, sans-serif",
                         fontSize: 14,
@@ -195,7 +185,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                   <div className="relative h-6 w-full flex items-center mt-0.5">
                     <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 rounded-full bg-stone-200/90 overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-[width] duration-500 ease-out"
+                        className="h-full rounded-full"
                         style={{
                           width: empty ? '4%' : `${pct}%`,
                           background: p.color || '#6366f1',
@@ -214,65 +204,49 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                   )}
                 </div>
 
-                <span className="text-xs font-semibold tabular-nums shrink-0 text-slate-500">
+                <span className="text-xs font-semibold tabular-nums shrink-0 text-slate-500 pt-1">
                   {empty ? '—' : `${pct}%`}
                 </span>
 
-                <span className="text-[11px] text-stone-400 whitespace-nowrap shrink-0 hidden sm:block">
+                <span className="text-[11px] text-stone-400 whitespace-nowrap shrink-0 hidden sm:block pt-1">
                   {(st === 'wrapping' ? '收尾 · ' : '') + fmtEndShort(p.end_date)}
                   <span className="ml-1.5 text-[10px] text-stone-400">· {statusZh(p.status)}</span>
                 </span>
               </div>
 
-              {!hasSubtitles && (
-                <p className="mt-1.5 ml-0.5 text-[10px] text-stone-400">
-                  今日與此專案重疊的排程／個人提醒將顯示於此列下方
-                </p>
-              )}
-
-              {hasSubtitles && (
-                <div className="mt-2.5 ml-0.5 space-y-1 pl-3 border-l border-stone-200/90">
-                  {dayRows.map((row) => (
-                    <Link
-                      key={row.key}
-                      href={row.href}
-                      className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug rounded-md px-1 py-0.5 -mx-1 hover:bg-white/40 transition"
-                      style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
-                    >
-                      <span
-                        className="w-1 h-1 rounded-full shrink-0 mt-1.5"
-                        style={{ background: p.color || '#6366f1' }}
-                      />
-                      <span className={`text-slate-800 ${row.badge !== '排程' ? 'font-semibold' : 'font-medium'}`}>
-                        {row.title}
-                      </span>
-                      <span className="text-stone-400 text-[10px] truncate max-w-full">
+              {showTaskStrip ? (
+                <div className="mt-2.5 ml-0.5 space-y-2 pl-3 border-l border-stone-200/90">
+                  {taskAssignmentRows.map((row) => (
+                    <div key={row.key} className="text-[11px] leading-snug">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span
+                          className="w-1 h-1 rounded-full shrink-0"
+                          style={{ background: p.color || '#6366f1' }}
+                        />
+                        <Link
+                          href={row.href}
+                          className="font-semibold text-slate-900 hover:text-indigo-700 min-w-0 truncate"
+                          style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
+                        >
+                          {row.title}
+                        </Link>
+                        <Link
+                          href={`/projects/${p.id}#tasks`}
+                          className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 ml-auto sm:ml-0"
+                        >
+                          ＋ 新增任務
+                        </Link>
+                      </div>
+                      <p className="mt-0.5 pl-3 text-[10px] text-stone-400">
                         {row.remainingWord !== '—' && row.remainingAbs != null
                           ? `${row.remainingWord} ${row.remainingAbs} 個工作日 · `
                           : ''}
                         {row.badge}
-                      </span>
-                    </Link>
-                  ))}
-                  {ptasks.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-snug px-1 py-0.5 -mx-1"
-                      style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
-                    >
-                      <span
-                        className="w-1 h-1 rounded-full shrink-0 mt-1.5"
-                        style={{ background: t.urgent ? p.color || '#6366f1' : '#d6d3d1' }}
-                      />
-                      <span className={t.urgent ? 'font-semibold text-slate-900' : 'font-normal text-stone-600'}>
-                        {t.urgent ? '⚡ ' : ''}
-                        {t.title}
-                      </span>
-                      <span className="text-[10px] text-stone-400">個人提醒</span>
+                      </p>
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -295,7 +269,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
               <Link
                 key={c.key}
                 href={c.href}
-                className={`inline-flex items-center gap-2 text-xs hover:opacity-80 transition-opacity ${
+                className={`inline-flex items-center gap-2 text-xs hover:opacity-80 ${
                   c.muted ? 'font-normal' : 'font-semibold'
                 }`}
                 style={{

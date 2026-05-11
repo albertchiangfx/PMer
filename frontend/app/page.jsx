@@ -156,7 +156,18 @@ export default function Dashboard() {
     );
     inRange.sort((a, b) => String(a.raw.start_date).localeCompare(String(b.raw.start_date)));
 
-    return inRange.map(({ raw, kind }) => {
+    const taskProjectIds = new Set(
+      inRange
+        .filter((x) => x.kind === 'task' && x.raw.project_id)
+        .map((x) => String(x.raw.project_id).toLowerCase())
+    );
+    const visibleToday = inRange.filter(({ raw, kind }) => {
+      if (kind !== 'project') return true;
+      const pid = String(raw.project_id || '').toLowerCase();
+      return !taskProjectIds.has(pid);
+    });
+
+    return visibleToday.map(({ raw, kind }) => {
       const remaining = raw.end_date ? businessDaysDelta(today, raw.end_date) : null;
       const tone =
         remaining == null ? 'text-slate-500' : remaining < 0 ? 'text-rose-600' : remaining <= 1 ? 'text-amber-700' : 'text-slate-600';
@@ -164,20 +175,27 @@ export default function Dashboard() {
       const remainingWord = remaining == null ? '—' : remaining >= 0 ? '剩餘' : '逾期';
 
       const accentColor = raw.project_color || '#6366f1';
+      const notesTrim =
+        typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : '';
       const title =
-        kind === 'task' ? raw.task_name || '（未命名任務）' : raw.project_name || '（專案）';
+        kind === 'task'
+          ? raw.task_name || '（未命名任務）'
+          : notesTrim || raw.project_name || '（專案）';
       const subtitle =
         kind === 'task'
           ? `${raw.project_name || '—'} · ${String(raw.start_date || '').slice(0, 10)} → ${String(raw.end_date || '').slice(0, 10)}${raw.notes ? ` · ${raw.notes}` : ''}`
-          : `專案甘特排程 · ${String(raw.start_date || '').slice(0, 10)} → ${String(raw.end_date || '').slice(0, 10)}${
+          : `${notesTrim ? `${raw.project_name || '—'} · ` : ''}專案甘特排程 · ${String(
+              raw.start_date || ''
+            ).slice(0, 10)} → ${String(raw.end_date || '').slice(0, 10)}${
               raw.project_client_name ? ` · ${raw.project_client_name}` : ''
-            }${raw.notes ? ` · ${raw.notes}` : ''}`;
+            }${!notesTrim && raw.notes ? ` · ${raw.notes}` : ''}`;
       const badge = kind === 'task' ? raw.task_status || '—' : '排程';
       const href = raw.project_id ? `/projects/${raw.project_id}` : '/schedule';
       const progressPct = allocationProgressPct(raw.start_date, raw.end_date, today);
 
       return {
         key: `${kind}-${raw.id}`,
+        kind,
         projectId: raw.project_id || null,
         href,
         title,
