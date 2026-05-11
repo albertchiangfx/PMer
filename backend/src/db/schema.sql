@@ -142,6 +142,33 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Dashboard: milestones drive project progress % (completed / total)
+CREATE TABLE IF NOT EXISTS project_milestones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  label VARCHAR(500) NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT false,
+  sort_order INT NOT NULL DEFAULT 0,
+  repeatable BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Personal reminders per member per project (do not affect global tasks table)
+CREATE TABLE IF NOT EXISTS member_personal_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_member_id UUID NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title VARCHAR(500) NOT NULL,
+  urgent BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id);
+CREATE INDEX IF NOT EXISTS idx_member_personal_tasks_member ON member_personal_tasks(team_member_id);
+CREATE INDEX IF NOT EXISTS idx_member_personal_tasks_project ON member_personal_tasks(project_id);
+
 CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_dates ON tasks(start_date, end_date);
@@ -164,7 +191,7 @@ $$ LANGUAGE plpgsql;
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices'])
+  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks'])
   LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_updated_at ON %I', t);
     EXECUTE format('CREATE TRIGGER trg_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t);

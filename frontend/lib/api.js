@@ -50,6 +50,32 @@ export const api = {
   checkConflictsGET: (params) =>
     request('/allocations/check-conflicts' + toQS(params)),
 
+  getMilestoneSummaryByProjects: (projectIds) =>
+    request(
+      '/project-milestones/by-projects' +
+        (projectIds?.length ? `?ids=${projectIds.map(encodeURIComponent).join(',')}` : '')
+    ),
+  getProjectMilestones: (projectId) =>
+    request(`/project-milestones?project_id=${encodeURIComponent(projectId)}`),
+  createProjectMilestone: (data) => request('/project-milestones', { method: 'POST', body: data }),
+  updateProjectMilestone: (id, data) =>
+    request(`/project-milestones/${encodeURIComponent(id)}`, { method: 'PATCH', body: data }),
+  deleteProjectMilestone: (id) =>
+    request(`/project-milestones/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  reorderProjectMilestones: (ordered_ids) =>
+    request('/project-milestones/reorder', { method: 'POST', body: { ordered_ids } }),
+  bootstrapProjectMilestones: (body) =>
+    request('/project-milestones/bootstrap', { method: 'POST', body }),
+  addFinalEditRound: (project_id) =>
+    request('/project-milestones/add-final-edit-round', { method: 'POST', body: { project_id } }),
+
+  getPersonalTasks: (params) => request('/personal-tasks' + toQS(params)),
+  createPersonalTask: (data) => request('/personal-tasks', { method: 'POST', body: data }),
+  updatePersonalTask: (id, data) =>
+    request(`/personal-tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: data }),
+  deletePersonalTask: (id) =>
+    request(`/personal-tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   /** @deprecated Legacy task-based allocations (avoid for new UI) */
   getTimeAllocations: (params) => request('/time-allocations' + toQS(params)),
   createTimeAllocation: (data) => request('/time-allocations', { method: 'POST', body: data }),

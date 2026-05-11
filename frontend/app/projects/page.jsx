@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { api } from '../../lib/api';
 import { fmtCurrency, statusStyle, fmt } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
+import { MILESTONE_TEMPLATE_OPTIONS } from '../../lib/milestone-templates';
 
 const STATUS_OPTS = ['planning', 'active', 'completed', 'paused', 'cancelled'];
 const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
@@ -17,7 +18,17 @@ export default function ProjectsPage() {
   const [form, setForm] = useState(defaultForm());
 
   function defaultForm() {
-    return { name: '', client_id: '', description: '', budget: '', status: 'planning', start_date: '', end_date: '', color: '#6366f1' };
+    return {
+      name: '',
+      client_id: '',
+      description: '',
+      budget: '',
+      status: 'planning',
+      start_date: '',
+      end_date: '',
+      color: '#6366f1',
+      milestone_template: '',
+    };
   }
 
   const load = useCallback(async () => {
@@ -33,8 +44,19 @@ export default function ProjectsPage() {
   const save = async (e) => {
     e.preventDefault();
     const data = { ...form, budget: form.budget || null, client_id: form.client_id || null };
-    if (modal === 'create') await api.createProject(data);
-    else await api.updateProject(modal.id, data);
+    if (modal === 'create') {
+      const created = await api.createProject(data);
+      if (form.milestone_template) {
+        try {
+          await api.bootstrapProjectMilestones({
+            project_id: created.id,
+            template: form.milestone_template,
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    } else await api.updateProject(modal.id, data);
     setModal(null);
     load();
   };
@@ -131,6 +153,23 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               </div>
+              {modal === 'create' && (
+                <div className="col-span-2">
+                  <Label>里程碑公版（選用）</Label>
+                  <select
+                    value={form.milestone_template || ''}
+                    onChange={(e) => setForm((f) => ({ ...f, milestone_template: e.target.value }))}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">建立後自行設定</option>
+                    {MILESTONE_TEMPLATE_OPTIONS.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="col-span-2">
                 <Label>描述</Label>
                 <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}

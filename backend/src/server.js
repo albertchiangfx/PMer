@@ -35,6 +35,8 @@ app.use('/api/allocations', require('./routes/allocations'));
 // Alias route for member-specific allocation queries (keeps existing /api/team-members untouched)
 app.use('/api/members', require('./routes/members'));
 app.use('/api/time-allocations', require('./routes/time-allocations'));
+app.use('/api/project-milestones', require('./routes/project-milestones'));
+app.use('/api/personal-tasks', require('./routes/personal-tasks'));
 app.use('/api/contracts', require('./routes/contracts'));
 app.use('/api/invoices', require('./routes/invoices'));
 

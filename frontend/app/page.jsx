@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, isValid, isWeekend, parseISO } from 'date-fns';
 import { api } from '../lib/api';
 import SchedulePanel from '../components/SchedulePanel';
-import DashboardTodayTasks from '../components/DashboardTodayTasks';
+import DashboardProjectWidget from '../components/DashboardProjectWidget';
 import { SCHEDULE_DATA_CHANGED_EVENT } from '../lib/dashboard-sync';
 
 function allocationProgressPct(startYmd, endYmd, todayYmd) {
@@ -44,6 +44,7 @@ function businessDaysDelta(todayYmd, endYmd) {
 
 export default function Dashboard() {
   const [members, setMembers] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
   const [taskAllocations, setTaskAllocations] = useState([]);
   const [viewerId, setViewerId] = useState('');
@@ -51,9 +52,10 @@ export default function Dashboard() {
   const [dataTick, setDataTick] = useState(0);
 
   const loadCore = useCallback(async () => {
-    const [m, a] = await Promise.all([api.getTeamMembers(), api.getAllocations()]);
+    const [m, a, p] = await Promise.all([api.getTeamMembers(), api.getAllocations(), api.getProjects()]);
     setMembers(m);
     setAllocations(Array.isArray(a) ? a : []);
+    setProjects(Array.isArray(p) ? p : []);
   }, []);
 
   useEffect(() => {
@@ -176,6 +178,7 @@ export default function Dashboard() {
 
       return {
         key: `${kind}-${raw.id}`,
+        projectId: raw.project_id || null,
         href,
         title,
         subtitle,
@@ -189,18 +192,73 @@ export default function Dashboard() {
     });
   }, [mergedForViewer, today]);
 
+  const viewerProjectSummaries = useMemo(() => {
+    if (!viewerId) return [];
+    const ids = new Set();
+    for (const { raw } of mergedForViewer) {
+      if (raw.project_id) ids.add(String(raw.project_id));
+    }
+    const list = [];
+    for (const id of ids) {
+      const full = projects.find((x) => String(x.id) === id);
+      const fallback = mergedForViewer.find((m) => String(m.raw.project_id) === id)?.raw;
+      if (full) {
+        list.push({
+          id: full.id,
+          name: full.name,
+          color: full.color || '#6366f1',
+          end_date: full.end_date,
+          status: full.status,
+          client_name: full.client_name,
+        });
+      } else if (fallback?.project_id) {
+        list.push({
+          id: fallback.project_id,
+          name: fallback.project_name || '專案',
+          color: fallback.project_color || '#6366f1',
+          end_date: null,
+          status: 'planning',
+          client_name: fallback.project_client_name,
+        });
+      }
+    }
+    list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return list;
+  }, [viewerId, mergedForViewer, projects]);
+
   if (loading) return <LoadingScreen />;
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
           <p className="mt-1 text-sm text-slate-500">{nowLabel}</p>
         </div>
+        {members.length > 0 && (
+          <label className="flex flex-col gap-1 text-xs text-slate-500 shrink-0">
+            <span className="font-medium text-slate-600">檢視身分</span>
+            <select
+              value={viewerId}
+              onChange={(e) => setViewerId(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm min-w-[180px]"
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                  {m.role ? ` · ${m.role}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
-      <DashboardTodayTasks rows={todayTaskRows} viewerId={viewerId} />
+      <DashboardProjectWidget
+        viewerId={viewerId}
+        projects={viewerProjectSummaries}
+        todayAssignments={todayTaskRows}
+      />
 
       <section className="mt-6 surface rounded-[22px] px-6 pt-6 pb-6">
         <SchedulePanel title="工作時程" />
