@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import BackToDashboard from '../../components/BackToDashboard';
 import { api } from '../../lib/api';
+import { SCHEDULE_DATA_CHANGED_EVENT } from '../../lib/dashboard-sync';
 
 function fmtYmd(d) {
   if (!d) return '—';
@@ -20,6 +21,13 @@ export default function MyTasksPage() {
   /** Merged: task-level time_allocations + project-level allocations (same as dashboard / Gantt). */
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncTick, setSyncTick] = useState(0);
+
+  useEffect(() => {
+    const onScheduleSync = () => setSyncTick((t) => t + 1);
+    window.addEventListener(SCHEDULE_DATA_CHANGED_EVENT, onScheduleSync);
+    return () => window.removeEventListener(SCHEDULE_DATA_CHANGED_EVENT, onScheduleSync);
+  }, []);
 
   useEffect(() => {
     api
@@ -66,7 +74,7 @@ export default function MyTasksPage() {
         setRows(merged);
       })
       .finally(() => setLoading(false));
-  }, [viewerId]);
+  }, [viewerId, syncTick]);
 
   const viewer = useMemo(() => members.find((m) => String(m.id) === String(viewerId)), [members, viewerId]);
 

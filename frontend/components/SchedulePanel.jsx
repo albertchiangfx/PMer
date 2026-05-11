@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import Gantt from './Gantt';
 import StudioProjectsGantt from './StudioProjectsGantt';
 import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY } from './ganttOffscreenDots';
+import { notifyScheduleDataChanged } from '../lib/dashboard-sync';
 
 export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程' }) {
   const [members, setMembers] = useState([]);
@@ -45,6 +46,7 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
     setMembers(m);
     setProjects(Array.isArray(p) ? p : []);
     setAllocations(a);
+    notifyScheduleDataChanged();
   }, []);
 
   // Only show the full-page spinner on the very first load. Subsequent
