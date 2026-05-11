@@ -1,15 +1,24 @@
 'use client';
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { addDays, format, parseISO, differenceInDays, startOfWeek, eachDayOfInterval, isToday, isWeekend } from 'date-fns';
 import { api } from '../lib/api';
 import { initials } from '../lib/utils';
+import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY, barTouchesTimelineViewportLeft } from './ganttOffscreenDots';
 
 const DEFAULT_DAY_W = 18; // start zoomed-out so users see many days; ctrl+wheel zooms in
+/** Below this width the header shows months only (when mode is auto). */
 const MIN_DAY_W = 12;
+const ABS_MIN_DAY_W = 3;
 const MAX_DAY_W = 80;
 const ROW_H = 56;
-const HEADER_H = 80;
+const HEADER_H_FULL = 80;
+const HEADER_H_COMPACT = 40;
 const LABEL_W = 228;
+/** 名稱欄與時間軸之間的「標示區」（提示點放這裡，不壓在格線上） */
+const INDICATOR_GUTTER_W = 14;
+/** 捲動內容裡，時間軸起點前的固定總寬 = 名稱 + 標示區 */
+const PINNED_LEFT_W = LABEL_W + INDICATOR_GUTTER_W;
+
 const BAR_H = 14;
 const BAR_GAP = 4;
 const LANE_PITCH = BAR_H + BAR_GAP; // vertical distance between adjacent lanes
@@ -40,6 +49,11 @@ export default function Gantt({
   showRowDelete = false,
   labelColumnTitle = '成員',
   emptyHint,
+  /** When set with `onTimelineModeChange`, parent controls mode and the built-in dropdown is hidden. */
+  timelineMode: timelineModeProp,
+  onTimelineModeChange,
+  /** 提示點填充色（例如來自 `<input type="color">`）；未傳則讀 localStorage */
+  offscreenDotColor,
 }) {
   const containerRef = useRef(null);
   const hScrollRef = useRef(null);
@@ -54,8 +68,45 @@ export default function Gantt({
   const [dayW, setDayW] = useState(DEFAULT_DAY_W);
   const dayWRef = useRef(dayW);
   useEffect(() => { dayWRef.current = dayW; }, [dayW]);
+  const timelineControlled = typeof onTimelineModeChange === 'function';
+  const [fallbackTimelineMode, setFallbackTimelineMode] = useState('auto');
+  const timelineMode = timelineControlled ? (timelineModeProp ?? 'auto') : fallbackTimelineMode;
+  const timelineModeRef = useRef(timelineMode);
+  useEffect(() => { timelineModeRef.current = timelineMode; }, [timelineMode]);
+
+  useEffect(() => {
+    if (timelineMode === 'dayWeek') {
+      setDayW((d) => Math.max(MIN_DAY_W, Math.min(MAX_DAY_W, d)));
+    } else if (timelineMode === 'monthOnly') {
+      setDayW((d) => Math.min(MIN_DAY_W - 0.01, Math.max(ABS_MIN_DAY_W, Math.min(d, 10))));
+    }
+  }, [timelineMode]);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [timelineViewportW, setTimelineViewportW] = useState(0);
+  const [storedOffscreenDotHex, setStoredOffscreenDotHex] = useState(null);
   const today = useMemo(() => new Date(), []);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(GANTT_OFFSCREEN_DOT_STORAGE_KEY);
+      if (v) setStoredOffscreenDotHex(v);
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
+  const offscreenDotStyle = useMemo(
+    () => ({
+      ...GANTT_OFFSCREEN_DOT,
+      backgroundColor:
+        offscreenDotColor || storedOffscreenDotHex || GANTT_OFFSCREEN_DOT.backgroundColor,
+    }),
+    [offscreenDotColor, storedOffscreenDotHex]
+  );
+
+  const showMonthOnlyHeader =
+    timelineMode === 'monthOnly' || (timelineMode === 'auto' && dayW < MIN_DAY_W);
+  const headerH = showMonthOnlyHeader ? HEADER_H_COMPACT : HEADER_H_FULL;
 
   useEffect(() => {
     if (!tooltip) return;
@@ -293,7 +344,7 @@ export default function Gantt({
     if (initialScrolledRef.current) return;
     if (!containerRef.current) return;
     const todayX = dateToX(today);
-    const initial = Math.max(0, todayX - 80);
+    const initial = Math.max(0, PINNED_LEFT_W + todayX - 80);
     containerRef.current.scrollLeft = initial;
     setScrollLeft(initial);
     if (hScrollRef.current) hScrollRef.current.scrollLeft = initial;
@@ -312,16 +363,24 @@ export default function Gantt({
         e.preventDefault();
         const cur = dayWRef.current;
         const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
-        const next = Math.max(MIN_DAY_W, Math.min(MAX_DAY_W, cur * factor));
+        const mode = timelineModeRef.current;
+        let lo = ABS_MIN_DAY_W;
+        let hi = MAX_DAY_W;
+        if (mode === 'dayWeek') {
+          lo = MIN_DAY_W;
+        } else if (mode === 'monthOnly') {
+          hi = MIN_DAY_W - 0.01;
+        }
+        const next = Math.max(lo, Math.min(hi, cur * factor));
         if (Math.abs(next - cur) < 0.5) return;
         const rect = el.getBoundingClientRect();
-        const cursorInTimeline = e.clientX - rect.left + el.scrollLeft - LABEL_W;
+        const cursorInTimeline = e.clientX - rect.left + el.scrollLeft - PINNED_LEFT_W;
         const dayUnderCursor = cursorInTimeline / cur;
         setDayW(next);
         // Re-anchor scroll after React commits the new dayW (totalW changes).
         requestAnimationFrame(() => {
           if (!containerRef.current) return;
-          const newScrollLeft = dayUnderCursor * next + LABEL_W - (e.clientX - rect.left);
+          const newScrollLeft = dayUnderCursor * next + PINNED_LEFT_W - (e.clientX - rect.left);
           containerRef.current.scrollLeft = Math.max(0, newScrollLeft);
           if (hScrollRef.current) hScrollRef.current.scrollLeft = containerRef.current.scrollLeft;
         });
@@ -338,6 +397,22 @@ export default function Gantt({
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
+  }, [timelineMode]);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el) setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
+    });
+    ro.observe(el);
+    setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
+    return () => ro.disconnect();
   }, []);
 
   const handleDeleteRow = useCallback(
@@ -380,6 +455,21 @@ export default function Gantt({
     return groups;
   }, [days]);
 
+  const monthGroups = useMemo(() => {
+    const groups = [];
+    let cur = null;
+    for (const d of days) {
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!cur || cur.key !== key) {
+        cur = { key, days: 1, label: format(d, 'yyyy年M月') };
+        groups.push(cur);
+      } else {
+        cur.days += 1;
+      }
+    }
+    return groups;
+  }, [days]);
+
   // Alternating-week tint stripes. Only weekdays of "odd" weeks are tinted
   // so weekend cells stay clean (and get only the weekend overlay on top).
   // Color is controlled by --gantt-alt-week-tint in globals.css.
@@ -408,7 +498,7 @@ export default function Gantt({
 
   const scrollToToday = useCallback(() => {
     const todayX = dateToX(today);
-    const target = Math.max(0, todayX - 80);
+    const target = Math.max(0, PINNED_LEFT_W + todayX - 80);
     syncingRef.current = true;
     if (containerRef.current) containerRef.current.scrollLeft = target;
     if (hScrollRef.current) hScrollRef.current.scrollLeft = target;
@@ -416,8 +506,33 @@ export default function Gantt({
     syncingRef.current = false;
   }, [dateToX, today]);
 
+  const handleTimelineModeChange = useCallback((e) => {
+    const next = e.target.value;
+    if (timelineControlled) onTimelineModeChange(next);
+    else setFallbackTimelineMode(next);
+  }, [timelineControlled, onTimelineModeChange]);
+
+  const tw = timelineViewportW;
+  /** 時間軸可視區右緣（時間軸座標） */
+  const visT1 = Math.min(totalW, scrollLeft + Math.max(0, tw));
+
   return (
     <div className="surface overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
+      {!timelineControlled && (
+        <label className="absolute z-40 top-2 right-3 flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="sr-only">時間列顯示</span>
+          <select
+            value={timelineMode}
+            onChange={handleTimelineModeChange}
+            className="rounded-lg border border-slate-200 bg-white/90 px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            title="時間列顯示方式（Ctrl+滾輪仍可依模式縮放）"
+          >
+            <option value="auto">自動（縮小後僅月份）</option>
+            <option value="dayWeek">日與週</option>
+            <option value="monthOnly">僅月份</option>
+          </select>
+        </label>
+      )}
       {/* Pinned today indicator (fixed, does not scroll horizontally).
           Placed inside the label column, anchored to its right edge. */}
       <button
@@ -431,74 +546,96 @@ export default function Gantt({
       </button>
       {(() => {
         const todayPx = dateToX(today) + dayW / 2;
-        const screenX = LABEL_W + todayPx - scrollLeft;
-        if (screenX < LABEL_W) return null;
+        const screenX = PINNED_LEFT_W + todayPx - scrollLeft;
+        if (screenX < PINNED_LEFT_W) return null;
         return (
           <div
             className="absolute z-30 bg-indigo-400/60 pointer-events-none"
-            style={{ left: screenX, top: HEADER_H, width: 1.5, bottom: 10 }}
+            style={{ left: screenX, top: headerH, width: 1.5, bottom: 10 }}
           />
         );
       })()}
 
-      <div
-        ref={containerRef}
-        className="overflow-x-auto overflow-y-auto gantt-scroll gantt-main-scroll"
-        style={{ maxHeight: 'calc(100vh - 240px)' }}
-        onScroll={() => {
-          const sl = containerRef.current?.scrollLeft || 0;
-          setScrollLeft(sl);
-          if (syncingRef.current) return;
-          syncingRef.current = true;
-          if (hScrollRef.current) hScrollRef.current.scrollLeft = sl;
-          syncingRef.current = false;
-        }}
-      >
-        <div style={{ width: LABEL_W + totalW, minHeight: HEADER_H + Math.max(totalRowsHeight, ROW_H) }}>
+      <div className="relative flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+        <div
+          ref={containerRef}
+          className="gantt-scroll gantt-main-scroll min-h-0 flex-1 overflow-x-auto overflow-y-auto"
+          onScroll={() => {
+            const el = containerRef.current;
+            const sl = el?.scrollLeft || 0;
+            setScrollLeft(sl);
+            if (el) setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
+            if (syncingRef.current) return;
+            syncingRef.current = true;
+            if (hScrollRef.current) hScrollRef.current.scrollLeft = sl;
+            syncingRef.current = false;
+          }}
+        >
+        <div style={{ width: PINNED_LEFT_W + totalW, minHeight: headerH + Math.max(totalRowsHeight, ROW_H) }}>
 
-          <div className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60" style={{ height: HEADER_H }}>
+          <div className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60" style={{ height: headerH }}>
             <div style={{ display: 'flex', height: '100%' }}>
               <div
                 style={{ width: LABEL_W, minWidth: LABEL_W }}
-                className="flex items-end pb-2 px-4 border-r border-white/60 sticky left-0 z-30 bg-white/70 backdrop-blur"
+                className={`flex px-4 border-r border-white/60 sticky left-0 z-30 bg-white/70 backdrop-blur ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
               >
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{labelColumnTitle}</span>
               </div>
+              <div
+                style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W, left: LABEL_W }}
+                className="sticky shrink-0 border-r border-slate-200/80 bg-slate-50/90 z-[29]"
+              />
 
               <div style={{ position: 'relative', width: totalW }}>
-                <div style={{ display: 'flex', height: 36, alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,.06)' }}>
-                  {weekGroups.map((g, i) => (
-                    <div
-                      key={i}
-                      style={{ width: g.days * dayW, minWidth: g.days * dayW }}
-                      className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
-                    >
-                      <span>{g.label}</span>
-                      <span className="text-[9px] font-medium text-slate-400 tabular-nums">W{g.weekNo}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', height: 44, alignItems: 'center' }}>
-                  {days.map((d, i) => {
-                    const isToday_ = isToday(d);
-                    const isWknd = isWeekend(d);
-                    return (
+                {showMonthOnlyHeader ? (
+                  <div style={{ display: 'flex', height: '100%', alignItems: 'center' }}>
+                    {monthGroups.map((g, i) => (
                       <div
-                        key={i}
-                        style={{ width: dayW, minWidth: dayW }}
-                        className={`flex flex-col items-center justify-center h-full border-r border-white/30 ${isWknd ? 'opacity-40' : ''}`}
+                        key={g.key + i}
+                        style={{ width: g.days * dayW, minWidth: g.days * dayW }}
+                        className="flex h-full items-center border-r border-white/40 px-2 text-xs font-semibold text-slate-600"
                       >
-                        <span className="text-[9px] text-slate-400 uppercase">{format(d, 'EEE')[0]}</span>
-                        <span
-                          className={`text-xs font-medium mt-0.5 w-5 h-5 flex items-center justify-center rounded-full
-                          ${isToday_ ? 'bg-indigo-500 text-white' : 'text-slate-500'}`}
-                        >
-                          {format(d, 'd')}
-                        </span>
+                        <span className="truncate">{g.label}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', height: 36, alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,.06)' }}>
+                      {weekGroups.map((g, i) => (
+                        <div
+                          key={i}
+                          style={{ width: g.days * dayW, minWidth: g.days * dayW }}
+                          className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
+                        >
+                          <span>{g.label}</span>
+                          <span className="text-[9px] font-medium text-slate-400 tabular-nums">W{g.weekNo}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', height: 44, alignItems: 'center' }}>
+                      {days.map((d, i) => {
+                        const isToday_ = isToday(d);
+                        const isWknd = isWeekend(d);
+                        return (
+                          <div
+                            key={i}
+                            style={{ width: dayW, minWidth: dayW }}
+                            className={`flex flex-col items-center justify-center h-full border-r border-white/30 ${isWknd ? 'opacity-40' : ''}`}
+                          >
+                            <span className="text-[9px] text-slate-400 uppercase">{format(d, 'EEE')[0]}</span>
+                            <span
+                              className={`text-xs font-medium mt-0.5 w-5 h-5 flex items-center justify-center rounded-full
+                          ${isToday_ ? 'bg-indigo-500 text-white' : 'text-slate-500'}`}
+                            >
+                              {format(d, 'd')}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -511,6 +648,16 @@ export default function Gantt({
             const barBg = {
               backgroundImage: 'linear-gradient(90deg, #1f2937, #374151)',
             };
+
+            // 左：任一條繪製左緣碰上／越过視窗裁切線（與 scrollLeft、長條 +2 inset 對齊）；右：整條在可視右緣外
+            let showRowDotLeft = false;
+            let showRowDotRight = false;
+            for (const a of memberAllocs) {
+              if (!a.start_date || !a.end_date) continue;
+              const bMin = dateToX(a.start_date);
+              if (barTouchesTimelineViewportLeft(bMin, scrollLeft, PINNED_LEFT_W)) showRowDotLeft = true;
+              if (tw > 0 && bMin >= visT1) showRowDotRight = true;
+            }
 
             return (
               <div
@@ -537,6 +684,15 @@ export default function Gantt({
                   </div>
                 </div>
 
+                <div
+                  style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W, left: LABEL_W }}
+                  className={`sticky shrink-0 z-[15] flex items-center justify-center border-r border-slate-200/80 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
+                >
+                  {showRowDotLeft && (
+                    <span aria-hidden className="pointer-events-none block" style={offscreenDotStyle} />
+                  )}
+                </div>
+
                 <div style={{ position: 'relative', width: totalW, height: rowH, isolation: 'isolate' }}>
                   {/* Alternating-week tint (drawn first, behind weekend stripes). */}
                   {altWeekStripes.map((s, i) => (
@@ -554,6 +710,21 @@ export default function Gantt({
                         className="gantt-weekend"
                       />
                     ) : null
+                  )}
+
+                  {showRowDotRight && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none"
+                      style={{
+                        ...offscreenDotStyle,
+                        position: 'absolute',
+                        left: visT1 - 6,
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        zIndex: 25,
+                      }}
+                    />
                   )}
 
                   {memberAllocs.map((alloc) => {
@@ -685,23 +856,26 @@ export default function Gantt({
             </div>
           )}
         </div>
+        </div>
       </div>
 
-      {/* Bottom horizontal scrollbar aligned to timeline start (after label column) */}
+      {/* Bottom scrollbar：略過名稱欄，寬度 = 標示區 + 時間軸 */}
       <div
         ref={hScrollRef}
         className="overflow-x-auto gantt-scroll"
         style={{ marginLeft: LABEL_W }}
         onScroll={() => {
+          const el = containerRef.current;
           const sl = hScrollRef.current?.scrollLeft || 0;
           setScrollLeft(sl);
+          if (el) setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
           if (syncingRef.current) return;
           syncingRef.current = true;
-          if (containerRef.current) containerRef.current.scrollLeft = sl;
+          if (el) el.scrollLeft = sl;
           syncingRef.current = false;
         }}
       >
-        <div style={{ width: totalW, height: 10 }} />
+        <div style={{ width: INDICATOR_GUTTER_W + totalW, height: 10 }} />
       </div>
 
       {tooltip && !dragging && (() => {

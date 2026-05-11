@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { api } from '../lib/api';
 import Gantt from './Gantt';
 import StudioProjectsGantt from './StudioProjectsGantt';
+import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY } from './ganttOffscreenDots';
 
 export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程' }) {
   const [members, setMembers] = useState([]);
@@ -15,6 +16,9 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
   const [version, setVersion] = useState(0);
   /** studio = 全工作室依「專案」列；members = 依「分配／成員」列 */
   const [scheduleTab, setScheduleTab] = useState(defaultTab);
+  /** 與甘特共用：依專案／依成員切換時保留同一時間列模式 */
+  const [ganttTimelineMode, setGanttTimelineMode] = useState('auto');
+  const [offscreenDotHex, setOffscreenDotHex] = useState(GANTT_OFFSCREEN_DOT.backgroundColor);
   const [allocModalOpen, setAllocModalOpen] = useState(false);
   const [allocForm, setAllocForm] = useState(defaultAllocForm());
   const rangeWeeks = 16;
@@ -47,6 +51,15 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
   // refreshes (e.g. after dragging a bar) should silently update data without
   // unmounting the Gantt — otherwise the Gantt would be remounted and lose
   // its internal scroll/zoom state.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(GANTT_OFFSCREEN_DOT_STORAGE_KEY);
+      if (stored && /^#[0-9a-fA-F]{6}$/.test(stored)) setOffscreenDotHex(stored);
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     load()
@@ -114,31 +127,66 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
         <div className="flex items-center gap-3 flex-wrap justify-start lg:justify-end" />
       </div>
 
-      <div className="mb-4 flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => setScheduleTab('studio')}
-          className={[
-            'text-sm font-semibold pb-1 transition-colors border-b-2',
-            scheduleTab === 'studio'
-              ? 'text-indigo-600 border-indigo-500'
-              : 'text-slate-500 border-transparent hover:text-slate-700',
-          ].join(' ')}
-        >
-          依專案
-        </button>
-        <button
-          type="button"
-          onClick={() => setScheduleTab('members')}
-          className={[
-            'text-sm font-semibold pb-1 transition-colors border-b-2',
-            scheduleTab === 'members'
-              ? 'text-indigo-600 border-indigo-500'
-              : 'text-slate-500 border-transparent hover:text-slate-700',
-          ].join(' ')}
-        >
-          依成員
-        </button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setScheduleTab('studio')}
+            className={[
+              'text-sm font-semibold pb-1 transition-colors border-b-2',
+              scheduleTab === 'studio'
+                ? 'text-indigo-600 border-indigo-500'
+                : 'text-slate-500 border-transparent hover:text-slate-700',
+            ].join(' ')}
+          >
+            依專案
+          </button>
+          <button
+            type="button"
+            onClick={() => setScheduleTab('members')}
+            className={[
+              'text-sm font-semibold pb-1 transition-colors border-b-2',
+              scheduleTab === 'members'
+                ? 'text-indigo-600 border-indigo-500'
+                : 'text-slate-500 border-transparent hover:text-slate-700',
+            ].join(' ')}
+          >
+            依成員
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <label className="flex shrink-0 items-center gap-2 text-[10px] text-slate-500">
+            <span className="whitespace-nowrap text-slate-500">時間列</span>
+            <select
+              value={ganttTimelineMode}
+              onChange={(e) => setGanttTimelineMode(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              title="時間列顯示方式（甘特內 Ctrl+滾輪仍可依模式縮放）"
+            >
+              <option value="auto">自動（縮小後僅月份）</option>
+              <option value="dayWeek">日與週</option>
+              <option value="monthOnly">僅月份</option>
+            </select>
+          </label>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
+            <span className="whitespace-nowrap">提示點顏色</span>
+            <input
+              type="color"
+              value={/^#[0-9a-fA-F]{6}$/.test(offscreenDotHex) ? offscreenDotHex : GANTT_OFFSCREEN_DOT.backgroundColor}
+              onChange={(e) => {
+                const v = e.target.value;
+                setOffscreenDotHex(v);
+                try {
+                  localStorage.setItem(GANTT_OFFSCREEN_DOT_STORAGE_KEY, v);
+                } catch (_) {
+                  /* ignore */
+                }
+              }}
+              className="h-8 w-10 cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-white p-0 shadow-sm"
+              title="拖拉選色；會記錄在此瀏覽器"
+            />
+          </label>
+        </div>
       </div>
 
       {loading ? (
@@ -151,6 +199,9 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
           allocations={allocations}
           onUpdate={refresh}
           rangeWeeks={rangeWeeks}
+          timelineMode={ganttTimelineMode}
+          onTimelineModeChange={setGanttTimelineMode}
+          offscreenDotColor={offscreenDotHex}
         />
       ) : (
         <Gantt
@@ -160,6 +211,9 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
           rangeWeeks={rangeWeeks}
           showRowDelete
           emptyHint="尚無分配列。請按「新增分配」選擇專案與成員，即可新增一列。"
+          timelineMode={ganttTimelineMode}
+          onTimelineModeChange={setGanttTimelineMode}
+          offscreenDotColor={offscreenDotHex}
         />
       )}
 
