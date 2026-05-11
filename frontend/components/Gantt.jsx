@@ -344,7 +344,9 @@ export default function Gantt({
     if (initialScrolledRef.current) return;
     if (!containerRef.current) return;
     const todayX = dateToX(today);
-    const initial = Math.max(0, PINNED_LEFT_W + todayX - 80);
+    // scrollLeft is content X at viewport left; timeline cell left is PINNED_LEFT_W + todayX.
+    // Align today's column start with the divider: PINNED_LEFT_W + todayX - scrollLeft === PINNED_LEFT_W ⇒ scrollLeft === todayX.
+    const initial = Math.max(0, todayX);
     containerRef.current.scrollLeft = initial;
     setScrollLeft(initial);
     if (hScrollRef.current) hScrollRef.current.scrollLeft = initial;
@@ -498,7 +500,7 @@ export default function Gantt({
 
   const scrollToToday = useCallback(() => {
     const todayX = dateToX(today);
-    const target = Math.max(0, PINNED_LEFT_W + todayX - 80);
+    const target = Math.max(0, todayX);
     syncingRef.current = true;
     if (containerRef.current) containerRef.current.scrollLeft = target;
     if (hScrollRef.current) hScrollRef.current.scrollLeft = target;
@@ -533,13 +535,12 @@ export default function Gantt({
           </select>
         </label>
       )}
-      {/* Pinned today indicator (fixed, does not scroll horizontally).
-          Placed inside the label column, anchored to its right edge. */}
+      {/* Pinned today pill at timeline gutter edge (aligned with vertical divider). */}
       <button
         type="button"
         onClick={scrollToToday}
         className="absolute z-40 top-[8px] -translate-x-full text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded-lg shadow"
-        style={{ left: LABEL_W - 8 }}
+        style={{ left: PINNED_LEFT_W - 8 }}
         title="回到今天"
       >
         {format(today, 'MMM d')}

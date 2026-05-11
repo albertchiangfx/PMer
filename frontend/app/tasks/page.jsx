@@ -17,7 +17,8 @@ function fmtYmd(d) {
 export default function MyTasksPage() {
   const [viewerId, setViewerId] = useState('');
   const [members, setMembers] = useState([]);
-  const [allocs, setAllocs] = useState([]);
+  /** Merged: task-level time_allocations + project-level allocations (same as dashboard / Gantt). */
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,20 +45,30 @@ export default function MyTasksPage() {
   useEffect(() => {
     if (!viewerId) return;
     setLoading(true);
-    api
-      .getTimeAllocations({ team_member_id: viewerId })
-      .then((rows) => setAllocs(Array.isArray(rows) ? rows : []))
-      .catch((e) => console.error(e))
+    Promise.all([
+      api.getTimeAllocations({ team_member_id: viewerId }).catch((e) => {
+        console.error(e);
+        return [];
+      }),
+      api.getAllocations({ member_id: viewerId }).catch((e) => {
+        console.error(e);
+        return [];
+      }),
+    ])
+      .then(([taskAllocRows, projectAllocRows]) => {
+        const ta = Array.isArray(taskAllocRows) ? taskAllocRows : [];
+        const pa = Array.isArray(projectAllocRows) ? projectAllocRows : [];
+        const merged = [
+          ...ta.map((a) => ({ ...a, _rowKind: 'task' })),
+          ...pa.map((a) => ({ ...a, _rowKind: 'project' })),
+        ];
+        merged.sort((x, y) => String(y.start_date || '').localeCompare(String(x.start_date || '')));
+        setRows(merged);
+      })
       .finally(() => setLoading(false));
   }, [viewerId]);
 
   const viewer = useMemo(() => members.find((m) => String(m.id) === String(viewerId)), [members, viewerId]);
-
-  const rows = useMemo(() => {
-    const list = [...allocs];
-    list.sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
-    return list;
-  }, [allocs]);
 
   return (
     <div className="p-8 animate-fade-in">
@@ -84,20 +95,26 @@ export default function MyTasksPage() {
             <div className="divide-y divide-white/40">
               {rows.map((a) => (
                 <Link
-                  key={a.id}
+                  key={a._rowKind === 'task' ? `t-${a.id}` : `p-${a.id}`}
                   href={a.project_id ? `/projects/${a.project_id}` : '/projects'}
                   className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-white/40 transition"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">
-                      {a.task_name || '（未命名任務）'}
+                      {a._rowKind === 'task'
+                        ? a.task_name || '（未命名任務）'
+                        : a.project_name || '（專案）'}
                     </p>
                     <p className="text-xs text-slate-500 truncate">
-                      {a.project_name || '—'} · {fmtYmd(a.start_date)} → {fmtYmd(a.end_date)}
+                      {a._rowKind === 'task'
+                        ? `${a.project_name || '—'} · ${fmtYmd(a.start_date)} → ${fmtYmd(a.end_date)}`
+                        : `專案甘特排程 · ${fmtYmd(a.start_date)} → ${fmtYmd(a.end_date)}${
+                            a.project_client_name ? ` · ${a.project_client_name}` : ''
+                          }${a.notes ? ` · ${a.notes}` : ''}`}
                     </p>
                   </div>
                   <span className="text-[11px] font-semibold whitespace-nowrap text-slate-600">
-                    {a.task_status || '—'}
+                    {a._rowKind === 'task' ? a.task_status || '—' : '排程'}
                   </span>
                 </Link>
               ))}
