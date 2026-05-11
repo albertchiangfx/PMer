@@ -1,11 +1,66 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api';
+/**
+ * Resolve API origin for fetch().
+ * - **next dev**（網址含非 80/443 埠，例如 :3000）：一律打 `http://127.0.0.1:<後端埠>/api`，
+ *   避免 `.env` 裡 `http://localhost/api`（其實是 **80 埠**）或 `/api` 經 Next 轉發失敗而出現 404。
+ * - **正式／Docker + nginx**（瀏覽器通常是 `http://主機/` 無慣用埠）：使用 NEXT_PUBLIC_API_URL 的 `/api` 或絕對網址。
+ */
+function getApiBase() {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  const configured = raw != null ? String(raw).trim() : '';
+
+  if (typeof window !== 'undefined') {
+    const { hostname, port } = window.location;
+    const local =
+      hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+
+    const nextDevStylePort =
+      port !== '' && port !== '80' && port !== '443' && Number.parseInt(port, 10) > 0;
+
+    if (local && nextDevStylePort) {
+      const backendPort = process.env.NEXT_PUBLIC_API_BACKEND_PORT || '3001';
+      return `http://127.0.0.1:${backendPort}/api`;
+    }
+  }
+
+  if (!configured) return 'http://127.0.0.1:3001/api';
+  if (configured.startsWith('/')) return configured.replace(/\/$/, '') || '/api';
+  return configured.replace(/\/$/, '');
+}
 
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-    body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
-  });
+  const base = getApiBase();
+  const { timeoutMs = 20000, signal: userSignal, headers: optHeaders, ...rest } = options;
+  const signal =
+    userSignal ??
+    (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(timeoutMs)
+      : undefined);
+
+  let res;
+  try {
+    res = await fetch(`${base}${path}`, {
+      ...rest,
+      headers: { 'Content-Type': 'application/json', ...optHeaders },
+      signal,
+      body: rest.body && typeof rest.body !== 'string' ? JSON.stringify(rest.body) : rest.body,
+      cache: 'no-store',
+    });
+  } catch (e) {
+    const timedOut =
+      e?.name === 'AbortError' ||
+      e?.name === 'TimeoutError' ||
+      (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'TimeoutError');
+    if (timedOut) {
+      throw Object.assign(
+        new Error(`請求逾時（${timeoutMs / 1000}s）：請確認後端已啟動，埠與 NEXT_PUBLIC_API_BACKEND_PORT 一致`),
+        { cause: e },
+      );
+    }
+    if (e instanceof TypeError && String(e.message || '').toLowerCase().includes('fetch')) {
+      throw Object.assign(new Error('無法連上後端：請確認 API 已啟動且未被防火牆阻擋'), { cause: e });
+    }
+    throw e;
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw Object.assign(new Error(err.error || 'Request failed'), { status: res.status, data: err });
@@ -96,10 +151,13 @@ export const api = {
   generateInvoicePreview: (data) => request('/invoices/generate', { method: 'POST', body: data }),
   updateInvoice: (id, data) => request(`/invoices/${id}`, { method: 'PUT', body: data }),
   deleteInvoice: (id) => request(`/invoices/${id}`, { method: 'DELETE' }),
-  downloadInvoicePDF: (id) => `${BASE}/invoices/${id}/pdf`,
+  downloadInvoicePDF: (id) => `${getApiBase()}/invoices/${id}/pdf`,
 
   // Clients
-  getClients: () => request('/projects/meta/clients'),
+  getClients: () => request('/clients'),
+  createClient: (data) => request('/clients', { method: 'POST', body: data }),
+  updateClient: (id, data) => request(`/clients/${encodeURIComponent(id)}`, { method: 'PUT', body: data }),
+  deleteClient: (id) => request(`/clients/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 function toQS(params) {

@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,6 +11,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - ./seeds/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    # 讓本機 npm 跑的後端能連 localhost:5432（預設 backend/.env 的 DB_HOST=localhost）
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
     networks:
       - studio-net
     healthcheck:

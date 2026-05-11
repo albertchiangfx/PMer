@@ -27,6 +27,7 @@ app.use(express.json());
 app.use(morgan('combined'));
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(__dirname, '../uploads')));
 
+app.use('/api/clients', require('./routes/clients'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/team-members', require('./routes/team-members'));
@@ -43,14 +44,27 @@ app.use('/api/invoices', require('./routes/invoices'));
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', db: 'connected' });
+    res.json({
+      status: 'ok',
+      db: 'connected',
+      routes: ['/api/clients', '/api/projects'],
+    });
   } catch (e) {
     res.status(503).json({ status: 'error', db: 'disconnected' });
   }
+});
+
+app.use((req, res) => {
+  const hint =
+    req.path === '/api/clients' || req.path.startsWith('/api/clients/')
+      ? '若程式已含客戶路由仍出現此錯誤，請重啟後端；若使用 Docker，請執行 docker compose build backend && docker compose up -d backend'
+      : '';
+  res.status(404).json({ error: 'Not Found', path: req.path, method: req.method, hint });
 });
 
 app.use(require('./middleware/error-handler'));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Studio PM API running on port ${PORT}`);
+  console.log('[提示] 已掛載 /api/clients；若 POST 仍 404，代表跑的是舊行程，請重啟後端');
 });

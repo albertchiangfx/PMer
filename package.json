@@ -1,0 +1,10 @@
+{
+  "name": "studio-pm",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix frontend && npm install --prefix backend",
+    "dev:web": "npm run dev --prefix frontend",
+    "dev:api": "npm start --prefix backend",
+    "dev:api:3110": "npm run start:3110 --prefix backend"
+  }
+}

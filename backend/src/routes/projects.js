@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
 
+/** Postgres DATE rejects ''; JSON often sends "" when inputs are cleared. */
+function dateOrNull(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
@@ -43,7 +50,16 @@ router.post('/', async (req, res, next) => {
     const { rows } = await db.query(`
       INSERT INTO projects (name, client_id, description, budget, status, start_date, end_date, color)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
-    `, [name, client_id || null, description, budget, status || 'planning', start_date, end_date, color || '#6366f1']);
+    `, [
+      name,
+      client_id || null,
+      description,
+      budget === '' || budget === undefined ? null : budget,
+      status || 'planning',
+      dateOrNull(start_date),
+      dateOrNull(end_date),
+      color || '#6366f1',
+    ]);
     await db.query(`INSERT INTO audit_logs (entity_type, entity_id, action, changed_by) VALUES ('project',$1,'create','system')`, [rows[0].id]);
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
@@ -56,7 +72,17 @@ router.put('/:id', async (req, res, next) => {
     const { rows } = await db.query(`
       UPDATE projects SET name=$1, client_id=$2, description=$3, budget=$4, status=$5,
         start_date=$6, end_date=$7, color=$8 WHERE id=$9 RETURNING *
-    `, [name, client_id || null, description, budget, status, start_date, end_date, color, req.params.id]);
+    `, [
+      name,
+      client_id || null,
+      description,
+      budget === '' || budget === undefined ? null : budget,
+      status,
+      dateOrNull(start_date),
+      dateOrNull(end_date),
+      color,
+      req.params.id,
+    ]);
     if (!rows.length) return res.status(404).json({ error: 'Project not found' });
     res.json(rows[0]);
   } catch (e) { next(e); }

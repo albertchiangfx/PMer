@@ -6,13 +6,21 @@ import { api } from '../../../lib/api';
 import { fmtCurrency, statusStyle, fmt, initials } from '../../../lib/utils';
 import TaskCard from '../../../components/TaskCard';
 import Gantt from '../../../components/Gantt';
+import ProjectMilestonesPanel from '../../../components/ProjectMilestonesPanel';
 
 const TASK_TYPES = ['general', 'modeling', 'rigging', 'animation', 'rendering', 'compositing', 'vfx', 'audio', 'review'];
 const PRIORITIES = ['low', 'medium', 'high'];
 const TASK_STATUSES = ['todo', 'in-progress', 'review', 'done'];
 
+function routeParamId(raw) {
+  if (raw == null) return '';
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return String(v ?? '').trim();
+}
+
 export default function ProjectDetailPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = routeParamId(params?.id);
   const router = useRouter();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -46,6 +54,7 @@ export default function ProjectDetailPage() {
   }
 
   const load = useCallback(async () => {
+    if (!id) return;
     const [proj, taskList, memberList, allocs, projList] = await Promise.all([
       api.getProject(id),
       api.getTasks({ project_id: id }),
@@ -60,7 +69,32 @@ export default function ProjectDetailPage() {
     setAllProjects(projList);
   }, [id]);
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+  useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    load()
+      .catch((e) => console.error(e))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load, id]);
+
+  useEffect(() => {
+    const syncHash = () => {
+      if (typeof window === 'undefined') return;
+      if (window.location.hash === '#milestones') setTab('milestones');
+    };
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, []);
 
   // Close dropdown when clicking outside.
   useEffect(() => {
@@ -147,7 +181,8 @@ export default function ProjectDetailPage() {
     load();
   }, [load]);
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>;
+  if (!id) return <div className="p-8 text-gray-400">無效的專案網址</div>;
+  if (loading) return <div className="flex items-center justify-center min-h-[240px]"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>;
   if (!project) return <div className="p-8 text-gray-400">找不到專案</div>;
 
   const s = statusStyle(project.status);
@@ -246,13 +281,31 @@ export default function ProjectDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
-        {[['tasks', '任務'], ['team', '成員分配'], ['gantt', '甘特圖']].map(([k, label]) => (
+        {[['tasks', '任務'], ['milestones', '里程碑'], ['team', '成員分配'], ['gantt', '甘特圖']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === k ? 'bg-indigo-600 text-white shadow-apple-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
           </button>
         ))}
       </div>
+
+      {tab === 'milestones' && (
+        <div
+          id="milestones"
+          className="surface rounded-[22px] p-6 shadow-apple-sm scroll-mt-24 relative z-[5] isolate"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">專案里程碑</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                套用公版、調整順序與勾選完成度會反映在 Dashboard「專案進度」上。
+              </p>
+            </div>
+          </div>
+          <ProjectMilestonesPanel projectId={id} projectName={project.name} />
+        </div>
+      )}
 
       {tab === 'tasks' && (
         <div>

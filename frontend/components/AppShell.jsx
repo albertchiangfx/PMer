@@ -127,7 +127,7 @@ export default function AppShell({ children }) {
         <div className="flex min-h-[720px] w-full gap-4 sm:gap-5">
           {/* Floating two-layer nav (separated from main content). */}
           <div
-            className="hidden sm:flex shrink-0 flex-col self-stretch"
+            className="hidden sm:flex shrink-0 flex-col self-stretch relative z-30"
             onMouseEnter={() => setNavHover(true)}
             onMouseLeave={() => setNavHover(false)}
           >
@@ -144,9 +144,9 @@ export default function AppShell({ children }) {
             )}
           </div>
 
-          {/* Content shell */}
-          <div className="shell relative flex-1 overflow-hidden rounded-[28px]">
-            <main className="relative flex-1 px-5 py-6 sm:px-8 sm:py-8 overflow-auto h-full">
+          {/* Content shell — flex min-h-0 讓捲動發生在 main，避免子頁面按鈕點擊命中異常 */}
+          <div className="shell relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-[28px]">
+            <main className="relative flex-1 min-h-0 px-5 py-6 sm:px-8 sm:py-8 overflow-y-auto overflow-x-hidden overscroll-contain">
               {children}
             </main>
           </div>

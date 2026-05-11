@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { fmtCurrency, statusStyle, fmt } from '../../lib/utils';
@@ -14,8 +15,11 @@ export default function ProjectsPage() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'create' | {project}
+  const [clientsManageOpen, setClientsManageOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [form, setForm] = useState(defaultForm());
+  const [loadError, setLoadError] = useState(null);
+  const [saveBusy, setSaveBusy] = useState(false);
 
   function defaultForm() {
     return {
@@ -32,11 +36,30 @@ export default function ProjectsPage() {
   }
 
   const load = useCallback(async () => {
-    const [p, c] = await Promise.all([api.getProjects(), api.getClients()]);
-    setProjects(p); setClients(c);
+    setLoadError(null);
+    try {
+      const [p, c] = await Promise.all([api.getProjects(), api.getClients()]);
+      setProjects(Array.isArray(p) ? p : []);
+      setClients(Array.isArray(c) ? c : []);
+    } catch (e) {
+      console.error(e);
+      setLoadError(e?.message || '無法載入專案或客戶資料');
+      setProjects([]);
+      setClients([]);
+    }
   }, []);
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      await load();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
 
   const openCreate = () => { setForm(defaultForm()); setModal('create'); };
   const openEdit = (p) => { setForm({ ...p, budget: p.budget || '', client_id: p.client_id || '' }); setModal(p); };
@@ -44,21 +67,29 @@ export default function ProjectsPage() {
   const save = async (e) => {
     e.preventDefault();
     const data = { ...form, budget: form.budget || null, client_id: form.client_id || null };
-    if (modal === 'create') {
-      const created = await api.createProject(data);
-      if (form.milestone_template) {
-        try {
-          await api.bootstrapProjectMilestones({
-            project_id: created.id,
-            template: form.milestone_template,
-          });
-        } catch (err) {
-          console.error(err);
+    try {
+      setSaveBusy(true);
+      if (modal === 'create') {
+        const created = await api.createProject(data);
+        if (form.milestone_template) {
+          try {
+            await api.bootstrapProjectMilestones({
+              project_id: created.id,
+              template: form.milestone_template,
+            });
+          } catch (err) {
+            console.error(err);
+          }
         }
-      }
-    } else await api.updateProject(modal.id, data);
-    setModal(null);
-    load();
+      } else await api.updateProject(modal.id, data);
+      setModal(null);
+      await load();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || String(err));
+    } finally {
+      setSaveBusy(false);
+    }
   };
 
   const del = async (p) => {
@@ -85,6 +116,25 @@ export default function ProjectsPage() {
           <span>＋</span> 新增專案
         </button>
       </div>
+
+      {loadError && (
+        <div className="mb-6 rounded-apple-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 flex flex-wrap items-center justify-between gap-3">
+          <span className="min-w-0">{loadError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setLoading(true);
+                await load();
+                setLoading(false);
+              })();
+            }}
+            className="shrink-0 px-3 py-1.5 rounded-apple bg-white border border-rose-200 text-rose-900 font-medium text-xs hover:bg-rose-100"
+          >
+            重試
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="mb-6">
@@ -118,11 +168,27 @@ export default function ProjectsPage() {
               </div>
               <div>
                 <Label>客戶</Label>
-                <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">無客戶</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={form.client_id}
+                    onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))}
+                    className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">無客戶</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setClientsManageOpen(true)}
+                    className="shrink-0 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-apple hover:bg-indigo-100 transition-colors whitespace-nowrap"
+                  >
+                    管理客戶
+                  </button>
+                </div>
               </div>
               <div>
                 <Label>狀態</Label>
@@ -177,15 +243,191 @@ export default function ProjectsPage() {
               </div>
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple transition-colors">
-                {modal === 'create' ? '建立專案' : '儲存變更'}
+              <button
+                type="submit"
+                disabled={saveBusy}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-apple transition-colors"
+              >
+                {saveBusy ? '處理中…' : modal === 'create' ? '建立專案' : '儲存變更'}
               </button>
               <button type="button" onClick={() => setModal(null)} className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 font-medium">取消</button>
             </div>
           </form>
         </Modal>
       )}
+
+      <ClientsManageModal open={clientsManageOpen} onClose={() => setClientsManageOpen(false)} onSaved={load} />
     </div>
+  );
+}
+
+function ClientsManageModal({ open, onClose, onSaved }) {
+  const [mounted, setMounted] = useState(false);
+  const [list, setList] = useState([]);
+  const [form, setForm] = useState({ name: '', contact_email: '', contact_phone: '', address: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setSaving(false);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getClients()
+      .then((rows) => {
+        if (!cancelled) setList(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e) => {
+        console.error(e);
+        alert(e.message || '無法載入客戶列表');
+      });
+    setForm({ name: '', contact_email: '', contact_phone: '', address: '' });
+    setEditingId(null);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const submitSaveClient = async () => {
+    if (!form.name.trim()) {
+      alert('請填寫客戶名稱');
+      return;
+    }
+    try {
+      setSaving(true);
+      if (editingId) await api.updateClient(editingId, form);
+      else await api.createClient(form);
+      const rows = await api.getClients();
+      setList(Array.isArray(rows) ? rows : []);
+      setForm({ name: '', contact_email: '', contact_phone: '', address: '' });
+      setEditingId(null);
+      onSaved();
+    } catch (err) {
+      alert(err.message || String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (c) => {
+    setEditingId(c.id);
+    setForm({
+      name: c.name || '',
+      contact_email: c.contact_email || '',
+      contact_phone: c.contact_phone || '',
+      address: c.address || '',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm({ name: '', contact_email: '', contact_phone: '', address: '' });
+  };
+
+  const del = async (c) => {
+    if (
+      !confirm(
+        `刪除客戶「${c.name}」？\n已連結的專案會改為「無客戶」。若仍有合約綁定此客戶，將無法刪除。`
+      )
+    )
+      return;
+    try {
+      await api.deleteClient(c.id);
+      const rows = await api.getClients();
+      setList(Array.isArray(rows) ? rows : []);
+      if (editingId === c.id) cancelEdit();
+      onSaved();
+    } catch (err) {
+      alert(err.message || String(err));
+    }
+  };
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <Modal title="管理客戶" onClose={onClose} zClass="z-[100]">
+      <form
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          void submitSaveClient();
+        }}
+        className="space-y-4"
+        noValidate
+      >
+        <p className="text-xs text-gray-500">
+          {editingId ? '編輯後按「儲存客戶」。' : '新增後會出現在下方列表與專案表單的下拉選單。'}
+        </p>
+        <div>
+          <Label>名稱 *</Label>
+          <Input value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} placeholder="公司／客戶名稱" />
+        </div>
+        <div>
+          <Label>聯絡信箱</Label>
+          <Input type="text" value={form.contact_email} onChange={(v) => setForm((f) => ({ ...f, contact_email: v }))} placeholder="name@company.com" />
+        </div>
+        <div>
+          <Label>電話</Label>
+          <Input value={form.contact_phone} onChange={(v) => setForm((f) => ({ ...f, contact_phone: v }))} />
+        </div>
+        <div>
+          <Label>地址</Label>
+          <textarea
+            value={form.address}
+            onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            rows={2}
+            className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void submitSaveClient()}
+            className="flex-1 min-w-[120px] bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-apple"
+          >
+            {saving ? '儲存中…' : editingId ? '儲存客戶' : '新增客戶'}
+          </button>
+          {editingId && (
+            <button type="button" onClick={cancelEdit} className="px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-apple hover:bg-gray-50">
+              取消編輯
+            </button>
+          )}
+        </div>
+      </form>
+
+      <div className="mt-6 pt-6 border-t border-gray-100">
+        <p className="text-xs font-medium text-gray-500 mb-3">現有客戶 ({list.length})</p>
+        <ul className="space-y-2 max-h-52 overflow-y-auto">
+          {list.map((c) => (
+            <li
+              key={c.id}
+              className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm"
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900 truncate">{c.name}</p>
+                {c.contact_email && <p className="text-xs text-gray-500 truncate">{c.contact_email}</p>}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={() => startEdit(c)} className="text-xs text-indigo-600 hover:underline font-medium">
+                  編輯
+                </button>
+                <button type="button" onClick={() => del(c)} className="text-xs text-rose-600 hover:underline font-medium">
+                  刪除
+                </button>
+              </div>
+            </li>
+          ))}
+          {list.length === 0 && <li className="text-xs text-gray-400 py-2">尚無客戶，請於上方新增。</li>}
+        </ul>
+      </div>
+    </Modal>,
+    document.body
   );
 }
 
@@ -231,10 +473,19 @@ function ProjectRow({ project, onEdit, onDelete }) {
   );
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, zClass = 'z-50' }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up">
+    <div
+      className={`fixed inset-0 ${zClass} flex items-center justify-center p-4 modal-backdrop animate-fade-in`}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      role="presentation"
+    >
+      <div
+        className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors">✕</button>
