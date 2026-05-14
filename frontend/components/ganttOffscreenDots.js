@@ -8,7 +8,8 @@ export const GANTT_OFFSCREEN_DOT = {
   width: 7,
   height: 7,
   borderRadius: 9999,
-  backgroundColor: 'rgb(145, 147, 190)',
+  /** `#rrggbb` only — `<input type="color">` rejects `rgb()` */
+  backgroundColor: '#9193be',
   boxShadow: '0 0 0 2px rgb(201, 201, 201)',
 };
 

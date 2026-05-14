@@ -20,18 +20,27 @@ function toYmd(v) {
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-/** Whether allocation / time block overlaps local-calendar `todayYmd`. */
-function allocationOverlapsToday(raw, todayYmd) {
-  let start = toYmd(raw?.start_date);
-  let end = toYmd(raw?.end_date);
-  const tStart = toYmd(raw?.task_start_date);
-  const tEnd = toYmd(raw?.task_end_date);
-  if (!start && tStart) start = tStart;
-  if (!end && tEnd) end = tEnd;
+/**
+ * 僅用「這一列分配」的 start_date / end_date 判斷是否涵蓋 today（不用任務整體區間）。
+ * 避免：成員時段已結束，但因任務仍進行中而誤出現在「今日」。
+ */
+function sliceDatesOverlapToday(raw, todayYmd) {
+  const start = toYmd(raw?.start_date);
+  const end = toYmd(raw?.end_date);
   if (!start && !end) return false;
   if (start && end) return start <= todayYmd && end >= todayYmd;
   if (start && !end) return start <= todayYmd;
   if (!start && end) return end >= todayYmd;
+  return false;
+}
+
+/** `GET /tasks?team_member_id=` 回傳的 `allocations` 陣列中，是否有該成員的一段與 today 重疊。 */
+function memberTaskSlicesOverlapToday(task, viewerId, todayYmd) {
+  const allocs = Array.isArray(task?.allocations) ? task.allocations : [];
+  for (const a of allocs) {
+    if (!memberIdEquals(a?.team_member_id, viewerId)) continue;
+    if (sliceDatesOverlapToday({ start_date: a.start_date, end_date: a.end_date }, todayYmd)) return true;
+  }
   return false;
 }
 
@@ -80,23 +89,15 @@ export default function Dashboard() {
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
-  const [taskAllocations, setTaskAllocations] = useState([]);
   const [viewerId, setViewerId] = useState('');
   const [loading, setLoading] = useState(true);
   const [dataTick, setDataTick] = useState(0);
-  const [viewerTasks, setViewerTasks] = useState([]);
 
   const loadCore = useCallback(async () => {
     const [m, a, p] = await Promise.all([api.getTeamMembers(), api.getAllocations(), api.getProjects()]);
     setMembers(m);
     setAllocations(Array.isArray(a) ? a : []);
     setProjects(Array.isArray(p) ? p : []);
-  }, []);
-
-  useEffect(() => {
-    const onScheduleSync = () => setDataTick((t) => t + 1);
-    window.addEventListener(SCHEDULE_DATA_CHANGED_EVENT, onScheduleSync);
-    return () => window.removeEventListener(SCHEDULE_DATA_CHANGED_EVENT, onScheduleSync);
   }, []);
 
   useEffect(() => {
@@ -161,50 +162,38 @@ export default function Dashboard() {
     }
   }, [viewerId, members]);
 
-  useEffect(() => {
-    if (!viewerId) {
-      setTaskAllocations([]);
-      return;
-    }
-    setTaskAllocations([]);
-    let cancelled = false;
-    api
-      .getTimeAllocations({ team_member_id: viewerId })
-      .then((rows) => {
-        if (cancelled) return;
+  const { data: taskAllocations = [], mutate: mutateTaskAlloc } = useSWR(
+    viewerId ? ['time-allocations', viewerId] : null,
+    ([, id]) =>
+      api.getTimeAllocations({ team_member_id: id }).then((rows) => {
         const list = Array.isArray(rows) ? rows : [];
-        setTaskAllocations(list.filter((r) => memberIdEquals(r.team_member_id, viewerId)));
-      })
-      .catch((e) => {
-        console.error(e);
-        if (!cancelled) setTaskAllocations([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [viewerId, dataTick]);
+        return list.filter((r) => memberIdEquals(r.team_member_id, id));
+      }),
+    { revalidateOnFocus: false }
+  );
+
+  const { data: viewerTasks = [], mutate: mutateViewerTasks } = useSWR(
+    viewerId ? ['viewer-tasks', viewerId] : null,
+    ([, id]) => api.getTasks({ team_member_id: id }).then((rows) => (Array.isArray(rows) ? rows : [])),
+    { revalidateOnFocus: false }
+  );
+
+  const { data: personalTasks = [], mutate: mutatePersonalTasks } = useSWR(
+    viewerId ? ['personal-tasks', viewerId] : null,
+    ([, id]) => api.getPersonalTasks({ member_id: id }),
+    { revalidateOnFocus: false }
+  );
 
   useEffect(() => {
-    if (!viewerId) {
-      setViewerTasks([]);
-      return;
-    }
-    setViewerTasks([]);
-    let cancelled = false;
-    api
-      .getTasks({ team_member_id: viewerId })
-      .then((rows) => {
-        if (cancelled) return;
-        setViewerTasks(Array.isArray(rows) ? rows : []);
-      })
-      .catch((e) => {
-        console.error(e);
-        if (!cancelled) setViewerTasks([]);
-      });
-    return () => {
-      cancelled = true;
+    const onScheduleSync = () => {
+      setDataTick((t) => t + 1);
+      mutateTaskAlloc();
+      mutateViewerTasks();
+      mutatePersonalTasks();
     };
-  }, [viewerId, dataTick]);
+    window.addEventListener(SCHEDULE_DATA_CHANGED_EVENT, onScheduleSync);
+    return () => window.removeEventListener(SCHEDULE_DATA_CHANGED_EVENT, onScheduleSync);
+  }, [mutateTaskAlloc, mutateViewerTasks, mutatePersonalTasks]);
 
   const todayYmd = localCalendarYmd();
   const nowLabel = new Date().toLocaleDateString('zh-TW', {
@@ -227,7 +216,7 @@ export default function Dashboard() {
 
   const todayTaskRows = useMemo(() => {
     const today = todayYmd;
-    const inRange = mergedForViewer.filter((item) => allocationOverlapsToday(item.raw, today));
+    const inRange = mergedForViewer.filter((item) => sliceDatesOverlapToday(item.raw, today));
     inRange.sort((a, b) =>
       String(a.raw.start_date || a.raw.task_start_date || '').localeCompare(
         String(b.raw.start_date || b.raw.task_start_date || '')
@@ -311,8 +300,8 @@ export default function Dashboard() {
 
     const extra = [];
     for (const t of viewerTasks) {
-      if (!allocationOverlapsToday({ start_date: t.start_date, end_date: t.end_date }, today)) continue;
-      if (shownTaskIds.has(String(t.id))) continue;
+      if (!memberTaskSlicesOverlapToday(t, viewerId, today)) continue;
+      if (shownTaskIds.has(String(t.id).toLowerCase())) continue;
 
       const endForDelta = toYmd(t.end_date);
       const remaining = endForDelta ? businessDaysDelta(today, endForDelta) : null;
@@ -337,6 +326,7 @@ export default function Dashboard() {
         raw: {
           id: `fallback-${t.id}`,
           task_id: t.id,
+          team_member_id: viewerId,
           project_id: t.project_id,
           task_name: t.name,
           project_name: t.project_name,
@@ -351,14 +341,12 @@ export default function Dashboard() {
       });
     }
 
-    return [...dedupedBase, ...extra];
+    const combined = [...dedupedBase, ...extra];
+    return combined.filter((row) => {
+      if (row.kind !== 'task') return true;
+      return memberIdEquals(row.raw?.team_member_id, viewerId);
+    });
   }, [mergedForViewer, viewerTasks, todayYmd, viewerId]);
-
-  /** 與 Tasks overview 共用，避免 widget 再打一隻 API */
-  const { data: personalTasks = [] } = useSWR(
-    viewerId ? ['personal-tasks', viewerId] : null,
-    () => api.getPersonalTasks({ member_id: viewerId })
-  );
 
   /** 僅「目前檢視成員」今日任務列＋個人任務所屬專案（不含純專案甘特排程／其他人專案） */
   const viewerProjectSummaries = useMemo(() => {
