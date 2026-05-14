@@ -71,6 +71,11 @@ function businessDaysDelta(todayYmd, endYmd) {
   return -days.filter((d) => !isWeekend(d)).length;
 }
 
+/** 成員 UUID 比對（API / localStorage 大小寫可能不一致） */
+function memberIdEquals(a, b) {
+  return String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
+}
+
 export default function Dashboard() {
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -109,10 +114,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (!members.length) return;
 
-    const idEquals = (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
-
     // 已選的人若不在名單內（被刪除等）→ 改選仍在的成員
-    if (viewerId && !members.some((m) => idEquals(m.id, viewerId))) {
+    if (viewerId && !members.some((m) => memberIdEquals(m.id, viewerId))) {
       const firstActive = members.find((m) => m.status === 'active') || members[0];
       if (firstActive) setViewerId(String(firstActive.id));
       return;
@@ -124,7 +127,7 @@ export default function Dashboard() {
     try {
       const saved = localStorage.getItem('sp.viewerMemberId');
       if (saved) {
-        const found = members.find((m) => idEquals(m.id, saved));
+        const found = members.find((m) => memberIdEquals(m.id, saved));
         if (found) {
           setViewerId(String(found.id));
           return;
@@ -148,7 +151,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!viewerId || !members.length) return;
-    const viewer = members.find((m) => String(m.id) === String(viewerId));
+    const viewer = members.find((m) => memberIdEquals(m.id, viewerId));
     if (!viewer) return;
     try {
       localStorage.setItem('sp.viewerMemberName', viewer.name || '');
@@ -163,11 +166,14 @@ export default function Dashboard() {
       setTaskAllocations([]);
       return;
     }
+    setTaskAllocations([]);
     let cancelled = false;
     api
       .getTimeAllocations({ team_member_id: viewerId })
       .then((rows) => {
-        if (!cancelled) setTaskAllocations(Array.isArray(rows) ? rows : []);
+        if (cancelled) return;
+        const list = Array.isArray(rows) ? rows : [];
+        setTaskAllocations(list.filter((r) => memberIdEquals(r.team_member_id, viewerId)));
       })
       .catch((e) => {
         console.error(e);
@@ -183,11 +189,13 @@ export default function Dashboard() {
       setViewerTasks([]);
       return;
     }
+    setViewerTasks([]);
     let cancelled = false;
     api
       .getTasks({ team_member_id: viewerId })
       .then((rows) => {
-        if (!cancelled) setViewerTasks(Array.isArray(rows) ? rows : []);
+        if (cancelled) return;
+        setViewerTasks(Array.isArray(rows) ? rows : []);
       })
       .catch((e) => {
         console.error(e);
@@ -208,11 +216,12 @@ export default function Dashboard() {
 
   const mergedForViewer = useMemo(() => {
     if (!viewerId) return [];
-    const pid = String(viewerId);
     const projectRows = allocations
-      .filter((a) => String(a.member_id || '') === pid)
+      .filter((a) => memberIdEquals(a.member_id, viewerId))
       .map((a) => ({ raw: a, kind: 'project' }));
-    const taskRows = taskAllocations.map((a) => ({ raw: a, kind: 'task' }));
+    const taskRows = taskAllocations
+      .filter((a) => memberIdEquals(a.team_member_id, viewerId))
+      .map((a) => ({ raw: a, kind: 'task' }));
     return [...taskRows, ...projectRows];
   }, [viewerId, allocations, taskAllocations]);
 
@@ -343,7 +352,7 @@ export default function Dashboard() {
     }
 
     return [...dedupedBase, ...extra];
-  }, [mergedForViewer, viewerTasks, todayYmd]);
+  }, [mergedForViewer, viewerTasks, todayYmd, viewerId]);
 
   /** 與 Tasks overview 共用，避免 widget 再打一隻 API */
   const { data: personalTasks = [] } = useSWR(
