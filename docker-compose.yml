@@ -47,6 +47,31 @@ services:
     networks:
       - studio-net
 
+  # 開發用 API：連獨立資料庫（預設 studio_pm_dev），經 nginx /api-dev/ 對外
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: studio-pm-api-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_DEV_NAME:-studio_pm_dev}
+      DB_USER: ${DB_USER:-studio}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      # 與正式後端共用 uploads，複製 DB 後附件路徑仍有效；在 dev 刪改檔案會影響正式上傳目錄，請留意
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - studio-net
+
   frontend:
     build:
       context: ./frontend
@@ -65,8 +90,8 @@ services:
   # Optional dev-mode frontend with hot reload.
   # Start with: docker compose --profile dev up -d frontend-dev
   # Access at:  http://<VM-LAN-IP>:3000  (production stays on port 80 via nginx)
-  # 從「別台內網電腦」開 dev 時，請在 .env 設 DEV_NEXT_PUBLIC_API_URL=http://<VM-LAN-IP>/api
-  # （預設 http://localhost/api 僅適合瀏覽器跑在 VM 本機時）
+  # 從內網開 dev 時在 .env 設 DEV_NEXT_PUBLIC_API_URL=http://<VM-LAN-IP>/api-dev（連 backend-dev / studio_pm_dev）
+  # 預設 http://localhost/api-dev 適合瀏覽器在 VM 本機開 localhost:3000
   frontend-dev:
     image: node:20-alpine
     container_name: studio-pm-web-dev
@@ -74,7 +99,7 @@ services:
     working_dir: /app
     command: sh -c "npm install && npm run dev -- -p 3000 -H 0.0.0.0"
     environment:
-      NEXT_PUBLIC_API_URL: ${DEV_NEXT_PUBLIC_API_URL:-http://localhost/api}
+      NEXT_PUBLIC_API_URL: ${DEV_NEXT_PUBLIC_API_URL:-http://localhost/api-dev}
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:
@@ -85,6 +110,7 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+      - backend-dev
     networks:
       - studio-net
 
@@ -99,6 +125,7 @@ services:
       - uploads_data:/app/uploads:ro
     depends_on:
       - backend
+      - backend-dev
       - frontend
     networks:
       - studio-net

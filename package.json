@@ -4,6 +4,7 @@
   "scripts": {
     "install:all": "npm install --prefix frontend && npm install --prefix backend",
     "db:migrate:milestones": "npm run db:migrate:milestones --prefix backend",
+    "db:clone-to-dev": "bash scripts/clone-db-to-dev.sh",
     "dev:web": "npm run dev --prefix frontend",
     "dev:api": "npm start --prefix backend",
     "dev:api:3110": "npm run start:3110 --prefix backend"

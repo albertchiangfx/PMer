@@ -8,6 +8,14 @@ function getApiBase() {
   const raw = process.env.NEXT_PUBLIC_API_URL;
   const configured = raw != null ? String(raw).trim() : '';
 
+  // 已設定完整網址（LAN、/api-dev 等）時一律採用，避免 next dev 在 localhost:3000 時誤連 127.0.0.1:3001 正式後端
+  if (
+    configured &&
+    (configured.startsWith('http://') || configured.startsWith('https://'))
+  ) {
+    return configured.replace(/\/$/, '');
+  }
+
   if (typeof window !== 'undefined') {
     const { hostname, port } = window.location;
     const local =
