@@ -44,6 +44,18 @@ function memberTaskSlicesOverlapToday(task, viewerId, todayYmd) {
   return false;
 }
 
+/**
+ * Dashboard「今日」任務 fallback：優先看 time_allocation 區間是否蓋到今天；
+ * 若該成員在任務上已有分配列，但區間與任務主檔日期不一致導致沒蓋到今天，仍用任務起訖判斷（新指派／舊資料常見）。
+ */
+function viewerTaskEligibleForTodayOverview(task, viewerId, todayYmd) {
+  if (memberTaskSlicesOverlapToday(task, viewerId, todayYmd)) return true;
+  const allocs = Array.isArray(task?.allocations) ? task.allocations : [];
+  const hasViewerAlloc = allocs.some((a) => memberIdEquals(a?.team_member_id, viewerId));
+  if (!hasViewerAlloc) return false;
+  return sliceDatesOverlapToday({ start_date: task.start_date, end_date: task.end_date }, todayYmd);
+}
+
 function allocationProgressPct(startYmd, endYmd, todayYmd) {
   try {
     const s = parseISO(toYmd(startYmd) || startYmd);
@@ -300,7 +312,7 @@ export default function Dashboard() {
 
     const extra = [];
     for (const t of viewerTasks) {
-      if (!memberTaskSlicesOverlapToday(t, viewerId, today)) continue;
+      if (!viewerTaskEligibleForTodayOverview(t, viewerId, today)) continue;
       if (shownTaskIds.has(String(t.id).toLowerCase())) continue;
 
       const endForDelta = toYmd(t.end_date);

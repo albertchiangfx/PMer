@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { fetchProjectBounds, assertIntervalWithinBounds } = require('../lib/projectDateBounds');
 
 // Conflict detection helper
 async function detectConflicts(db, memberId, startDate, endDate, excludeId = null) {
@@ -49,6 +50,14 @@ router.post('/', async (req, res, next) => {
     const { task_id, team_member_id, allocated_days, allocated_hours, start_date, end_date, notes } = req.body;
     if (!task_id || !team_member_id) return res.status(400).json({ error: 'task_id and team_member_id are required' });
 
+    if (start_date && end_date) {
+      const t = await db.query('SELECT project_id FROM tasks WHERE id = $1', [task_id]);
+      if (!t.rows.length) return res.status(404).json({ error: 'Task not found' });
+      const bounds = await fetchProjectBounds(db, t.rows[0].project_id);
+      const boundErr = assertIntervalWithinBounds(start_date, end_date, bounds);
+      if (boundErr) return res.status(400).json({ error: boundErr });
+    }
+
     const conflicts =
       start_date && end_date
         ? await detectConflicts(db, team_member_id, start_date, end_date)
@@ -67,6 +76,22 @@ router.put('/:id', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { task_id, team_member_id, allocated_days, allocated_hours, start_date, end_date, notes } = req.body;
+
+    const cur = await db.query(
+      'SELECT task_id, start_date, end_date FROM time_allocations WHERE id = $1',
+      [req.params.id]
+    );
+    if (!cur.rows.length) return res.status(404).json({ error: 'Allocation not found' });
+    const effTaskId = task_id != null ? task_id : cur.rows[0].task_id;
+    const effStart = start_date != null ? start_date : cur.rows[0].start_date;
+    const effEnd = end_date != null ? end_date : cur.rows[0].end_date;
+    if (effStart && effEnd) {
+      const t = await db.query('SELECT project_id FROM tasks WHERE id = $1', [effTaskId]);
+      if (!t.rows.length) return res.status(404).json({ error: 'Task not found' });
+      const bounds = await fetchProjectBounds(db, t.rows[0].project_id);
+      const boundErr = assertIntervalWithinBounds(effStart, effEnd, bounds);
+      if (boundErr) return res.status(400).json({ error: boundErr });
+    }
 
     let conflicts = [];
     if (start_date && end_date && team_member_id) {

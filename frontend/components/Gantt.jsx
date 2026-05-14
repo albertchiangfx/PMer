@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
-import { addDays, format, parseISO, differenceInDays, startOfWeek, eachDayOfInterval, isToday, isWeekend } from 'date-fns';
+import { addDays, format, parseISO, differenceInDays, differenceInCalendarDays, startOfWeek, eachDayOfInterval, isToday, isWeekend, isValid } from 'date-fns';
 import { api } from '../lib/api';
 import { initials } from '../lib/utils';
 import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY, barTouchesTimelineViewportLeft } from './ganttOffscreenDots';
@@ -39,6 +39,28 @@ function memberKey(alloc) {
   return alloc.member_id || alloc.team_member_id;
 }
 
+/** 將分配條的起訖限制在專案 start_date～end_date（皆有效時）。 */
+function clampAllocDateRangeToBounds(startDate, endDate, boundStartYmd, boundEndYmd) {
+  const lo = parseISO(String(boundStartYmd).slice(0, 10));
+  const hi = parseISO(String(boundEndYmd).slice(0, 10));
+  if (!isValid(lo) || !isValid(hi) || hi < lo) return { start: startDate, end: endDate };
+  let s = startDate instanceof Date ? startDate : parseISO(startDate);
+  let e = endDate instanceof Date ? endDate : parseISO(endDate);
+  if (!isValid(s) || !isValid(e)) return { start: startDate, end: endDate };
+  const len = Math.max(0, differenceInCalendarDays(e, s));
+  if (s < lo) {
+    s = lo;
+    e = addDays(lo, len);
+  }
+  if (e > hi) {
+    e = hi;
+    s = addDays(hi, -len);
+    if (s < lo) s = lo;
+  }
+  if (e < s) e = s;
+  return { start: s, end: e };
+}
+
 /** One timeline row per member; that member's allocations render as bars on the same row. */
 export default function Gantt({
   members = [],
@@ -54,7 +76,9 @@ export default function Gantt({
   /** When set with `onTimelineModeChange`, parent controls mode and the built-in dropdown is hidden. */
   timelineMode: timelineModeProp,
   onTimelineModeChange,
-  /** 提示點填充色（例如來自 `<input type="color">`）；未傳則讀 localStorage */
+  /** 若回傳 { start, end } YYYY-MM-DD，拖曳分配條時會限制在該區間內（通常為專案起訖）。 */
+  scheduleBoundaryForAllocation,
+  /** 可選：畫面外提示點的底色（例如 #hex）；未傳則用 localStorage 或預設。 */
   offscreenDotColor,
 }) {
   const containerRef = useRef(null);
@@ -300,13 +324,24 @@ export default function Gantt({
         newMemberId = memberKey(origAlloc);
       }
 
-      const hasConflict = checkGhostConflict(newMemberId, newStart, newEnd, origAlloc.id);
+      let clStart = newStart;
+      let clEnd = newEnd;
+      if (typeof scheduleBoundaryForAllocation === 'function') {
+        const b = scheduleBoundaryForAllocation(origAlloc);
+        if (b?.start && b?.end) {
+          const c = clampAllocDateRangeToBounds(newStart, newEnd, b.start, b.end);
+          clStart = c.start;
+          clEnd = c.end;
+        }
+      }
+
+      const hasConflict = checkGhostConflict(newMemberId, clStart, clEnd, origAlloc.id);
       const barTitle = origAlloc.task_name || origAlloc.project_name || 'Allocation';
       setGhost({
         rowIdx: ghostRowIdx,
         memberId: newMemberId,
-        startDate: newStart,
-        endDate: newEnd,
+        startDate: clStart,
+        endDate: clEnd,
         title: barTitle,
         projectName: origAlloc.project_name,
         color: origAlloc.project_color || 'var(--apple-blue)',
@@ -322,13 +357,23 @@ export default function Gantt({
         return;
       }
       const { origAlloc } = dragging;
+      let startDate = g.startDate;
+      let endDate = g.endDate;
+      if (typeof scheduleBoundaryForAllocation === 'function') {
+        const b = scheduleBoundaryForAllocation(origAlloc);
+        if (b?.start && b?.end) {
+          const c = clampAllocDateRangeToBounds(g.startDate, g.endDate, b.start, b.end);
+          startDate = c.start;
+          endDate = c.end;
+        }
+      }
       // Always attempt to save: overlaps are now expected (they stack in lanes).
       try {
         await api.updateAllocation(origAlloc.id, {
           project_id: origAlloc.project_id,
           member_id: g.memberId,
-          start_date: format(g.startDate, 'yyyy-MM-dd'),
-          end_date: format(g.endDate, 'yyyy-MM-dd'),
+          start_date: format(startDate, 'yyyy-MM-dd'),
+          end_date: format(endDate, 'yyyy-MM-dd'),
           notes: origAlloc.notes ?? null,
         });
         onUpdate?.();
@@ -347,7 +392,7 @@ export default function Gantt({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [dragging, xToDate, memberRows, checkGhostConflict, onUpdate, lockMemberRowOnMove]);
+  }, [dragging, xToDate, memberRows, checkGhostConflict, onUpdate, lockMemberRowOnMove, scheduleBoundaryForAllocation]);
 
   // Initial scroll runs ONCE on mount only. We intentionally do NOT depend on
   // dateToX/today, otherwise zoom/range-changes would force the view back to

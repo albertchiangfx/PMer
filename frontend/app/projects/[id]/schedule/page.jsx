@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { api } from '../../../../lib/api';
+import { validateIntervalWithinProject } from '../../../../lib/projectScheduleBounds';
 import Gantt from '../../../../components/Gantt';
 
 export default function ProjectSchedulePage() {
@@ -28,6 +29,21 @@ export default function ProjectSchedulePage() {
       notes: '',
     };
   }
+
+  const projectBoundsYmd = useMemo(
+    () => ({
+      start: project?.start_date != null ? String(project.start_date).slice(0, 10) : '',
+      end: project?.end_date != null ? String(project.end_date).slice(0, 10) : '',
+    }),
+    [project?.start_date, project?.end_date]
+  );
+  const scheduleBoundaryForAllocation = useCallback(
+    () =>
+      projectBoundsYmd.start && projectBoundsYmd.end
+        ? { start: projectBoundsYmd.start, end: projectBoundsYmd.end }
+        : null,
+    [projectBoundsYmd.start, projectBoundsYmd.end]
+  );
 
   const load = useCallback(async () => {
     const [proj, memberList, allocs] = await Promise.all([
@@ -53,6 +69,18 @@ export default function ProjectSchedulePage() {
     if (!allocForm.member_id || !allocForm.start_date || !allocForm.end_date) {
       alert('請選擇成員並填寫開始／結束日期');
       return;
+    }
+    if (projectBoundsYmd.start && projectBoundsYmd.end) {
+      const v = validateIntervalWithinProject(
+        allocForm.start_date,
+        allocForm.end_date,
+        projectBoundsYmd.start,
+        projectBoundsYmd.end
+      );
+      if (!v.ok) {
+        alert(v.message);
+        return;
+      }
     }
     try {
       await api.createAllocation({
@@ -154,6 +182,7 @@ export default function ProjectSchedulePage() {
         lockMemberRowOnMove
         labelColumnTitle="成員"
         emptyHint="此專案尚無時間分配，請按「新增分配」建立第一列。"
+        scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
       />
 
       {allocModalOpen && (
@@ -176,6 +205,8 @@ export default function ProjectSchedulePage() {
                   value={allocForm.start_date}
                   onChange={(v) => setAllocForm((f) => ({ ...f, start_date: v }))}
                   required
+                  min={projectBoundsYmd.start || undefined}
+                  max={projectBoundsYmd.end || undefined}
                 />
               </div>
               <div>
@@ -185,6 +216,8 @@ export default function ProjectSchedulePage() {
                   value={allocForm.end_date}
                   onChange={(v) => setAllocForm((f) => ({ ...f, end_date: v }))}
                   required
+                  min={projectBoundsYmd.start || undefined}
+                  max={projectBoundsYmd.end || undefined}
                 />
               </div>
             </div>
@@ -230,13 +263,15 @@ function Label({ children }) {
   return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>;
 }
 
-function Input({ type = 'text', value, onChange, required }) {
+function Input({ type = 'text', value, onChange, required, min, max }) {
   return (
     <input
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       required={required}
+      min={min}
+      max={max}
       className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
     />
   );

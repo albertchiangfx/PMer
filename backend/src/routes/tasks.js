@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { fetchProjectBounds, assertIntervalWithinBounds } = require('../lib/projectDateBounds');
 
 router.get('/', async (req, res, next) => {
   try {
@@ -55,6 +56,9 @@ router.post('/', async (req, res, next) => {
     const db = req.app.locals.db;
     const { project_id, name, description, task_type, status, priority, start_date, end_date, order_index } = req.body;
     if (!project_id || !name) return res.status(400).json({ error: 'project_id and name are required' });
+    const bounds = await fetchProjectBounds(db, project_id);
+    const boundErr = assertIntervalWithinBounds(start_date, end_date, bounds);
+    if (boundErr) return res.status(400).json({ error: boundErr });
     const { rows } = await db.query(`
       INSERT INTO tasks (project_id, name, description, task_type, status, priority, start_date, end_date, order_index)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
@@ -67,6 +71,11 @@ router.put('/:id', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { name, description, task_type, status, priority, start_date, end_date, order_index } = req.body;
+    const cur = await db.query('SELECT project_id FROM tasks WHERE id = $1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'Task not found' });
+    const bounds = await fetchProjectBounds(db, cur.rows[0].project_id);
+    const boundErr = assertIntervalWithinBounds(start_date, end_date, bounds);
+    if (boundErr) return res.status(400).json({ error: boundErr });
     const { rows } = await db.query(`
       UPDATE tasks SET name=$1, description=$2, task_type=$3, status=$4, priority=$5,
         start_date=$6, end_date=$7, order_index=$8 WHERE id=$9 RETURNING *

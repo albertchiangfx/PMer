@@ -7,7 +7,7 @@ import { api } from '../../lib/api';
 import { fmtCurrency, statusStyle, fmt } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
 import { MILESTONE_TEMPLATE_OPTIONS } from '../../lib/milestone-templates';
-import { MILESTONE_DATA_CHANGED_EVENT, notifyMilestoneDataChanged } from '../../lib/dashboard-sync';
+import { MILESTONE_DATA_CHANGED_EVENT, notifyMilestoneDataChanged, notifyScheduleDataChanged } from '../../lib/dashboard-sync';
 
 const STATUS_OPTS = ['planning', 'active', 'completed', 'paused', 'cancelled'];
 const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
@@ -124,6 +124,7 @@ export default function ProjectsPage() {
       } else await api.updateProject(modal.id, data);
       setModal(null);
       await load();
+      notifyScheduleDataChanged();
     } catch (err) {
       console.error(err);
       alert(err?.message || String(err));

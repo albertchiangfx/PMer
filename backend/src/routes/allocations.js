@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { fetchProjectBounds, assertIntervalWithinBounds } = require('../lib/projectDateBounds');
 
 function normalizeDateRange(start, end) {
   if (!start || !end) return null;
@@ -60,6 +61,10 @@ router.post('/', async (req, res, next) => {
     const range = normalizeDateRange(start_date, end_date);
     if (!range) return res.status(400).json({ error: 'start_date and end_date are required' });
 
+    const bounds = await fetchProjectBounds(db, project_id);
+    const boundErr = assertIntervalWithinBounds(range.start_date, range.end_date, bounds);
+    if (boundErr) return res.status(400).json({ error: boundErr });
+
     const conflicts = await detectConflicts(db, member_id, range.start_date, range.end_date);
     const { rows } = await db.query(
       `INSERT INTO allocations (project_id, member_id, start_date, end_date, notes)
@@ -88,6 +93,10 @@ router.put('/:id', async (req, res, next) => {
 
     const range = normalizeDateRange(start_date, end_date);
     if (!range) return res.status(400).json({ error: 'start_date and end_date are required' });
+
+    const bounds = await fetchProjectBounds(db, project_id);
+    const boundErr = assertIntervalWithinBounds(range.start_date, range.end_date, bounds);
+    if (boundErr) return res.status(400).json({ error: boundErr });
 
     const conflicts = await detectConflicts(db, member_id, range.start_date, range.end_date, req.params.id);
     const { rows } = await db.query(

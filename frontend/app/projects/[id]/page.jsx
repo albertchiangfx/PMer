@@ -1,8 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../../lib/api';
+import { notifyScheduleDataChanged } from '../../../lib/dashboard-sync';
+import { validateIntervalWithinProject } from '../../../lib/projectScheduleBounds';
 import { fmtCurrency, statusStyle, fmt, initials } from '../../../lib/utils';
 import TaskCard from '../../../components/TaskCard';
 import Gantt from '../../../components/Gantt';
@@ -60,6 +62,18 @@ export default function ProjectDetailPage() {
   function defaultAllocForm() {
     return { member_id: '', start_date: '', end_date: '', notes: '' };
   }
+
+  const projectBoundsYmd = useMemo(
+    () => ({ start: sliceProjectYmd(project?.start_date), end: sliceProjectYmd(project?.end_date) }),
+    [project?.start_date, project?.end_date]
+  );
+  const scheduleBoundaryForAllocation = useCallback(
+    () =>
+      projectBoundsYmd.start && projectBoundsYmd.end
+        ? { start: projectBoundsYmd.start, end: projectBoundsYmd.end }
+        : null,
+    [projectBoundsYmd.start, projectBoundsYmd.end]
+  );
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -126,6 +140,18 @@ export default function ProjectDetailPage() {
       alert('已指派成員時，請填寫開始／結束日期');
       return;
     }
+    if (projectBoundsYmd.start && projectBoundsYmd.end && taskForm.start_date && taskForm.end_date) {
+      const v = validateIntervalWithinProject(
+        taskForm.start_date,
+        taskForm.end_date,
+        projectBoundsYmd.start,
+        projectBoundsYmd.end
+      );
+      if (!v.ok) {
+        alert(v.message);
+        return;
+      }
+    }
 
     let saved;
     if (taskModal === 'create') saved = await api.createTask(data);
@@ -148,13 +174,15 @@ export default function ProjectDetailPage() {
       }
     }
     setTaskModal(null);
-    load();
+    await load();
+    notifyScheduleDataChanged();
   };
 
   const delTask = async (t) => {
     if (!confirm(`刪除任務「${t.name}」？`)) return;
     await api.deleteTask(t.id);
-    load();
+    await load();
+    notifyScheduleDataChanged();
   };
 
   const saveProjectAlloc = async (e) => {
@@ -162,6 +190,18 @@ export default function ProjectDetailPage() {
     if (!allocForm.member_id || !allocForm.start_date || !allocForm.end_date) {
       alert('請選擇成員並填寫開始／結束日期');
       return;
+    }
+    if (projectBoundsYmd.start && projectBoundsYmd.end) {
+      const v = validateIntervalWithinProject(
+        allocForm.start_date,
+        allocForm.end_date,
+        projectBoundsYmd.start,
+        projectBoundsYmd.end
+      );
+      if (!v.ok) {
+        alert(v.message);
+        return;
+      }
     }
     try {
       await api.createAllocation({
@@ -471,6 +511,7 @@ export default function ProjectDetailPage() {
                 showRowDelete
                 lockMemberRowOnMove
                 labelColumnTitle="成員"
+                scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
               />
             </>
           ) : (
@@ -514,8 +555,26 @@ export default function ProjectDetailPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>開始日期</Label><Input type="date" value={taskForm.start_date} onChange={v => setTaskForm(f => ({ ...f, start_date: v }))} /></div>
-              <div><Label>結束日期</Label><Input type="date" value={taskForm.end_date} onChange={v => setTaskForm(f => ({ ...f, end_date: v }))} /></div>
+              <div>
+                <Label>開始日期</Label>
+                <Input
+                  type="date"
+                  value={taskForm.start_date}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, start_date: v }))}
+                  min={projectBoundsYmd.start || undefined}
+                  max={projectBoundsYmd.end || undefined}
+                />
+              </div>
+              <div>
+                <Label>結束日期</Label>
+                <Input
+                  type="date"
+                  value={taskForm.end_date}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, end_date: v }))}
+                  min={projectBoundsYmd.start || undefined}
+                  max={projectBoundsYmd.end || undefined}
+                />
+              </div>
             </div>
             <div>
               <Label>指派給</Label>
@@ -550,8 +609,28 @@ export default function ProjectDetailPage() {
                 options={members.map(m => ({ value: m.id, label: `${m.name} (${m.role})` }))} required />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>開始日期</Label><Input type="date" value={allocForm.start_date} onChange={v => setAllocForm(f => ({ ...f, start_date: v }))} required /></div>
-              <div><Label>結束日期</Label><Input type="date" value={allocForm.end_date} onChange={v => setAllocForm(f => ({ ...f, end_date: v }))} required /></div>
+              <div>
+                <Label>開始日期</Label>
+                <Input
+                  type="date"
+                  value={allocForm.start_date}
+                  onChange={(v) => setAllocForm((f) => ({ ...f, start_date: v }))}
+                  required
+                  min={projectBoundsYmd.start || undefined}
+                  max={projectBoundsYmd.end || undefined}
+                />
+              </div>
+              <div>
+                <Label>結束日期</Label>
+                <Input
+                  type="date"
+                  value={allocForm.end_date}
+                  onChange={(v) => setAllocForm((f) => ({ ...f, end_date: v }))}
+                  required
+                  min={projectBoundsYmd.start || undefined}
+                  max={projectBoundsYmd.end || undefined}
+                />
+              </div>
             </div>
             <div>
               <Label>備註</Label>
@@ -585,9 +664,19 @@ function Modal({ title, onClose, children }) {
   );
 }
 function Label({ children }) { return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>; }
-function Input({ type = 'text', value, onChange, required, placeholder }) {
-  return <input type={type} value={value} onChange={e => onChange(e.target.value)} required={required} placeholder={placeholder}
-    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />;
+function Input({ type = 'text', value, onChange, required, placeholder, min, max }) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+      placeholder={placeholder}
+      min={min}
+      max={max}
+      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    />
+  );
 }
 function Select({ value, onChange, options, required }) {
   const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
@@ -8,6 +8,7 @@ import Gantt from './Gantt';
 import StudioProjectsGantt from './StudioProjectsGantt';
 import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY } from './ganttOffscreenDots';
 import { notifyScheduleDataChanged } from '../lib/dashboard-sync';
+import { validateIntervalWithinProject } from '../lib/projectScheduleBounds';
 
 export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程' }) {
   const [members, setMembers] = useState([]);
@@ -36,6 +37,21 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
       notes: '',
     };
   }
+
+  const scheduleBoundaryForAllocation = useCallback(
+    (alloc) => {
+      const p = projects.find((x) => String(x.id) === String(alloc?.project_id));
+      if (!p?.start_date || !p?.end_date) return null;
+      return { start: String(p.start_date).slice(0, 10), end: String(p.end_date).slice(0, 10) };
+    },
+    [projects]
+  );
+
+  const allocModalDateBounds = useMemo(() => {
+    const sp = projects.find((x) => String(x.id) === String(allocForm.project_id));
+    if (!sp?.start_date || !sp?.end_date) return { min: undefined, max: undefined };
+    return { min: String(sp.start_date).slice(0, 10), max: String(sp.end_date).slice(0, 10) };
+  }, [projects, allocForm.project_id]);
 
   const load = useCallback(async () => {
     const [m, p, a] = await Promise.all([
@@ -79,6 +95,19 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
     if (!allocForm.project_id || !allocForm.member_id || !allocForm.start_date || !allocForm.end_date) {
       alert('請選擇專案、成員並填寫開始／結束日期');
       return;
+    }
+    const proj = projects.find((x) => String(x.id) === String(allocForm.project_id));
+    if (proj?.start_date && proj?.end_date) {
+      const v = validateIntervalWithinProject(
+        allocForm.start_date,
+        allocForm.end_date,
+        String(proj.start_date).slice(0, 10),
+        String(proj.end_date).slice(0, 10)
+      );
+      if (!v.ok) {
+        alert(v.message);
+        return;
+      }
     }
     try {
       await api.createAllocation({
@@ -216,6 +245,7 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
           timelineMode={ganttTimelineMode}
           onTimelineModeChange={setGanttTimelineMode}
           offscreenDotColor={offscreenDotHex}
+          scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
         />
       )}
 
@@ -248,6 +278,8 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
                   value={allocForm.start_date}
                   onChange={(v) => setAllocForm((f) => ({ ...f, start_date: v }))}
                   required
+                  min={allocModalDateBounds.min}
+                  max={allocModalDateBounds.max}
                 />
               </div>
               <div>
@@ -257,6 +289,8 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
                   value={allocForm.end_date}
                   onChange={(v) => setAllocForm((f) => ({ ...f, end_date: v }))}
                   required
+                  min={allocModalDateBounds.min}
+                  max={allocModalDateBounds.max}
                 />
               </div>
             </div>
@@ -294,13 +328,15 @@ function Modal({ title, onClose, children }) {
 }
 
 function Label({ children }) { return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>; }
-function Input({ type = 'text', value, onChange, required }) {
+function Input({ type = 'text', value, onChange, required, min, max }) {
   return (
     <input
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       required={required}
+      min={min}
+      max={max}
       className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
     />
   );

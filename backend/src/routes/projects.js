@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { fetchProjectBounds, clampProjectDescendantsToBounds } = require('../lib/projectDateBounds');
 
 /** Postgres DATE rejects ''; JSON often sends "" when inputs are cleared. */
 function dateOrNull(v) {
@@ -66,10 +67,12 @@ router.post('/', async (req, res, next) => {
 });
 
 router.put('/:id', async (req, res, next) => {
+  const db = req.app.locals.db;
+  const { name, client_id, description, budget, status, start_date, end_date, color } = req.body;
+  const client = await db.connect();
   try {
-    const db = req.app.locals.db;
-    const { name, client_id, description, budget, status, start_date, end_date, color } = req.body;
-    const { rows } = await db.query(`
+    await client.query('BEGIN');
+    const { rows } = await client.query(`
       UPDATE projects SET name=$1, client_id=$2, description=$3, budget=$4, status=$5,
         start_date=$6, end_date=$7, color=$8 WHERE id=$9 RETURNING *
     `, [
@@ -83,9 +86,24 @@ router.put('/:id', async (req, res, next) => {
       color,
       req.params.id,
     ]);
-    if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const bounds = await fetchProjectBounds(client, req.params.id);
+    if (bounds) await clampProjectDescendantsToBounds(client, req.params.id, bounds);
+    await client.query('COMMIT');
     res.json(rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      /* ignore */
+    }
+    next(e);
+  } finally {
+    client.release();
+  }
 });
 
 router.delete('/:id', async (req, res, next) => {
