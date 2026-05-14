@@ -6,6 +6,7 @@ import { api } from '../../../lib/api';
 import { fmtCurrency, statusStyle, fmt, initials } from '../../../lib/utils';
 import TaskCard from '../../../components/TaskCard';
 import Gantt from '../../../components/Gantt';
+import ProjectMilestoneTimeline from '../../../components/ProjectMilestoneTimeline';
 import ProjectMilestonesPanel from '../../../components/ProjectMilestonesPanel';
 
 const TASK_TYPES = ['general', 'modeling', 'rigging', 'animation', 'rendering', 'compositing', 'vfx', 'audio', 'review'];
@@ -40,6 +41,7 @@ export default function ProjectDetailPage() {
   const [allocForm, setAllocForm] = useState(defaultAllocForm());
   const [tab, setTab] = useState('tasks');
   const [ganttWeeks, setGanttWeeks] = useState(12);
+  const [ganttMode, setGanttMode] = useState('members');
   const [projDropdownOpen, setProjDropdownOpen] = useState(false);
   const projDropdownRef = useRef(null);
 
@@ -192,7 +194,7 @@ export default function ProjectDetailPage() {
   const s = statusStyle(project.status);
 
   return (
-    <div className="p-8 max-w-6xl mx-auto animate-fade-in">
+    <div className="p-8 w-full max-w-full mx-auto animate-fade-in">
       {/* Breadcrumb — current project name is a dropdown that lets you switch
           to another project without going back to the projects list. */}
       <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
@@ -413,10 +415,27 @@ export default function ProjectDetailPage() {
 
       {tab === 'gantt' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <p className="text-sm text-slate-500">
-              橫軸為時間；縱軸每一列為一筆分配（同人可多列）。拖拉條可改日期，上下拖拉可改指派成員。列旁可刪除該筆分配。
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setGanttMode('members')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  ganttMode === 'members' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                成員分配
+              </button>
+              <button
+                type="button"
+                onClick={() => setGanttMode('milestones')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  ganttMode === 'milestones' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                里程碑時程
+              </button>
+            </div>
             <div className="flex items-center gap-3 flex-wrap">
               <Link
                 href={`/projects/${id}/schedule`}
@@ -424,26 +443,51 @@ export default function ProjectDetailPage() {
               >
                 開啟專案時程甘特（全頁）→
               </Link>
-            <select
-              value={ganttWeeks}
-              onChange={(e) => setGanttWeeks(Number(e.target.value))}
-              className="bg-white/55 border border-white/60 rounded-2xl px-3 py-2 text-sm text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
-            >
-              <option value={8}>8 週</option>
-              <option value={12}>12 週</option>
-              <option value={16}>16 週</option>
-              <option value={24}>24 週</option>
-            </select>
+              <select
+                value={ganttWeeks}
+                onChange={(e) => setGanttWeeks(Number(e.target.value))}
+                className="bg-white/55 border border-white/60 rounded-2xl px-3 py-2 text-sm text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
+              >
+                <option value={8}>8 週</option>
+                <option value={12}>12 週</option>
+                <option value={16}>16 週</option>
+                <option value={24}>24 週</option>
+              </select>
             </div>
           </div>
-          <Gantt
-            members={members}
-            allocations={projectAllocations}
-            onUpdate={refreshGantt}
-            rangeWeeks={ganttWeeks}
-            showRowDelete
-            labelColumnTitle="成員"
-          />
+
+          {ganttMode === 'members' ? (
+            <>
+              <p className="text-sm text-slate-500">
+                橫軸為時間；縱軸每一列為<strong className="font-semibold text-slate-700">一位成員</strong>
+                （同人可多筆分配上下疊列）。拖拉條可改日期；<strong className="font-semibold text-slate-700">不可</strong>
+                拖到人員列之間改指派（請用「成員分配」表單或全頁甘特）。列旁可刪除該筆分配。
+              </p>
+              <Gantt
+                members={members}
+                allocations={projectAllocations}
+                onUpdate={load}
+                rangeWeeks={ganttWeeks}
+                showRowDelete
+                lockMemberRowOnMove
+                labelColumnTitle="成員"
+              />
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500">
+                依專案里程碑<strong className="font-semibold text-slate-700">各一列</strong>
+                ；與工作時程甘特相同的格線與縮放習慣。尚未寫入 DB 的列會依專案起訖<strong className="font-semibold text-slate-700">均等切分</strong>
+                ；拖曳放開後會儲存至各里程碑的時程欄位（若儲存失敗請確認已執行 DB migration）。
+              </p>
+              <ProjectMilestoneTimeline
+                projectId={id}
+                project={project}
+                rangeWeeks={ganttWeeks}
+                onProjectDatesSaved={() => load()}
+              />
+            </>
+          )}
         </div>
       )}
 

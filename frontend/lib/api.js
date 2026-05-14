@@ -126,6 +126,7 @@ export const api = {
   getProjectMilestones: (projectId) =>
     request(`/project-milestones?project_id=${encodeURIComponent(projectId)}`),
   createProjectMilestone: (data) => request('/project-milestones', { method: 'POST', body: data }),
+  /** PATCH：舊版後端映像若未含 PUT /:id 會 404；PATCH 一直存在。 */
   updateProjectMilestone: (id, data) =>
     request(`/project-milestones/${encodeURIComponent(id)}`, { method: 'PATCH', body: data }),
   deleteProjectMilestone: (id) =>

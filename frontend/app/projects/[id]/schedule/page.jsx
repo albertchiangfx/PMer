@@ -141,7 +141,8 @@ export default function ProjectSchedulePage() {
       </div>
 
       <p className="text-sm text-slate-500 mb-4">
-        此頁以<strong className="font-semibold text-slate-700">專案</strong>為範圍；每一列是一筆分配。可按「新增分配」增加列，列旁的「刪除」可移除該筆分配。
+        此頁以<strong className="font-semibold text-slate-700">專案</strong>為範圍；每位成員一列，列上可有多筆時段。
+        可按「新增分配」增加列，列旁的「刪除」可移除該筆分配。拖曳時段<strong className="font-semibold text-slate-700">不會</strong>改指派到其他成員。
       </p>
 
       <Gantt
@@ -150,6 +151,7 @@ export default function ProjectSchedulePage() {
         onUpdate={refreshGantt}
         rangeWeeks={ganttWeeks}
         showRowDelete
+        lockMemberRowOnMove
         labelColumnTitle="成員"
         emptyHint="此專案尚無時間分配，請按「新增分配」建立第一列。"
       />

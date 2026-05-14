@@ -123,7 +123,7 @@ export default function AppShell({ children }) {
 
   return (
     <div className="app-bg app-blobs min-h-screen text-slate-900">
-      <div className="relative z-[1] mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-10">
+      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-24px))] px-4 py-6 sm:px-6 sm:py-10">
         <div className="flex min-h-[720px] w-full gap-4 sm:gap-5">
           {/* Floating two-layer nav (separated from main content). */}
           <div

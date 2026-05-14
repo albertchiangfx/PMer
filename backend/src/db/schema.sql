@@ -150,6 +150,8 @@ CREATE TABLE IF NOT EXISTS project_milestones (
   completed BOOLEAN NOT NULL DEFAULT false,
   sort_order INT NOT NULL DEFAULT 0,
   repeatable BOOLEAN NOT NULL DEFAULT false,
+  timeline_start_date DATE,
+  timeline_end_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

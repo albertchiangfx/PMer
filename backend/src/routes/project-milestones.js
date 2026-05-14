@@ -93,10 +93,11 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.patch('/:id', async (req, res, next) => {
+/** PATCH or PUT body: same fields. PUT avoids some proxies mishandling PATCH bodies. */
+async function updateMilestoneById(req, res, next) {
   try {
     const db = req.app.locals.db;
-    const { completed, label, sort_order } = req.body;
+    const { completed, label, sort_order, timeline_start_date, timeline_end_date } = req.body;
     const fields = [];
     const params = [];
     let i = 1;
@@ -112,6 +113,14 @@ router.patch('/:id', async (req, res, next) => {
       fields.push(`sort_order = $${i++}`);
       params.push(sort_order);
     }
+    if (timeline_start_date !== undefined) {
+      fields.push(`timeline_start_date = $${i++}`);
+      params.push(timeline_start_date || null);
+    }
+    if (timeline_end_date !== undefined) {
+      fields.push(`timeline_end_date = $${i++}`);
+      params.push(timeline_end_date || null);
+    }
     if (!fields.length) return res.status(400).json({ error: 'no updates' });
     params.push(req.params.id);
     const { rows } = await db.query(
@@ -123,7 +132,10 @@ router.patch('/:id', async (req, res, next) => {
   } catch (e) {
     next(e);
   }
-});
+}
+
+router.patch('/:id', updateMilestoneById);
+router.put('/:id', updateMilestoneById);
 
 router.delete('/:id', async (req, res, next) => {
   try {

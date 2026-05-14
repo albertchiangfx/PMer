@@ -47,6 +47,8 @@ export default function Gantt({
   rangeWeeks = 10,
   pastWeeks = 4,
   showRowDelete = false,
+  /** 若 true：水平拖曳分配條時不可改指派成員（禁止上下換列）。 */
+  lockMemberRowOnMove = false,
   labelColumnTitle = '成員',
   emptyHint,
   /** When set with `onTimelineModeChange`, parent controls mode and the built-in dropdown is hidden. */
@@ -267,14 +269,25 @@ export default function Gantt({
         newStart = xToDate(newStartX);
         newEnd = xToDate(newEndX - dayW);
 
-        const targetY = origRowMidY + dy;
         let newRowIdx = rowIdx;
-        for (let i = 0; i < memberRows.length; i++) {
-          if (targetY >= yOffsets[i] && targetY < yOffsets[i + 1]) { newRowIdx = i; break; }
+        let resolvedMemberId = memberKey(origAlloc);
+        if (lockMemberRowOnMove) {
+          newRowIdx = rowIdx;
+          ghostRowIdx = rowIdx;
+          resolvedMemberId = memberKey(origAlloc);
+        } else {
+          const targetY = origRowMidY + dy;
+          for (let i = 0; i < memberRows.length; i++) {
+            if (targetY >= yOffsets[i] && targetY < yOffsets[i + 1]) {
+              newRowIdx = i;
+              break;
+            }
+          }
+          newRowIdx = Math.max(0, Math.min(newRowIdx, Math.max(memberRows.length - 1, 0)));
+          ghostRowIdx = newRowIdx;
+          resolvedMemberId = memberRows[newRowIdx]?.member?.id || memberKey(origAlloc);
         }
-        newRowIdx = Math.max(0, Math.min(newRowIdx, Math.max(memberRows.length - 1, 0)));
-        ghostRowIdx = newRowIdx;
-        newMemberId = memberRows[newRowIdx]?.member?.id || memberKey(origAlloc);
+        newMemberId = resolvedMemberId;
       } else if (type === 'resize-right') {
         newStart = parseISO(origAlloc.start_date);
         const snappedDx = Math.round(dx / dayW) * dayW;
@@ -334,7 +347,7 @@ export default function Gantt({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [dragging, xToDate, memberRows, checkGhostConflict, onUpdate]);
+  }, [dragging, xToDate, memberRows, checkGhostConflict, onUpdate, lockMemberRowOnMove]);
 
   // Initial scroll runs ONCE on mount only. We intentionally do NOT depend on
   // dateToX/today, otherwise zoom/range-changes would force the view back to
