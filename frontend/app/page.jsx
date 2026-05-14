@@ -6,10 +6,28 @@ import SchedulePanel from '../components/SchedulePanel';
 import DashboardProjectWidget from '../components/DashboardProjectWidget';
 import { SCHEDULE_DATA_CHANGED_EVENT } from '../lib/dashboard-sync';
 
+/** YYYY-MM-DD for API dates (may be ISO strings with time). */
+function toYmd(v) {
+  if (v == null || v === '') return null;
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+/** Whether allocation / time block overlaps local-calendar `todayYmd`. */
+function allocationOverlapsToday(raw, todayYmd) {
+  const start = toYmd(raw?.start_date);
+  const end = toYmd(raw?.end_date);
+  if (!start && !end) return false;
+  if (start && end) return start <= todayYmd && end >= todayYmd;
+  if (start && !end) return start <= todayYmd;
+  if (!start && end) return end >= todayYmd;
+  return false;
+}
+
 function allocationProgressPct(startYmd, endYmd, todayYmd) {
   try {
-    const s = parseISO(startYmd);
-    const e = parseISO(endYmd);
+    const s = parseISO(toYmd(startYmd) || startYmd);
+    const e = parseISO(toYmd(endYmd) || endYmd);
     const t = parseISO(todayYmd);
     if (!isValid(s) || !isValid(e) || !isValid(t)) return 0;
     const total = differenceInCalendarDays(e, s) + 1;
@@ -151,9 +169,7 @@ export default function Dashboard() {
   }, [viewerId, allocations, taskAllocations]);
 
   const todayTaskRows = useMemo(() => {
-    const inRange = mergedForViewer.filter(
-      (item) => item.raw.start_date <= today && item.raw.end_date >= today
-    );
+    const inRange = mergedForViewer.filter((item) => allocationOverlapsToday(item.raw, today));
     inRange.sort((a, b) => String(a.raw.start_date).localeCompare(String(b.raw.start_date)));
 
     const taskProjectIds = new Set(

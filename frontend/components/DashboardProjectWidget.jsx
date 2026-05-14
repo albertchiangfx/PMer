@@ -37,7 +37,7 @@ function statusZh(s) {
 }
 
 /**
- * Dashboard：各專案里程碑完成度（進度條）與今日被指派的任務列。
+ * Dashboard：各專案里程碑完成度（進度條）與今日排程／任務列（含個人任務）。
  * 里程碑勾選請至「專案」列表或專案頁「里程碑」分頁。
  *
  * @param {object[]} [todayAssignments] — 今日與分配區間重疊的列（含 projectId、kind）
@@ -82,29 +82,26 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
     api.getPersonalTasks({ member_id: viewerId })
   );
 
-  const footerTodayChips = useMemo(() => {
-    const list = [];
-    for (const row of todayAssignments) {
-      list.push({
-        key: row.key,
-        title: row.title,
-        color: row.accentColor || '#78716c',
-        muted: row.badge === '排程',
-        href: row.href,
-      });
+  /** 含僅有個人任務、未出現在甘特／分配裡的專案 */
+  const projectsForList = useMemo(() => {
+    const byKey = new Map();
+    for (const p of projects) {
+      byKey.set(String(p.id).toLowerCase(), p);
     }
     for (const t of personalTasks) {
-      const proj = projects.find((x) => String(x.id).toLowerCase() === String(t.project_id).toLowerCase());
-      list.push({
-        key: `r-${t.id}`,
-        title: t.title,
-        color: t.urgent ? proj?.color || '#6366f1' : '#d6d3d1',
-        muted: !t.urgent,
-        href: proj ? `/projects/${proj.id}` : '/tasks',
+      const k = String(t.project_id || '').toLowerCase();
+      if (!k || byKey.has(k)) continue;
+      byKey.set(k, {
+        id: t.project_id,
+        name: t.project_name || '專案',
+        color: t.project_color || '#6366f1',
+        end_date: null,
+        status: 'planning',
+        client_name: null,
       });
     }
-    return list;
-  }, [todayAssignments, personalTasks, projects]);
+    return Array.from(byKey.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [projects, personalTasks]);
 
   const progressFor = (pid) => {
     const s = summaryByPid[String(pid).toLowerCase()];
@@ -115,12 +112,12 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
   if (!viewerId) {
     return (
       <section className="mt-6 surface rounded-[22px] px-6 py-10 text-center text-sm text-stone-400">
-        選擇成員後可在此檢視專案里程碑完成度
+        選擇成員後可在此檢視里程碑與今日任務／排程
       </section>
     );
   }
 
-  if (!projects.length) {
+  if (!projectsForList.length) {
     return (
       <section className="mt-6 surface rounded-[22px] px-6 py-10 text-center text-sm text-stone-500">
         尚未有被分配的專案。請在下方「工作時程」將你加入專案後，此區會列出里程碑進度。
@@ -136,10 +133,10 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
             className="text-lg font-semibold tracking-tight text-slate-900"
             style={{ fontFamily: "Georgia, 'Noto Serif TC', serif" }}
           >
-            專案進度
+            Tasks overview
           </h2>
           <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
-            依里程碑完成度顯示進度條；勾選里程碑請至「專案」列表或專案內「里程碑」
+            里程碑進度條與今日排程／任務；里程碑請至「專案」列表或專案內「里程碑」
           </p>
         </div>
         <Link href="/tasks" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1">
@@ -148,12 +145,15 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
       </div>
 
       <div className="px-6 pb-6 divide-y divide-stone-200/75">
-        {projects.map((p) => {
+        {projectsForList.map((p) => {
           const idLc = String(p.id).toLowerCase();
           const { pct, empty } = progressFor(p.id);
           const dayRows = todayByProject[idLc] || [];
-          const taskAssignmentRows = dayRows.filter((r) => r.kind === 'task');
-          const showTaskStrip = taskAssignmentRows.length > 0;
+          const scheduleRows = dayRows.filter((r) => r.kind === 'task' || r.kind === 'project');
+          const personalForProject = personalTasks.filter(
+            (t) => String(t.project_id || '').toLowerCase() === idLc
+          );
+          const showActivityStrip = scheduleRows.length > 0 || personalForProject.length > 0;
           const st = String(p.status || '').toLowerCase();
 
           return (
@@ -161,7 +161,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
               <div className="w-full grid grid-cols-[1fr_auto_auto] gap-3 sm:gap-5 items-start text-left py-2 rounded-lg min-h-[52px] relative z-[1]">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    {showTaskStrip && (
+                    {showActivityStrip && (
                       <span
                         className="w-1.5 h-1.5 rounded-full shrink-0"
                         style={{
@@ -214,9 +214,9 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                 </span>
               </div>
 
-              {showTaskStrip ? (
+              {showActivityStrip ? (
                 <div className="mt-2.5 ml-0.5 space-y-2 pl-3 border-l border-stone-200/90">
-                  {taskAssignmentRows.map((row) => (
+                  {scheduleRows.map((row) => (
                     <div key={row.key} className="text-[11px] leading-snug">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span
@@ -230,12 +230,21 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                         >
                           {row.title}
                         </Link>
-                        <Link
-                          href={`/projects/${p.id}#tasks`}
-                          className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 ml-auto sm:ml-0"
-                        >
-                          ＋ 新增任務
-                        </Link>
+                        {row.kind === 'task' ? (
+                          <Link
+                            href={`/projects/${p.id}#tasks`}
+                            className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 ml-auto sm:ml-0"
+                          >
+                            ＋ 新增任務
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/schedule`}
+                            className="shrink-0 text-[10px] font-semibold text-stone-500 hover:text-indigo-700 ml-auto sm:ml-0"
+                          >
+                            工作時程
+                          </Link>
+                        )}
                       </div>
                       <p className="mt-0.5 pl-3 text-[10px] text-stone-400">
                         {row.remainingWord !== '—' && row.remainingAbs != null
@@ -245,45 +254,32 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                       </p>
                     </div>
                   ))}
+                  {personalForProject.map((t) => (
+                    <div key={`pt-${t.id}`} className="text-[11px] leading-snug">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span
+                          className="w-1 h-1 rounded-full shrink-0"
+                          style={{ background: t.urgent ? p.color || '#6366f1' : '#a8a29e' }}
+                        />
+                        <Link
+                          href={`/tasks`}
+                          className={`min-w-0 truncate hover:text-indigo-700 ${
+                            t.urgent ? 'font-semibold text-slate-900' : 'font-medium text-stone-700'
+                          }`}
+                          style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
+                        >
+                          {t.title}
+                        </Link>
+                        <span className="text-[10px] text-stone-400 shrink-0 ml-auto sm:ml-0">個人任務</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
           );
         })}
       </div>
-
-      {footerTodayChips.length > 0 && (
-        <div className="px-6 pb-6 pt-1 mt-1 border-t border-stone-200/80">
-          <div className="flex items-center gap-3 my-3">
-            <div className="h-px flex-1 bg-stone-200/90" />
-            <span
-              className="text-[10px] font-semibold tracking-[0.14em] text-stone-400 shrink-0"
-              style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
-            >
-              今日里程
-            </span>
-            <div className="h-px flex-1 bg-stone-200/90" />
-          </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-2">
-            {footerTodayChips.map((c) => (
-              <Link
-                key={c.key}
-                href={c.href}
-                className={`inline-flex items-center gap-2 text-xs hover:opacity-80 ${
-                  c.muted ? 'font-normal' : 'font-semibold'
-                }`}
-                style={{
-                  color: c.muted ? '#78716c' : '#0f172a',
-                  fontFamily: "'Noto Sans TC', sans-serif",
-                }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: c.color }} />
-                {c.title}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
     </section>
   );
 }

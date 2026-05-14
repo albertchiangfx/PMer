@@ -301,7 +301,7 @@ export default function ProjectDetailPage() {
             <div>
               <h2 className="text-base font-semibold text-gray-900">專案里程碑</h2>
               <p className="text-xs text-gray-500 mt-1">
-                套用公版、調整順序與勾選完成度會反映在 Dashboard「專案進度」與本頁「專案」列表的進度條上。
+                套用公版、調整順序與勾選完成度會反映在 Dashboard「Tasks overview」與本頁「專案」列表的進度條上。
               </p>
             </div>
           </div>
