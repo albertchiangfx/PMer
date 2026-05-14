@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, isValid, isWeekend, parseISO } from 'date-fns';
 import { api } from '../lib/api';
@@ -80,8 +80,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [dataTick, setDataTick] = useState(0);
   const [viewerTasks, setViewerTasks] = useState([]);
-  /** 避免 members 每次 refetch 就重設「檢視身分」，否則下拉 hot swap 會被洗回第一位 */
-  const viewerPickInitializedRef = useRef(false);
 
   const loadCore = useCallback(async () => {
     const [m, a, p] = await Promise.all([api.getTeamMembers(), api.getAllocations(), api.getProjects()]);
@@ -109,23 +107,19 @@ export default function Dashboard() {
   }, [loadCore, dataTick]);
 
   useEffect(() => {
-    if (!members.length) {
-      viewerPickInitializedRef.current = false;
-      return;
-    }
+    if (!members.length) return;
 
     const idEquals = (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
 
-    // 目前選的人已不在成員列表 → 改選仍在名單上的第一位
+    // 已選的人若不在名單內（被刪除等）→ 改選仍在的成員
     if (viewerId && !members.some((m) => idEquals(m.id, viewerId))) {
       const firstActive = members.find((m) => m.status === 'active') || members[0];
       if (firstActive) setViewerId(String(firstActive.id));
       return;
     }
 
-    // 僅在「第一次有成員資料」時從 localStorage 或預設帶入；之後改下拉不覆寫
-    if (viewerPickInitializedRef.current) return;
-    viewerPickInitializedRef.current = true;
+    // 尚未選人時才自動帶入；選定後 members 再 refetch 不會覆寫下拉（避免 hot swap 無效）
+    if (viewerId) return;
 
     try {
       const saved = localStorage.getItem('sp.viewerMemberId');
@@ -422,12 +416,12 @@ export default function Dashboard() {
           <label className="flex flex-col gap-1 text-xs text-slate-500 shrink-0">
             <span className="font-medium text-slate-600">檢視身分</span>
             <select
-              value={viewerId}
-              onChange={(e) => setViewerId(e.target.value)}
+              value={viewerId ? String(viewerId) : ''}
+              onChange={(e) => setViewerId(String(e.target.value))}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm min-w-[180px]"
             >
               {members.map((m) => (
-                <option key={m.id} value={m.id}>
+                <option key={m.id} value={String(m.id)}>
                   {m.name}
                   {m.role ? ` · ${m.role}` : ''}
                 </option>
@@ -438,6 +432,7 @@ export default function Dashboard() {
       </div>
 
       <DashboardProjectWidget
+        key={viewerId || 'none'}
         viewerId={viewerId}
         projects={viewerProjectSummaries}
         todayAssignments={todayTaskRows.filter((r) => r.kind === 'task')}
