@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, isValid, isWeekend, parseISO } from 'date-fns';
 import { api } from '../lib/api';
@@ -80,6 +80,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [dataTick, setDataTick] = useState(0);
   const [viewerTasks, setViewerTasks] = useState([]);
+  /** 避免 members 每次 refetch 就重設「檢視身分」，否則下拉 hot swap 會被洗回第一位 */
+  const viewerPickInitializedRef = useRef(false);
 
   const loadCore = useCallback(async () => {
     const [m, a, p] = await Promise.all([api.getTeamMembers(), api.getAllocations(), api.getProjects()]);
@@ -107,19 +109,39 @@ export default function Dashboard() {
   }, [loadCore, dataTick]);
 
   useEffect(() => {
-    if (!members.length) return;
+    if (!members.length) {
+      viewerPickInitializedRef.current = false;
+      return;
+    }
+
+    const idEquals = (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
+
+    // 目前選的人已不在成員列表 → 改選仍在名單上的第一位
+    if (viewerId && !members.some((m) => idEquals(m.id, viewerId))) {
+      const firstActive = members.find((m) => m.status === 'active') || members[0];
+      if (firstActive) setViewerId(String(firstActive.id));
+      return;
+    }
+
+    // 僅在「第一次有成員資料」時從 localStorage 或預設帶入；之後改下拉不覆寫
+    if (viewerPickInitializedRef.current) return;
+    viewerPickInitializedRef.current = true;
+
     try {
       const saved = localStorage.getItem('sp.viewerMemberId');
-      if (saved && members.some((m) => String(m.id) === String(saved))) {
-        setViewerId(String(saved));
-        return;
+      if (saved) {
+        const found = members.find((m) => idEquals(m.id, saved));
+        if (found) {
+          setViewerId(String(found.id));
+          return;
+        }
       }
     } catch {
       // ignore
     }
     const firstActive = members.find((m) => m.status === 'active') || members[0];
     if (firstActive) setViewerId(String(firstActive.id));
-  }, [members]);
+  }, [members, viewerId]);
 
   useEffect(() => {
     if (!viewerId) return;
