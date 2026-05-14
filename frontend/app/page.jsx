@@ -77,6 +77,7 @@ export default function Dashboard() {
   const [taskAllocations, setTaskAllocations] = useState([]);
   const [viewerId, setViewerId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [dataTick, setDataTick] = useState(0);
   const [viewerTasks, setViewerTasks] = useState([]);
 
   const loadCore = useCallback(async () => {
