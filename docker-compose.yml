@@ -64,7 +64,9 @@ services:
 
   # Optional dev-mode frontend with hot reload.
   # Start with: docker compose --profile dev up -d frontend-dev
-  # Access at:  http://localhost:3000  (production stays on http://localhost)
+  # Access at:  http://<VM-LAN-IP>:3000  (production stays on port 80 via nginx)
+  # 從「別台內網電腦」開 dev 時，請在 .env 設 DEV_NEXT_PUBLIC_API_URL=http://<VM-LAN-IP>/api
+  # （預設 http://localhost/api 僅適合瀏覽器跑在 VM 本機時）
   frontend-dev:
     image: node:20-alpine
     container_name: studio-pm-web-dev
@@ -72,7 +74,7 @@ services:
     working_dir: /app
     command: sh -c "npm install && npm run dev -- -p 3000 -H 0.0.0.0"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost/api
+      NEXT_PUBLIC_API_URL: ${DEV_NEXT_PUBLIC_API_URL:-http://localhost/api}
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:
