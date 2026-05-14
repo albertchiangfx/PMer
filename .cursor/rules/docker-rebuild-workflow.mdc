@@ -1,0 +1,26 @@
+---
+description: 改 frontend / 後端 Docker 後何時重建、誰該跑什麼指令
+alwaysApply: true
+---
+
+# PMer：Docker 與「什麼時候要 rebuild」
+
+使用者常用 **`api-dev`**（後端 `backend-dev` + 資料庫 `studio_pm_dev`）。**改後端程式**要看到成果時，在專案根目錄執行：
+
+`docker compose build backend-dev && docker compose up -d backend-dev`
+
+## 前端有兩條路
+
+1. **`http://localhost:3000`（frontend-dev，目錄掛載）**  
+   只改 `frontend/` 時多半 **不用** `build frontend`，**強制重新整理瀏覽器**即可。
+
+2. **`http://localhost` 埠 80（Docker `frontend` 正式打包映像）**  
+   只要動到 **`frontend/`** 程式，交差前要讓使用者看到成果時，在專案根目錄執行：
+
+   `docker compose build frontend && docker compose up -d frontend nginx`
+
+## Agent 約定
+
+- 修改 **`frontend/`** 且使用者依賴 **port 80 正式前端** 時：**直接執行**上面的 `build frontend` + `up -d`（除非使用者明確說只用 :3000）。
+- 修改 **`backend/`** 且影響 **api-dev** 時：**直接執行**上面的 `build backend-dev` + `up -d`。
+- 使用者只說「看不到修改」時：先問是 **:3000** 還是 **:80**，再對應處理。
