@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, isValid, isWeekend, parseISO } from 'date-fns';
 import { api } from '../lib/api';
 import SchedulePanel from '../components/SchedulePanel';
@@ -328,26 +329,31 @@ export default function Dashboard() {
     return [...dedupedBase, ...extra];
   }, [mergedForViewer, viewerTasks, todayYmd]);
 
+  /** 與 Tasks overview 共用，避免 widget 再打一隻 API */
+  const { data: personalTasks = [] } = useSWR(
+    viewerId ? ['personal-tasks', viewerId] : null,
+    () => api.getPersonalTasks({ member_id: viewerId })
+  );
+
+  /** 僅「目前檢視成員」今日任務列＋個人任務所屬專案（不含純專案甘特排程／其他人專案） */
   const viewerProjectSummaries = useMemo(() => {
     if (!viewerId) return [];
     const ids = new Set();
-    for (const { raw } of mergedForViewer) {
-      if (raw.project_id) ids.add(String(raw.project_id));
+    const taskRowsToday = todayTaskRows.filter((r) => r.kind === 'task' && r.projectId);
+    for (const row of taskRowsToday) {
+      ids.add(String(row.projectId));
     }
-    const tday = todayYmd;
-    for (const t of viewerTasks) {
-      if (
-        t.project_id &&
-        allocationOverlapsToday({ start_date: t.start_date, end_date: t.end_date }, tday)
-      ) {
-        ids.add(String(t.project_id));
-      }
+    for (const t of personalTasks) {
+      if (t.project_id) ids.add(String(t.project_id));
     }
+
     const list = [];
     for (const id of ids) {
       const full = projects.find((x) => String(x.id) === id);
-      const fallback = mergedForViewer.find((m) => String(m.raw.project_id) === id)?.raw;
-      const taskFb = viewerTasks.find((t) => String(t.project_id) === id);
+      const fromTask = taskRowsToday.find((r) => String(r.projectId) === id);
+      const fromPerson = personalTasks.find((t) => String(t.project_id) === id);
+      const rawFb = fromTask?.raw;
+
       if (full) {
         list.push({
           id: full.id,
@@ -357,20 +363,20 @@ export default function Dashboard() {
           status: full.status,
           client_name: full.client_name,
         });
-      } else if (fallback?.project_id) {
+      } else if (rawFb?.project_id) {
         list.push({
-          id: fallback.project_id,
-          name: fallback.project_name || '專案',
-          color: fallback.project_color || '#6366f1',
+          id: rawFb.project_id,
+          name: rawFb.project_name || '專案',
+          color: rawFb.project_color || '#6366f1',
           end_date: null,
           status: 'planning',
-          client_name: fallback.project_client_name,
+          client_name: null,
         });
-      } else if (taskFb) {
+      } else if (fromPerson) {
         list.push({
-          id: taskFb.project_id,
-          name: taskFb.project_name || '專案',
-          color: taskFb.project_color || '#6366f1',
+          id: fromPerson.project_id,
+          name: fromPerson.project_name || '專案',
+          color: fromPerson.project_color || '#6366f1',
           end_date: null,
           status: 'planning',
           client_name: null,
@@ -379,7 +385,7 @@ export default function Dashboard() {
     }
     list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     return list;
-  }, [viewerId, mergedForViewer, projects, viewerTasks, todayYmd]);
+  }, [viewerId, todayTaskRows, personalTasks, projects]);
 
   if (loading) return <LoadingScreen />;
 
@@ -413,6 +419,7 @@ export default function Dashboard() {
         viewerId={viewerId}
         projects={viewerProjectSummaries}
         todayAssignments={todayTaskRows.filter((r) => r.kind === 'task')}
+        personalTasks={personalTasks}
       />
 
       <section className="mt-6 surface rounded-[22px] px-6 pt-6 pb-6">

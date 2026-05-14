@@ -38,10 +38,17 @@ function statusZh(s) {
 
 /**
  * Dashboard：各專案里程碑完成度（進度條）與今日任務列（含個人任務；不含專案甘特排程）。
+ * `projects` 應僅含「目前檢視成員」相關專案；若傳入 `personalTasks` 則不再重複請求個人任務 API。
  *
  * @param {object[]} [todayAssignments] — 今日與分配區間重疊的列（含 projectId、kind）
+ * @param {object[]} [personalTasks] — 若由父層傳入則使用之，否則內部 useSWR 取得
  */
-export default function DashboardProjectWidget({ viewerId, projects, todayAssignments = [] }) {
+export default function DashboardProjectWidget({
+  viewerId,
+  projects,
+  todayAssignments = [],
+  personalTasks: personalTasksFromParent,
+}) {
   const projectIds = useMemo(() => projects.map((p) => p.id).filter(Boolean), [projects]);
 
   const todayByProject = useMemo(() => {
@@ -77,9 +84,16 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
     return o;
   }, [summary]);
 
-  const { data: personalTasks = [] } = useSWR(viewerId ? ['personal-tasks', viewerId] : null, () =>
-    api.getPersonalTasks({ member_id: viewerId })
+  const { data: personalTasksFromSwr = [] } = useSWR(
+    personalTasksFromParent !== undefined
+      ? null
+      : viewerId
+        ? ['personal-tasks', viewerId]
+        : null,
+    () => api.getPersonalTasks({ member_id: viewerId })
   );
+  const personalTasks =
+    personalTasksFromParent !== undefined ? personalTasksFromParent : personalTasksFromSwr;
 
   /** 含僅有個人任務、未出現在甘特／分配裡的專案 */
   const projectsForList = useMemo(() => {
@@ -119,7 +133,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
   if (!projectsForList.length) {
     return (
       <section className="mt-6 surface rounded-[22px] px-6 py-10 text-center text-sm text-stone-500">
-        尚未有被分配的專案。請在下方「工作時程」將你加入專案後，此區會列出里程碑進度。
+        此成員今日尚無被指派的任務或個人任務；若有專案甘特排程請至下方「工作時程」查看。
       </section>
     );
   }
@@ -135,7 +149,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
             Tasks overview
           </h2>
           <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
-            里程碑進度條與今日被指派的任務；里程碑請至「專案」列表或專案內「里程碑」
+            依上方「檢視身分」僅顯示該成員今日被指派的任務與個人任務；里程碑請至「專案」或專案內「里程碑」
           </p>
         </div>
         <Link href="/tasks" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1">
