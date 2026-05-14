@@ -23,6 +23,7 @@ router.get('/', async (req, res, next) => {
     const { task_id, team_member_id, from, to } = req.query;
     let q = `
       SELECT ta.*, t.name AS task_name, t.status AS task_status,
+        t.start_date AS task_start_date, t.end_date AS task_end_date,
         p.name AS project_name, p.color AS project_color, p.id AS project_id,
         tm.name AS member_name, tm.role AS member_role, tm.avatar_color, tm.hourly_rate
       FROM time_allocations ta
@@ -48,19 +49,17 @@ router.post('/', async (req, res, next) => {
     const { task_id, team_member_id, allocated_days, allocated_hours, start_date, end_date, notes } = req.body;
     if (!task_id || !team_member_id) return res.status(400).json({ error: 'task_id and team_member_id are required' });
 
-    const conflicts = await detectConflicts(db, team_member_id, start_date, end_date);
-    if (conflicts.length > 0) {
-      return res.status(409).json({
-        error: 'Schedule conflict detected',
-        conflicts: conflicts.map(c => ({ task: c.task_name, project: c.project_name, start: c.start_date, end: c.end_date }))
-      });
-    }
+    const conflicts =
+      start_date && end_date
+        ? await detectConflicts(db, team_member_id, start_date, end_date)
+        : [];
 
     const { rows } = await db.query(`
       INSERT INTO time_allocations (task_id, team_member_id, allocated_days, allocated_hours, start_date, end_date, notes)
       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
     `, [task_id, team_member_id, allocated_days || 1, allocated_hours || 8, start_date, end_date, notes]);
-    res.status(201).json(rows[0]);
+    // 允許時段重疊（與專案 allocations 一致）；僅回傳 conflicts 供 UI 選擇性提示
+    res.status(201).json({ ...rows[0], conflicts });
   } catch (e) { next(e); }
 });
 
@@ -69,14 +68,9 @@ router.put('/:id', async (req, res, next) => {
     const db = req.app.locals.db;
     const { task_id, team_member_id, allocated_days, allocated_hours, start_date, end_date, notes } = req.body;
 
+    let conflicts = [];
     if (start_date && end_date && team_member_id) {
-      const conflicts = await detectConflicts(db, team_member_id, start_date, end_date, req.params.id);
-      if (conflicts.length > 0) {
-        return res.status(409).json({
-          error: 'Schedule conflict detected',
-          conflicts: conflicts.map(c => ({ task: c.task_name, project: c.project_name, start: c.start_date, end: c.end_date }))
-        });
-      }
+      conflicts = await detectConflicts(db, team_member_id, start_date, end_date, req.params.id);
     }
 
     const { rows } = await db.query(`
@@ -85,7 +79,7 @@ router.put('/:id', async (req, res, next) => {
       WHERE id=$8 RETURNING *
     `, [task_id, team_member_id, allocated_days, allocated_hours, start_date, end_date, notes, req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Allocation not found' });
-    res.json(rows[0]);
+    res.json({ ...rows[0], conflicts });
   } catch (e) { next(e); }
 });
 

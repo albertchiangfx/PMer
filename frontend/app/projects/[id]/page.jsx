@@ -18,6 +18,12 @@ function routeParamId(raw) {
   return String(v ?? '').trim();
 }
 
+/** 專案／任務表單用的 YYYY-MM-DD（API DATE 或 ISO 字串） */
+function sliceProjectYmd(d) {
+  if (d == null || d === '') return '';
+  return String(d).slice(0, 10);
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = routeParamId(params?.id);
@@ -135,10 +141,6 @@ export default function ProjectDetailPage() {
           allocated_hours: 8,
         });
       } catch (err) {
-        if (err.status === 409) {
-          alert('指派失敗：該員工時程衝突，請調整日期');
-          return;
-        }
         alert(err.message || '指派失敗');
         return;
       }
@@ -313,8 +315,17 @@ export default function ProjectDetailPage() {
         <div id="tasks" className="scroll-mt-24">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-gray-900">任務清單</h2>
-            <button onClick={() => { setTaskForm(defaultTaskForm()); setTaskModal('create'); }}
-              className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-apple font-medium transition-colors">
+            <button
+              onClick={() => {
+                setTaskForm({
+                  ...defaultTaskForm(),
+                  start_date: sliceProjectYmd(project?.start_date),
+                  end_date: sliceProjectYmd(project?.end_date),
+                });
+                setTaskModal('create');
+              }}
+              className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-apple font-medium transition-colors"
+            >
               + 新增任務
             </button>
           </div>

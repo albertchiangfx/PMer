@@ -4,7 +4,7 @@ const router = express.Router();
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { project_id } = req.query;
+    const { project_id, team_member_id } = req.query;
     let q = `
       SELECT t.*, p.name AS project_name, p.color AS project_color,
         json_agg(json_build_object(
@@ -20,7 +20,18 @@ router.get('/', async (req, res, next) => {
       LEFT JOIN team_members tm ON tm.id = ta.team_member_id
     `;
     const params = [];
-    if (project_id) { q += ' WHERE t.project_id = $1'; params.push(project_id); }
+    const cond = [];
+    if (project_id) {
+      params.push(project_id);
+      cond.push(`t.project_id = $${params.length}`);
+    }
+    if (team_member_id) {
+      params.push(team_member_id);
+      cond.push(
+        `EXISTS (SELECT 1 FROM time_allocations ta_m WHERE ta_m.task_id = t.id AND ta_m.team_member_id = $${params.length})`
+      );
+    }
+    if (cond.length) q += ` WHERE ${cond.join(' AND ')}`;
     q += ' GROUP BY t.id, p.name, p.color ORDER BY t.order_index, t.start_date';
     const { rows } = await db.query(q, params);
     res.json(rows);

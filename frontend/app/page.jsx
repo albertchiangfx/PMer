@@ -6,6 +6,12 @@ import SchedulePanel from '../components/SchedulePanel';
 import DashboardProjectWidget from '../components/DashboardProjectWidget';
 import { SCHEDULE_DATA_CHANGED_EVENT } from '../lib/dashboard-sync';
 
+/** 本地曆「今天」YYYY-MM-DD（避免 toISOString() 用 UTC 與台灣等地差一天） */
+function localCalendarYmd() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** YYYY-MM-DD for API dates (may be ISO strings with time). */
 function toYmd(v) {
   if (v == null || v === '') return null;
@@ -15,8 +21,12 @@ function toYmd(v) {
 
 /** Whether allocation / time block overlaps local-calendar `todayYmd`. */
 function allocationOverlapsToday(raw, todayYmd) {
-  const start = toYmd(raw?.start_date);
-  const end = toYmd(raw?.end_date);
+  let start = toYmd(raw?.start_date);
+  let end = toYmd(raw?.end_date);
+  const tStart = toYmd(raw?.task_start_date);
+  const tEnd = toYmd(raw?.task_end_date);
+  if (!start && tStart) start = tStart;
+  if (!end && tEnd) end = tEnd;
   if (!start && !end) return false;
   if (start && end) return start <= todayYmd && end >= todayYmd;
   if (start && !end) return start <= todayYmd;
@@ -67,7 +77,7 @@ export default function Dashboard() {
   const [taskAllocations, setTaskAllocations] = useState([]);
   const [viewerId, setViewerId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [dataTick, setDataTick] = useState(0);
+  const [viewerTasks, setViewerTasks] = useState([]);
 
   const loadCore = useCallback(async () => {
     const [m, a, p] = await Promise.all([api.getTeamMembers(), api.getAllocations(), api.getProjects()]);
@@ -150,7 +160,27 @@ export default function Dashboard() {
     };
   }, [viewerId, dataTick]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  useEffect(() => {
+    if (!viewerId) {
+      setViewerTasks([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getTasks({ team_member_id: viewerId })
+      .then((rows) => {
+        if (!cancelled) setViewerTasks(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e) => {
+        console.error(e);
+        if (!cancelled) setViewerTasks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewerId, dataTick]);
+
+  const todayYmd = localCalendarYmd();
   const nowLabel = new Date().toLocaleDateString('zh-TW', {
     year: 'numeric',
     month: 'long',
@@ -169,8 +199,13 @@ export default function Dashboard() {
   }, [viewerId, allocations, taskAllocations]);
 
   const todayTaskRows = useMemo(() => {
+    const today = todayYmd;
     const inRange = mergedForViewer.filter((item) => allocationOverlapsToday(item.raw, today));
-    inRange.sort((a, b) => String(a.raw.start_date).localeCompare(String(b.raw.start_date)));
+    inRange.sort((a, b) =>
+      String(a.raw.start_date || a.raw.task_start_date || '').localeCompare(
+        String(b.raw.start_date || b.raw.task_start_date || '')
+      )
+    );
 
     const taskProjectIds = new Set(
       inRange
@@ -183,8 +218,9 @@ export default function Dashboard() {
       return !taskProjectIds.has(pid);
     });
 
-    return visibleToday.map(({ raw, kind }) => {
-      const remaining = raw.end_date ? businessDaysDelta(today, raw.end_date) : null;
+    const baseRows = visibleToday.map(({ raw, kind }) => {
+      const endForDelta = toYmd(raw.end_date) || toYmd(raw.task_end_date);
+      const remaining = endForDelta ? businessDaysDelta(today, endForDelta) : null;
       const tone =
         remaining == null ? 'text-slate-500' : remaining < 0 ? 'text-rose-600' : remaining <= 1 ? 'text-amber-700' : 'text-slate-600';
       const remainingAbs = remaining == null ? null : Math.abs(remaining);
@@ -207,7 +243,9 @@ export default function Dashboard() {
             }${!notesTrim && raw.notes ? ` · ${raw.notes}` : ''}`;
       const badge = kind === 'task' ? raw.task_status || '—' : '排程';
       const href = raw.project_id ? `/projects/${raw.project_id}` : '/schedule';
-      const progressPct = allocationProgressPct(raw.start_date, raw.end_date, today);
+      const s0 = toYmd(raw.start_date) || toYmd(raw.task_start_date);
+      const e0 = toYmd(raw.end_date) || toYmd(raw.task_end_date);
+      const progressPct = allocationProgressPct(s0, e0, today);
 
       return {
         key: `${kind}-${raw.id}`,
@@ -224,7 +262,55 @@ export default function Dashboard() {
         remainingAbs,
       };
     });
-  }, [mergedForViewer, today]);
+
+    const shownTaskIds = new Set(
+      baseRows.filter((r) => r.kind === 'task' && r.raw?.task_id).map((r) => String(r.raw.task_id))
+    );
+
+    const extra = [];
+    for (const t of viewerTasks) {
+      if (!allocationOverlapsToday({ start_date: t.start_date, end_date: t.end_date }, today)) continue;
+      if (shownTaskIds.has(String(t.id))) continue;
+
+      const endForDelta = toYmd(t.end_date);
+      const remaining = endForDelta ? businessDaysDelta(today, endForDelta) : null;
+      const remainingAbs = remaining == null ? null : Math.abs(remaining);
+      const remainingWord = remaining == null ? '—' : remaining >= 0 ? '剩餘' : '逾期';
+      const tone =
+        remaining == null ? 'text-slate-500' : remaining < 0 ? 'text-rose-600' : remaining <= 1 ? 'text-amber-700' : 'text-slate-600';
+
+      extra.push({
+        key: `task-fallback-${t.id}`,
+        kind: 'task',
+        projectId: t.project_id || null,
+        href: t.project_id ? `/projects/${t.project_id}#tasks` : '/tasks',
+        title: t.name || '（未命名任務）',
+        subtitle: '',
+        accentColor: t.project_color || '#6366f1',
+        badge: t.status || '—',
+        progressPct: allocationProgressPct(t.start_date, t.end_date, today),
+        remainingTone: tone,
+        remainingWord,
+        remainingAbs,
+        raw: {
+          id: `fallback-${t.id}`,
+          task_id: t.id,
+          project_id: t.project_id,
+          task_name: t.name,
+          project_name: t.project_name,
+          project_color: t.project_color,
+          task_status: t.status,
+          start_date: t.start_date,
+          end_date: t.end_date,
+          task_start_date: t.start_date,
+          task_end_date: t.end_date,
+          notes: null,
+        },
+      });
+    }
+
+    return [...baseRows, ...extra];
+  }, [mergedForViewer, viewerTasks, todayYmd]);
 
   const viewerProjectSummaries = useMemo(() => {
     if (!viewerId) return [];
@@ -232,10 +318,20 @@ export default function Dashboard() {
     for (const { raw } of mergedForViewer) {
       if (raw.project_id) ids.add(String(raw.project_id));
     }
+    const tday = todayYmd;
+    for (const t of viewerTasks) {
+      if (
+        t.project_id &&
+        allocationOverlapsToday({ start_date: t.start_date, end_date: t.end_date }, tday)
+      ) {
+        ids.add(String(t.project_id));
+      }
+    }
     const list = [];
     for (const id of ids) {
       const full = projects.find((x) => String(x.id) === id);
       const fallback = mergedForViewer.find((m) => String(m.raw.project_id) === id)?.raw;
+      const taskFb = viewerTasks.find((t) => String(t.project_id) === id);
       if (full) {
         list.push({
           id: full.id,
@@ -254,11 +350,20 @@ export default function Dashboard() {
           status: 'planning',
           client_name: fallback.project_client_name,
         });
+      } else if (taskFb) {
+        list.push({
+          id: taskFb.project_id,
+          name: taskFb.project_name || '專案',
+          color: taskFb.project_color || '#6366f1',
+          end_date: null,
+          status: 'planning',
+          client_name: null,
+        });
       }
     }
     list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     return list;
-  }, [viewerId, mergedForViewer, projects]);
+  }, [viewerId, mergedForViewer, projects, viewerTasks, todayYmd]);
 
   if (loading) return <LoadingScreen />;
 

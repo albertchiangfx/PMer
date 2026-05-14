@@ -37,8 +37,7 @@ function statusZh(s) {
 }
 
 /**
- * Dashboard：各專案里程碑完成度（進度條）與今日排程／任務列（含個人任務）。
- * 里程碑勾選請至「專案」列表或專案頁「里程碑」分頁。
+ * Dashboard：各專案里程碑完成度（進度條）與今日任務列（含個人任務；不含專案甘特排程）。
  *
  * @param {object[]} [todayAssignments] — 今日與分配區間重疊的列（含 projectId、kind）
  */
@@ -112,7 +111,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
   if (!viewerId) {
     return (
       <section className="mt-6 surface rounded-[22px] px-6 py-10 text-center text-sm text-stone-400">
-        選擇成員後可在此檢視里程碑與今日任務／排程
+        選擇成員後可在此檢視里程碑與今日任務
       </section>
     );
   }
@@ -136,7 +135,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
             Tasks overview
           </h2>
           <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
-            里程碑進度條與今日排程／任務；里程碑請至「專案」列表或專案內「里程碑」
+            里程碑進度條與今日被指派的任務；里程碑請至「專案」列表或專案內「里程碑」
           </p>
         </div>
         <Link href="/tasks" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1">
@@ -149,11 +148,11 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
           const idLc = String(p.id).toLowerCase();
           const { pct, empty } = progressFor(p.id);
           const dayRows = todayByProject[idLc] || [];
-          const scheduleRows = dayRows.filter((r) => r.kind === 'task' || r.kind === 'project');
+          const taskRows = dayRows.filter((r) => r.kind === 'task');
           const personalForProject = personalTasks.filter(
             (t) => String(t.project_id || '').toLowerCase() === idLc
           );
-          const showActivityStrip = scheduleRows.length > 0 || personalForProject.length > 0;
+          const showActivityStrip = taskRows.length > 0 || personalForProject.length > 0;
           const st = String(p.status || '').toLowerCase();
 
           return (
@@ -216,7 +215,7 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
 
               {showActivityStrip ? (
                 <div className="mt-2.5 ml-0.5 space-y-2 pl-3 border-l border-stone-200/90">
-                  {scheduleRows.map((row) => (
+                  {taskRows.map((row) => (
                     <div key={row.key} className="text-[11px] leading-snug">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span
@@ -230,21 +229,12 @@ export default function DashboardProjectWidget({ viewerId, projects, todayAssign
                         >
                           {row.title}
                         </Link>
-                        {row.kind === 'task' ? (
-                          <Link
-                            href={`/projects/${p.id}#tasks`}
-                            className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 ml-auto sm:ml-0"
-                          >
-                            ＋ 新增任務
-                          </Link>
-                        ) : (
-                          <Link
-                            href={`/schedule`}
-                            className="shrink-0 text-[10px] font-semibold text-stone-500 hover:text-indigo-700 ml-auto sm:ml-0"
-                          >
-                            工作時程
-                          </Link>
-                        )}
+                        <Link
+                          href={`/projects/${p.id}#tasks`}
+                          className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 ml-auto sm:ml-0"
+                        >
+                          ＋ 新增任務
+                        </Link>
                       </div>
                       <p className="mt-0.5 pl-3 text-[10px] text-stone-400">
                         {row.remainingWord !== '—' && row.remainingAbs != null
