@@ -251,6 +251,7 @@ export default function Dashboard() {
       return {
         key: `${kind}-${raw.id}`,
         kind,
+        raw,
         projectId: raw.project_id || null,
         href,
         title,
@@ -264,8 +265,22 @@ export default function Dashboard() {
       };
     });
 
+    // 同一任務多筆時段重疊「今天」時只顯示一列；並讓 fallback 能辨識已出現的 task_id
+    const dedupedTaskKeys = new Set();
+    const dedupedBase = [];
+    for (const row of baseRows) {
+      if (row.kind === 'task' && row.raw?.task_id != null && row.projectId != null) {
+        const k = `${String(row.projectId).toLowerCase()}|${String(row.raw.task_id).toLowerCase()}`;
+        if (dedupedTaskKeys.has(k)) continue;
+        dedupedTaskKeys.add(k);
+      }
+      dedupedBase.push(row);
+    }
+
     const shownTaskIds = new Set(
-      baseRows.filter((r) => r.kind === 'task' && r.raw?.task_id).map((r) => String(r.raw.task_id))
+      dedupedBase
+        .filter((r) => r.kind === 'task' && r.raw?.task_id)
+        .map((r) => String(r.raw.task_id).toLowerCase())
     );
 
     const extra = [];
@@ -310,7 +325,7 @@ export default function Dashboard() {
       });
     }
 
-    return [...baseRows, ...extra];
+    return [...dedupedBase, ...extra];
   }, [mergedForViewer, viewerTasks, todayYmd]);
 
   const viewerProjectSummaries = useMemo(() => {
@@ -397,7 +412,7 @@ export default function Dashboard() {
       <DashboardProjectWidget
         viewerId={viewerId}
         projects={viewerProjectSummaries}
-        todayAssignments={todayTaskRows}
+        todayAssignments={todayTaskRows.filter((r) => r.kind === 'task')}
       />
 
       <section className="mt-6 surface rounded-[22px] px-6 pt-6 pb-6">
