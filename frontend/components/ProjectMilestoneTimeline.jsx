@@ -20,12 +20,12 @@ import { GANTT_OFFSCREEN_DOT, barTouchesTimelineViewportLeft } from './ganttOffs
 const DEFAULT_DAY_W = 16;
 const MIN_DAY_W = 12;
 const MAX_DAY_W = 80;
-const ROW_H = 56;
+const ROW_H = 28;
 const LABEL_W = 228;
 const INDICATOR_GUTTER_W = 14;
 const PINNED_LEFT_W = LABEL_W + INDICATOR_GUTTER_W;
 const HEADER_H_FULL = 80;
-const BAR_H = 14;
+const BAR_H = 10;
 const BAR_GAP = 4;
 
 /** API DATE / ISO → YYYY-MM-DD */
@@ -95,6 +95,7 @@ function buildSegments(project, milestones) {
       return {
         id: m.id,
         label: m.label,
+        completed: !!m.completed,
         start: parseISO(ts),
         end: parseISO(te),
       };
@@ -102,6 +103,7 @@ function buildSegments(project, milestones) {
     return {
       id: m.id,
       label: m.label,
+      completed: !!m.completed,
       start: parts[i]?.start ?? pStart,
       end: parts[i]?.end ?? pEnd,
     };
@@ -116,6 +118,36 @@ function clampDate(d, lo, hi) {
   if (d < lo) return lo;
   if (d > hi) return hi;
   return d;
+}
+
+function shiftSegments(segments, deltaDays) {
+  return segments.map((s) => ({
+    ...s,
+    start: addDays(s.start, deltaDays),
+    end: addDays(s.end, deltaDays),
+  }));
+}
+
+/** 專案起訖變更時，各里程碑依在舊區間內的比例映射到新區間 */
+function remapSegmentsProportional(segments, oldStart, oldEnd, newStart, newEnd) {
+  const oldTotal = Math.max(0, differenceInCalendarDays(oldEnd, oldStart));
+  const newTotal = Math.max(0, differenceInCalendarDays(newEnd, newStart));
+  if (!segments.length) return segments;
+  return segments.map((s) => {
+    const startOff = Math.max(0, differenceInCalendarDays(s.start, oldStart));
+    const endOff = Math.max(startOff, differenceInCalendarDays(s.end, oldStart));
+    let ns;
+    let ne;
+    if (oldTotal === 0) {
+      ns = new Date(newStart);
+      ne = new Date(newEnd);
+    } else {
+      ns = addDays(newStart, Math.round((startOff / oldTotal) * newTotal));
+      ne = addDays(newStart, Math.round((endOff / oldTotal) * newTotal));
+    }
+    if (ne < ns) ne = ns;
+    return { ...s, start: ns, end: ne };
+  });
 }
 
 export default function ProjectMilestoneTimeline({
@@ -179,7 +211,10 @@ export default function ProjectMilestoneTimeline({
   const repaint = useCallback(() => setPaint((n) => n + 1), []);
 
   const displaySegs = useMemo(() => {
-    if (dragActive && draftRef.current?.length) return draftRef.current;
+    const d = draggingRef.current;
+    if (dragActive && draftRef.current?.length) {
+      if (d?.kind === 'project' || d?.kind === 'milestone') return draftRef.current;
+    }
     return segments;
   }, [dragActive, segments, dragTick]);
 
@@ -235,20 +270,46 @@ export default function ProjectMilestoneTimeline({
   );
 
   const onProjectBarMouseDown = useCallback(
-    (e) => {
+    (e, mode = 'move') => {
       if (!pStart || !pEnd) return;
       e.preventDefault();
       e.stopPropagation();
+      initDraftFromCanonical();
+      const snap = (draftRef.current || []).map((s) => ({
+        ...s,
+        start: new Date(s.start),
+        end: new Date(s.end),
+      }));
       draggingRef.current = {
         kind: 'project',
+        mode,
         origX: e.clientX,
+        origClientX: e.clientX,
         origStart: new Date(pStart),
         origEnd: new Date(pEnd),
+        snapshot: snap,
         dxPx: 0,
+        previewStart: new Date(pStart),
+        previewEnd: new Date(pEnd),
       };
       setDragActive(true);
     },
-    [pStart, pEnd]
+    [pStart, pEnd, initDraftFromCanonical]
+  );
+
+  const toggleMilestoneCompleted = useCallback(
+    async (milestoneId) => {
+      const row = milestonesRef.current.find((m) => m.id === milestoneId);
+      if (!row) return;
+      try {
+        await api.updateProjectMilestone(milestoneId, { completed: !row.completed });
+        notifyMilestoneDataChanged();
+        await mutate();
+      } catch (err) {
+        alert(err?.message || '更新里程碑狀態失敗');
+      }
+    },
+    [mutate]
   );
 
   useEffect(() => {
@@ -268,8 +329,42 @@ export default function ProjectMilestoneTimeline({
       if (!d) return;
 
       if (d.kind === 'project') {
-        const dx = e.clientX - d.origX;
-        d.dxPx = Math.round(dx / dayW) * dayW;
+        if (!d.snapshot?.length || !d.origStart || !d.origEnd) return;
+        const snappedPx = Math.round((e.clientX - d.origClientX) / dayW) * dayW;
+
+        if (d.mode === 'move') {
+          const deltaDays = Math.round(snappedPx / dayW);
+          d.dxPx = deltaDays * dayW;
+          d.previewStart = addDays(d.origStart, deltaDays);
+          d.previewEnd = addDays(d.origEnd, deltaDays);
+          draftRef.current = shiftSegments(d.snapshot, deltaDays);
+        } else if (d.mode === 'resize-left') {
+          let ns = xToDate(dateToX(d.origStart) + snappedPx);
+          ns = clampDate(ns, rangeStart, addDays(d.origEnd, -1));
+          d.previewStart = ns;
+          d.previewEnd = new Date(d.origEnd);
+          draftRef.current = remapSegmentsProportional(
+            d.snapshot,
+            d.origStart,
+            d.origEnd,
+            d.previewStart,
+            d.previewEnd
+          );
+          d.dxPx = 0;
+        } else if (d.mode === 'resize-right') {
+          let ne = xToDate(dateToX(d.origEnd) + snappedPx);
+          ne = clampDate(ne, addDays(d.origStart, 1), addDays(rangeStart, days.length - 1));
+          d.previewStart = new Date(d.origStart);
+          d.previewEnd = ne;
+          draftRef.current = remapSegmentsProportional(
+            d.snapshot,
+            d.origStart,
+            d.origEnd,
+            d.previewStart,
+            d.previewEnd
+          );
+          d.dxPx = 0;
+        }
         scheduleMovePaint();
         return;
       }
@@ -356,10 +451,10 @@ export default function ProjectMilestoneTimeline({
       setDragActive(false);
 
       if (d.kind === 'project' && pStart && pEnd) {
-        const deltaDays = Math.round((d.dxPx || 0) / dayW);
-        let ns = addDays(d.origStart, deltaDays);
-        let ne = addDays(d.origEnd, deltaDays);
+        const ns = d.previewStart || addDays(d.origStart, Math.round((d.dxPx || 0) / dayW));
+        const ne = d.previewEnd || addDays(d.origEnd, Math.round((d.dxPx || 0) / dayW));
         if (differenceInCalendarDays(ne, ns) < 0) return;
+        const list = draftRef.current;
         try {
           await api.updateProject(projectId, {
             name: project.name,
@@ -371,12 +466,28 @@ export default function ProjectMilestoneTimeline({
             end_date: fmtYmd(ne),
             color: project.color || '#6366f1',
           });
+          if (list?.length) {
+            for (const s of list) {
+              const row = milestonesRef.current.find((m) => m.id === s.id);
+              const priorTs = ymdFromApi(row?.timeline_start_date);
+              const priorTe = ymdFromApi(row?.timeline_end_date);
+              const nextTs = fmtYmd(s.start);
+              const nextTe = fmtYmd(s.end);
+              if (priorTs === nextTs && priorTe === nextTe) continue;
+              await api.updateProjectMilestone(s.id, {
+                timeline_start_date: nextTs,
+                timeline_end_date: nextTe,
+              });
+            }
+          }
           notifyMilestoneDataChanged();
           onProjectDatesSaved?.();
           await mutate();
+          draftRef.current = null;
+          setDraft(null);
         } catch (err) {
           console.error(err);
-          alert(err?.message || '專案日期更新失敗');
+          alert(err?.message || '專案／里程碑時程更新失敗');
         }
         return;
       }
@@ -433,6 +544,8 @@ export default function ProjectMilestoneTimeline({
     dayW,
     xToDate,
     dateToX,
+    rangeStart,
+    days.length,
     pStart,
     pEnd,
     projectId,
@@ -556,10 +669,9 @@ export default function ProjectMilestoneTimeline({
   let projStart = pStart;
   let projEnd = pEnd;
   const pd = draggingRef.current;
-  if (pd?.kind === 'project' && typeof pd.dxPx === 'number') {
-    const deltaDays = Math.round(pd.dxPx / dayW);
-    projStart = addDays(pd.origStart, deltaDays);
-    projEnd = addDays(pd.origEnd, deltaDays);
+  if (pd?.kind === 'project' && pd.previewStart && pd.previewEnd) {
+    projStart = pd.previewStart;
+    projEnd = pd.previewEnd;
   }
 
   const tw = timelineViewportW;
@@ -582,7 +694,7 @@ export default function ProjectMilestoneTimeline({
           在日期列顯示專案整體區間（半透明，可左右平移）
         </label>
         <p className="text-xs text-slate-500 max-w-xl">
-          格線樣式與工作時程甘特一致（週末／隔週淡色、今日線、滾輪左右平移、Ctrl+滾輪縮放）。里程碑各自一列；拖曳放開後會寫入資料庫。
+          格線樣式與工作時程甘特一致（週末／隔週淡色、今日線、滾輪左右平移、Ctrl+滾輪縮放）。拖曳整體區間會連動底下分段；左側名稱點擊可標記完成（綠色）。放開後寫入資料庫。
         </p>
       </div>
 
@@ -687,25 +799,46 @@ export default function ProjectMilestoneTimeline({
 
                   {showProjectSpan && pStart && pEnd && (
                     <div
-                      className="absolute left-0 right-0 bottom-1 z-[5] pointer-events-auto"
-                      style={{ height: 7 }}
-                      title="專案整體區間（拖曳平移）"
+                      className="absolute left-0 right-0 bottom-1 z-[5] pointer-events-auto group"
+                      style={{ height: 9 }}
+                      title="專案整體區間（拖曳平移；左右緣調整起訖，底下里程碑會連動）"
                     >
                       <div
-                        role="slider"
-                        tabIndex={0}
-                        aria-label="專案整體時程"
-                        className="absolute rounded-full cursor-grab active:cursor-grabbing shadow-sm ring-1 ring-white/40"
+                        className="absolute rounded-full shadow-sm ring-1 ring-white/40"
                         style={{
                           left: dateToX(projStart),
                           width: Math.max(dayW, dateToX(projEnd) + dayW - dateToX(projStart)),
                           top: 0,
-                          height: 7,
+                          height: 9,
                           background: projectColor,
                           opacity: 0.42,
                         }}
-                        onMouseDown={onProjectBarMouseDown}
-                      />
+                      >
+                        <button
+                          type="button"
+                          aria-label="調整專案開始"
+                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l-full bg-white/30 opacity-0 group-hover:opacity-100"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            onProjectBarMouseDown(e, 'resize-left');
+                          }}
+                        />
+                        <button
+                          type="button"
+                          aria-label="平移專案區間"
+                          className="absolute inset-y-0 left-2 right-2 cursor-grab active:cursor-grabbing rounded-full"
+                          onMouseDown={(e) => onProjectBarMouseDown(e, 'move')}
+                        />
+                        <button
+                          type="button"
+                          aria-label="調整專案結束"
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r-full bg-white/30 opacity-0 group-hover:opacity-100"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            onProjectBarMouseDown(e, 'resize-right');
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -726,12 +859,23 @@ export default function ProjectMilestoneTimeline({
               >
                 <div
                   style={{ width: LABEL_W, minWidth: LABEL_W }}
-                  className="flex items-center gap-2 px-3 border-r border-white/60 shrink-0 sticky left-0 z-10 bg-inherit"
+                  className="flex items-center gap-2 px-2 border-r border-white/60 shrink-0 sticky left-0 z-10 bg-inherit"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-slate-400" />
-                  <span className="text-xs font-semibold text-slate-800 truncate" title={seg.label}>
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      seg.completed ? 'bg-emerald-500' : 'bg-slate-400'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleMilestoneCompleted(seg.id)}
+                    className={`text-[11px] font-semibold truncate text-left hover:underline ${
+                      seg.completed ? 'text-emerald-700' : 'text-slate-800'
+                    }`}
+                    title={seg.completed ? '標記為未完成' : '標記為完成'}
+                  >
                     {seg.label}
-                  </span>
+                  </button>
                 </div>
                 <div
                   style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W }}
@@ -816,7 +960,9 @@ export default function ProjectMilestoneTimeline({
                       width: Math.max(dayW, dateToX(seg.end) + dayW - dateToX(seg.start)),
                       top: (ROW_H - BAR_H) / 2,
                       height: BAR_H,
-                      ...barBg,
+                      ...(seg.completed
+                        ? { backgroundImage: 'linear-gradient(90deg, #059669, #10b981)' }
+                        : barBg),
                     }}
                   >
                     <button
