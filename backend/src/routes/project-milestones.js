@@ -7,7 +7,10 @@ router.get('/by-projects', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const raw = req.query.ids || '';
-    const ids = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (!ids.length) return res.json({});
     const { rows } = await db.query(
       `
@@ -35,7 +38,10 @@ router.get('/list-by-projects', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const raw = req.query.ids || '';
-    const ids = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (!ids.length) return res.json({});
     const { rows } = await db.query(
       `SELECT * FROM project_milestones WHERE project_id = ANY($1::uuid[])
@@ -73,7 +79,8 @@ router.post('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { project_id, label, sort_order } = req.body;
-    if (!project_id || !label) return res.status(400).json({ error: 'project_id and label are required' });
+    if (!project_id || !label)
+      return res.status(400).json({ error: 'project_id and label are required' });
     let order = sort_order;
     if (order == null) {
       const { rows } = await db.query(
@@ -139,9 +146,10 @@ router.put('/:id', updateMilestoneById);
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await req.app.locals.db.query(`DELETE FROM project_milestones WHERE id = $1`, [
-      req.params.id,
-    ]);
+    const { rowCount } = await req.app.locals.db.query(
+      `DELETE FROM project_milestones WHERE id = $1`,
+      [req.params.id]
+    );
     if (!rowCount) return res.status(404).json({ error: 'Milestone not found' });
     res.status(204).end();
   } catch (e) {
@@ -160,7 +168,10 @@ router.post('/reorder', async (req, res, next) => {
     try {
       await client.query('BEGIN');
       for (let i = 0; i < ordered_ids.length; i++) {
-        await client.query(`UPDATE project_milestones SET sort_order = $1 WHERE id = $2`, [i, ordered_ids[i]]);
+        await client.query(`UPDATE project_milestones SET sort_order = $1 WHERE id = $2`, [
+          i,
+          ordered_ids[i],
+        ]);
       }
       await client.query('COMMIT');
       res.json({ ok: true });
@@ -188,7 +199,9 @@ router.post('/add-final-edit-round', async (req, res, next) => {
     );
     const deliveryIdx = rows.findIndex((r) => /final\s*delivery/i.test(String(r.label)));
     if (deliveryIdx === -1) {
-      return res.status(400).json({ error: '找不到「Final Delivery」里程碑（請先套用廣告製作公版或手動新增）' });
+      return res
+        .status(400)
+        .json({ error: '找不到「Final Delivery」里程碑（請先套用廣告製作公版或手動新增）' });
     }
 
     const delivery = rows[deliveryIdx];
@@ -235,14 +248,19 @@ router.post('/bootstrap', async (req, res, next) => {
     const { project_id, template } = req.body;
     if (!project_id) return res.status(400).json({ error: 'project_id is required' });
     const labels = getTemplateLabels(template || 'generic');
-    if (!labels) return res.status(400).json({ error: `unknown template; use one of: ${listTemplateKeys().join(', ')}` });
+    if (!labels)
+      return res
+        .status(400)
+        .json({ error: `unknown template; use one of: ${listTemplateKeys().join(', ')}` });
 
     const { rows: existing } = await db.query(
       `SELECT COUNT(*)::int AS n FROM project_milestones WHERE project_id = $1`,
       [project_id]
     );
     if (existing[0].n > 0) {
-      return res.status(409).json({ error: 'Project already has milestones; delete them first or add manually' });
+      return res
+        .status(409)
+        .json({ error: 'Project already has milestones; delete them first or add manually' });
     }
 
     const inserted = [];

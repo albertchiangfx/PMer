@@ -9,17 +9,13 @@ function getApiBase() {
   const configured = raw != null ? String(raw).trim() : '';
 
   // 已設定完整網址（LAN、/api-dev 等）時一律採用，避免 next dev 在 localhost:3000 時誤連 127.0.0.1:3001 正式後端
-  if (
-    configured &&
-    (configured.startsWith('http://') || configured.startsWith('https://'))
-  ) {
+  if (configured && (configured.startsWith('http://') || configured.startsWith('https://'))) {
     return configured.replace(/\/$/, '');
   }
 
   if (typeof window !== 'undefined') {
     const { hostname, port } = window.location;
-    const local =
-      hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+    const local = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 
     const nextDevStylePort =
       port !== '' && port !== '80' && port !== '443' && Number.parseInt(port, 10) > 0;
@@ -57,21 +53,35 @@ async function request(path, options = {}) {
     const timedOut =
       e?.name === 'AbortError' ||
       e?.name === 'TimeoutError' ||
-      (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'TimeoutError');
+      (typeof DOMException !== 'undefined' &&
+        e instanceof DOMException &&
+        e.name === 'TimeoutError');
     if (timedOut) {
       throw Object.assign(
-        new Error(`請求逾時（${timeoutMs / 1000}s）：請確認後端已啟動，埠與 NEXT_PUBLIC_API_BACKEND_PORT 一致`),
-        { cause: e },
+        new Error(
+          `請求逾時（${timeoutMs / 1000}s）：請確認後端已啟動，埠與 NEXT_PUBLIC_API_BACKEND_PORT 一致`
+        ),
+        { cause: e }
       );
     }
-    if (e instanceof TypeError && String(e.message || '').toLowerCase().includes('fetch')) {
-      throw Object.assign(new Error('無法連上後端：請確認 API 已啟動且未被防火牆阻擋'), { cause: e });
+    if (
+      e instanceof TypeError &&
+      String(e.message || '')
+        .toLowerCase()
+        .includes('fetch')
+    ) {
+      throw Object.assign(new Error('無法連上後端：請確認 API 已啟動且未被防火牆阻擋'), {
+        cause: e,
+      });
     }
     throw e;
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw Object.assign(new Error(err.error || 'Request failed'), { status: res.status, data: err });
+    throw Object.assign(new Error(err.error || 'Request failed'), {
+      status: res.status,
+      data: err,
+    });
   }
   if (res.status === 204) return null;
   return res.json();
@@ -110,8 +120,7 @@ export const api = {
   updateAllocation: (id, data) => request(`/allocations/${id}`, { method: 'PUT', body: data }),
   deleteAllocation: (id) => request(`/allocations/${id}`, { method: 'DELETE' }),
   checkConflicts: (data) => request('/allocations/check-conflicts', { method: 'POST', body: data }),
-  checkConflictsGET: (params) =>
-    request('/allocations/check-conflicts' + toQS(params)),
+  checkConflictsGET: (params) => request('/allocations/check-conflicts' + toQS(params)),
 
   getMilestoneSummaryByProjects: (projectIds) =>
     request(
@@ -148,7 +157,8 @@ export const api = {
   /** @deprecated Legacy task-based allocations (avoid for new UI) */
   getTimeAllocations: (params) => request('/time-allocations' + toQS(params)),
   createTimeAllocation: (data) => request('/time-allocations', { method: 'POST', body: data }),
-  updateTimeAllocation: (id, data) => request(`/time-allocations/${id}`, { method: 'PUT', body: data }),
+  updateTimeAllocation: (id, data) =>
+    request(`/time-allocations/${id}`, { method: 'PUT', body: data }),
   deleteTimeAllocation: (id) => request(`/time-allocations/${id}`, { method: 'DELETE' }),
 
   // Contracts
@@ -170,12 +180,16 @@ export const api = {
   // Clients
   getClients: () => request('/clients'),
   createClient: (data) => request('/clients', { method: 'POST', body: data }),
-  updateClient: (id, data) => request(`/clients/${encodeURIComponent(id)}`, { method: 'PUT', body: data }),
+  updateClient: (id, data) =>
+    request(`/clients/${encodeURIComponent(id)}`, { method: 'PUT', body: data }),
   deleteClient: (id) => request(`/clients/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 function toQS(params) {
   if (!params) return '';
-  const q = Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  const q = Object.entries(params)
+    .filter(([, v]) => v != null)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
   return q ? '?' + q : '';
 }

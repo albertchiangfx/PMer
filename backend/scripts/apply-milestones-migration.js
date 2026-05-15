@@ -8,7 +8,14 @@ const path = require('path');
 const { Client } = require('pg');
 
 async function main() {
-  const sqlPath = path.join(__dirname, '..', 'src', 'db', 'migrations', '003_dashboard_milestones.sql');
+  const sqlPath = path.join(
+    __dirname,
+    '..',
+    'src',
+    'db',
+    'migrations',
+    '003_dashboard_milestones.sql'
+  );
   const sql = fs.readFileSync(sqlPath, 'utf8');
   const client = new Client({
     host: process.env.DB_HOST || 'localhost',

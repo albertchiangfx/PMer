@@ -36,61 +36,114 @@ router.get('/', async (req, res, next) => {
     q += ' GROUP BY t.id, p.name, p.color ORDER BY t.order_index, t.start_date';
     const { rows } = await db.query(q, params);
     res.json(rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.get('/:id', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { rows } = await db.query(`
+    const { rows } = await db.query(
+      `
       SELECT t.*, p.name AS project_name, p.color AS project_color
       FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = $1
-    `, [req.params.id]);
+    `,
+      [req.params.id]
+    );
     if (!rows.length) return res.status(404).json({ error: 'Task not found' });
     res.json(rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.post('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { project_id, name, description, task_type, status, priority, start_date, end_date, order_index } = req.body;
-    if (!project_id || !name) return res.status(400).json({ error: 'project_id and name are required' });
+    const {
+      project_id,
+      name,
+      description,
+      task_type,
+      status,
+      priority,
+      start_date,
+      end_date,
+      order_index,
+    } = req.body;
+    if (!project_id || !name)
+      return res.status(400).json({ error: 'project_id and name are required' });
     const bounds = await fetchProjectBounds(db, project_id);
     const boundErr = assertIntervalWithinBounds(start_date, end_date, bounds);
     if (boundErr) return res.status(400).json({ error: boundErr });
-    const { rows } = await db.query(`
+    const { rows } = await db.query(
+      `
       INSERT INTO tasks (project_id, name, description, task_type, status, priority, start_date, end_date, order_index)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
-    `, [project_id, name, description, task_type || 'general', status || 'todo', priority || 'medium', start_date, end_date, order_index || 0]);
+    `,
+      [
+        project_id,
+        name,
+        description,
+        task_type || 'general',
+        status || 'todo',
+        priority || 'medium',
+        start_date,
+        end_date,
+        order_index || 0,
+      ]
+    );
     res.status(201).json(rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.put('/:id', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { name, description, task_type, status, priority, start_date, end_date, order_index } = req.body;
+    const { name, description, task_type, status, priority, start_date, end_date, order_index } =
+      req.body;
     const cur = await db.query('SELECT project_id FROM tasks WHERE id = $1', [req.params.id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'Task not found' });
     const bounds = await fetchProjectBounds(db, cur.rows[0].project_id);
     const boundErr = assertIntervalWithinBounds(start_date, end_date, bounds);
     if (boundErr) return res.status(400).json({ error: boundErr });
-    const { rows } = await db.query(`
+    const { rows } = await db.query(
+      `
       UPDATE tasks SET name=$1, description=$2, task_type=$3, status=$4, priority=$5,
         start_date=$6, end_date=$7, order_index=$8 WHERE id=$9 RETURNING *
-    `, [name, description, task_type, status, priority, start_date, end_date, order_index, req.params.id]);
+    `,
+      [
+        name,
+        description,
+        task_type,
+        status,
+        priority,
+        start_date,
+        end_date,
+        order_index,
+        req.params.id,
+      ]
+    );
     if (!rows.length) return res.status(404).json({ error: 'Task not found' });
     res.json(rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await req.app.locals.db.query('DELETE FROM tasks WHERE id=$1', [req.params.id]);
+    const { rowCount } = await req.app.locals.db.query('DELETE FROM tasks WHERE id=$1', [
+      req.params.id,
+    ]);
     if (!rowCount) return res.status(404).json({ error: 'Task not found' });
     res.status(204).end();
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 module.exports = router;

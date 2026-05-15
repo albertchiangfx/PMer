@@ -4,7 +4,20 @@ import { api } from '../../lib/api';
 import TeamMemberCard from '../../components/TeamMemberCard';
 import BackToDashboard from '../../components/BackToDashboard';
 
-const ROLES = ['美術總監', '3D 建模師', '材質師', '動畫師', 'Rigging 師', '特效師', '合成師', '技術總監', '製作人', '導演', '音效師', '後製'];
+const ROLES = [
+  '美術總監',
+  '3D 建模師',
+  '材質師',
+  '動畫師',
+  'Rigging 師',
+  '特效師',
+  '合成師',
+  '技術總監',
+  '製作人',
+  '導演',
+  '音效師',
+  '後製',
+];
 
 export default function TeamPage() {
   const [members, setMembers] = useState([]);
@@ -92,20 +105,28 @@ export default function TeamPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">團隊成員</h1>
-          <p className="text-gray-400 mt-1 text-sm">{members.filter(m => m.status === 'active').length} 位活躍成員</p>
+          <p className="text-gray-400 mt-1 text-sm">
+            {members.filter((m) => m.status === 'active').length} 位活躍成員
+          </p>
         </div>
-        <button onClick={openCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors">
+        <button
+          onClick={openCreate}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
+        >
           + 新增成員
         </button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex items-center justify-center py-20">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
       ) : members.length === 0 ? (
         <div className="bg-white rounded-apple-xl shadow-apple p-20 text-center">
           <p className="text-gray-400">尚無成員</p>
-          <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm font-medium">+ 新增第一位成員</button>
+          <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm font-medium">
+            + 新增第一位成員
+          </button>
         </div>
       ) : (
         <div className="space-y-8">
@@ -127,18 +148,30 @@ export default function TeamPage() {
       )}
 
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in" onClick={e => e.target === e.currentTarget && setModal(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
+          onClick={(e) => e.target === e.currentTarget && setModal(null)}
+        >
           <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-md animate-slide-up">
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h2 className="text-base font-semibold">{modal === 'create' ? '新增成員' : '編輯成員'}</h2>
-              <button onClick={() => setModal(null)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">✕</button>
+              <h2 className="text-base font-semibold">
+                {modal === 'create' ? '新增成員' : '編輯成員'}
+              </h2>
+              <button
+                onClick={() => setModal(null)}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Edit-lock toggle. Hidden in create mode (always unlocked). */}
             {modal !== 'create' && (
               <div className="px-6 pt-5 -mb-1">
                 <label className="flex items-center gap-3 select-none cursor-pointer">
-                  <span className="text-xs font-medium text-gray-500 flex-1">啟用編輯（鎖定中以避免誤改）</span>
+                  <span className="text-xs font-medium text-gray-500 flex-1">
+                    啟用編輯（鎖定中以避免誤改）
+                  </span>
                   <span
                     onClick={() => setEditUnlocked((v) => !v)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editUnlocked ? 'bg-indigo-600' : 'bg-gray-300'}`}
@@ -157,21 +190,35 @@ export default function TeamPage() {
               <fieldset disabled={!editUnlocked} className="space-y-4 disabled:opacity-60">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">姓名 *</label>
-                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required
-                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed" />
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">角色</label>
-                    <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed">
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    <select
+                      value={form.role}
+                      onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">類型</label>
-                    <select value={form.employment_type} onChange={e => setForm(f => ({ ...f, employment_type: e.target.value }))}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed">
+                    <select
+                      value={form.employment_type}
+                      onChange={(e) => setForm((f) => ({ ...f, employment_type: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                    >
                       <option value="permanent">固定</option>
                       <option value="freelance">Freelance</option>
                     </select>
@@ -180,36 +227,62 @@ export default function TeamPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">狀態</label>
-                    <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed">
+                    <select
+                      value={form.status}
+                      onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                    >
                       <option value="active">活躍</option>
                       <option value="inactive">暫停</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">時薪（USD）</label>
-                    <input type="number" value={form.hourly_rate} onChange={e => setForm(f => ({ ...f, hourly_rate: e.target.value }))} placeholder="0.00"
-                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed" />
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                      時薪（USD）
+                    </label>
+                    <input
+                      type="number"
+                      value={form.hourly_rate}
+                      onChange={(e) => setForm((f) => ({ ...f, hourly_rate: e.target.value }))}
+                      placeholder="0.00"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                    />
                   </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Email</label>
-                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed" />
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">電話</label>
-                  <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed" />
+                  <input
+                    value={form.phone}
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                  />
                 </div>
               </fieldset>
 
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={!editUnlocked}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-apple">
+                <button
+                  type="submit"
+                  disabled={!editUnlocked}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-apple"
+                >
                   {modal === 'create' ? '新增' : '儲存'}
                 </button>
-                <button type="button" onClick={() => setModal(null)} className="px-4 text-sm text-gray-500">取消</button>
+                <button
+                  type="button"
+                  onClick={() => setModal(null)}
+                  className="px-4 text-sm text-gray-500"
+                >
+                  取消
+                </button>
               </div>
 
               {/* Delete only appears in edit mode AND when unlocked. Hidden by default

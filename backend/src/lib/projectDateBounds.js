@@ -1,13 +1,37 @@
+/** Postgres DATE / ISO string → YYYY-MM-DD (node-pg returns Date; String(date).slice(0,10) is wrong). */
+function ymdFromDb(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v).trim();
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
 /**
  * Load project official start/end (DATE → YYYY-MM-DD). Returns null if missing either.
  */
 async function fetchProjectBounds(db, projectId) {
   if (!projectId) return null;
-  const { rows } = await db.query('SELECT start_date, end_date FROM projects WHERE id = $1', [projectId]);
+  const { rows } = await db.query('SELECT start_date, end_date FROM projects WHERE id = $1', [
+    projectId,
+  ]);
   if (!rows.length) return null;
   const r = rows[0];
-  const s = r.start_date != null ? String(r.start_date).slice(0, 10) : null;
-  const e = r.end_date != null ? String(r.end_date).slice(0, 10) : null;
+  const s = ymdFromDb(r.start_date);
+  const e = ymdFromDb(r.end_date);
   if (!s || !e) return null;
   return { start: s, end: e };
 }
@@ -18,8 +42,9 @@ async function fetchProjectBounds(db, projectId) {
 function assertIntervalWithinBounds(startDate, endDate, bounds) {
   if (!bounds) return null;
   if (!startDate || !endDate) return null;
-  const s = String(startDate).slice(0, 10);
-  const e = String(endDate).slice(0, 10);
+  const s = ymdFromDb(startDate);
+  const e = ymdFromDb(endDate);
+  if (!s || !e) return 'start_date and end_date must be valid dates';
   if (s > e) return 'start_date must be <= end_date';
   if (s < bounds.start || e > bounds.end) {
     return `起訖須在專案範圍內（${bounds.start}～${bounds.end}）`;

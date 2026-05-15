@@ -7,6 +7,11 @@
     "db:clone-to-dev": "bash scripts/clone-db-to-dev.sh",
     "dev:web": "npm run dev --prefix frontend",
     "dev:api": "npm start --prefix backend",
-    "dev:api:3110": "npm run start:3110 --prefix backend"
+    "dev:api:3110": "npm run start:3110 --prefix backend",
+    "format": "prettier --write \"frontend/**/*.{js,jsx,json,css,md}\" \"backend/**/*.{js,json,md}\"",
+    "format:check": "prettier --check \"frontend/**/*.{js,jsx,json,css,md}\" \"backend/**/*.{js,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3"
   }
 }

@@ -76,7 +76,10 @@ export default function MyTasksPage() {
       .finally(() => setLoading(false));
   }, [viewerId, syncTick]);
 
-  const viewer = useMemo(() => members.find((m) => String(m.id) === String(viewerId)), [members, viewerId]);
+  const viewer = useMemo(
+    () => members.find((m) => String(m.id) === String(viewerId)),
+    [members, viewerId]
+  );
 
   return (
     <div className="p-8 animate-fade-in">
@@ -84,7 +87,9 @@ export default function MyTasksPage() {
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">所有任務</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+            所有任務
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
             {viewer ? `${viewer.name} (${viewer.role || '—'})` : '—'}
           </p>
@@ -133,4 +138,3 @@ export default function MyTasksPage() {
     </div>
   );
 }
-

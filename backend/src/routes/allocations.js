@@ -42,14 +42,28 @@ router.get('/', async (req, res, next) => {
       WHERE 1=1
     `;
     const params = [];
-    if (project_id) { params.push(project_id); q += ` AND a.project_id = $${params.length}`; }
-    if (member_id) { params.push(member_id); q += ` AND a.member_id = $${params.length}`; }
-    if (from) { params.push(from); q += ` AND a.end_date >= $${params.length}`; }
-    if (to) { params.push(to); q += ` AND a.start_date <= $${params.length}`; }
+    if (project_id) {
+      params.push(project_id);
+      q += ` AND a.project_id = $${params.length}`;
+    }
+    if (member_id) {
+      params.push(member_id);
+      q += ` AND a.member_id = $${params.length}`;
+    }
+    if (from) {
+      params.push(from);
+      q += ` AND a.end_date >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      q += ` AND a.start_date <= $${params.length}`;
+    }
     q += ' ORDER BY a.start_date, tm.name';
     const { rows } = await db.query(q, params);
     res.json(rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // POST /api/allocations
@@ -57,7 +71,8 @@ router.post('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { project_id, member_id, start_date, end_date, notes } = req.body;
-    if (!project_id || !member_id) return res.status(400).json({ error: 'project_id and member_id are required' });
+    if (!project_id || !member_id)
+      return res.status(400).json({ error: 'project_id and member_id are required' });
     const range = normalizeDateRange(start_date, end_date);
     if (!range) return res.status(400).json({ error: 'start_date and end_date are required' });
 
@@ -74,7 +89,9 @@ router.post('/', async (req, res, next) => {
     );
     // Allow overlaps; return conflicts for UI warnings.
     res.status(201).json({ ...rows[0], conflicts });
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // PUT /api/allocations/:id
@@ -98,7 +115,13 @@ router.put('/:id', async (req, res, next) => {
     const boundErr = assertIntervalWithinBounds(range.start_date, range.end_date, bounds);
     if (boundErr) return res.status(400).json({ error: boundErr });
 
-    const conflicts = await detectConflicts(db, member_id, range.start_date, range.end_date, req.params.id);
+    const conflicts = await detectConflicts(
+      db,
+      member_id,
+      range.start_date,
+      range.end_date,
+      req.params.id
+    );
     const { rows } = await db.query(
       `UPDATE allocations
        SET project_id=$1, member_id=$2, start_date=$3, end_date=$4, notes=$5
@@ -107,16 +130,22 @@ router.put('/:id', async (req, res, next) => {
       [project_id, member_id, range.start_date, range.end_date, notes, req.params.id]
     );
     res.json({ ...rows[0], conflicts });
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // DELETE /api/allocations/:id
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await req.app.locals.db.query('DELETE FROM allocations WHERE id=$1', [req.params.id]);
+    const { rowCount } = await req.app.locals.db.query('DELETE FROM allocations WHERE id=$1', [
+      req.params.id,
+    ]);
     if (!rowCount) return res.status(404).json({ error: 'Allocation not found' });
     res.status(204).end();
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // GET /api/allocations/check-conflicts?member_id=&start_date=&end_date=&exclude_id=
@@ -126,9 +155,17 @@ router.get('/check-conflicts', async (req, res, next) => {
     if (!member_id || !start_date || !end_date) {
       return res.status(400).json({ error: 'member_id, start_date, end_date are required' });
     }
-    const conflicts = await detectConflicts(req.app.locals.db, member_id, start_date, end_date, exclude_id || null);
+    const conflicts = await detectConflicts(
+      req.app.locals.db,
+      member_id,
+      start_date,
+      end_date,
+      exclude_id || null
+    );
     res.json({ hasConflicts: conflicts.length > 0, conflicts });
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // Back-compat: POST /api/allocations/check-conflicts
@@ -138,10 +175,17 @@ router.post('/check-conflicts', async (req, res, next) => {
     if (!member_id || !start_date || !end_date) {
       return res.status(400).json({ error: 'member_id, start_date, end_date are required' });
     }
-    const conflicts = await detectConflicts(req.app.locals.db, member_id, start_date, end_date, exclude_id || null);
+    const conflicts = await detectConflicts(
+      req.app.locals.db,
+      member_id,
+      start_date,
+      end_date,
+      exclude_id || null
+    );
     res.json({ hasConflicts: conflicts.length > 0, conflicts });
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 module.exports = router;
-

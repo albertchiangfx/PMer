@@ -13,7 +13,11 @@ import {
   isWeekend,
 } from 'date-fns';
 import { api } from '../lib/api';
-import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY, barTouchesTimelineViewportLeft } from './ganttOffscreenDots';
+import {
+  GANTT_OFFSCREEN_DOT,
+  GANTT_OFFSCREEN_DOT_STORAGE_KEY,
+  barTouchesTimelineViewportLeft,
+} from './ganttOffscreenDots';
 
 const DEFAULT_DAY_W = 18; // start zoomed-out so users see many days; ctrl+wheel zooms in
 const MIN_DAY_W = 12;
@@ -85,12 +89,16 @@ export default function StudioProjectsGantt({
   const [tooltipSize, setTooltipSize] = useState({ w: 0, h: 0 });
   const [dayW, setDayW] = useState(DEFAULT_DAY_W);
   const dayWRef = useRef(dayW);
-  useEffect(() => { dayWRef.current = dayW; }, [dayW]);
+  useEffect(() => {
+    dayWRef.current = dayW;
+  }, [dayW]);
   const timelineControlled = typeof onTimelineModeChange === 'function';
   const [fallbackTimelineMode, setFallbackTimelineMode] = useState('auto');
   const timelineMode = timelineControlled ? (timelineModeProp ?? 'auto') : fallbackTimelineMode;
   const timelineModeRef = useRef(timelineMode);
-  useEffect(() => { timelineModeRef.current = timelineMode; }, [timelineMode]);
+  useEffect(() => {
+    timelineModeRef.current = timelineMode;
+  }, [timelineMode]);
 
   useEffect(() => {
     if (timelineMode === 'dayWeek') {
@@ -265,7 +273,10 @@ export default function StudioProjectsGantt({
       setGhost(null);
       if (!g || !drag?.origProject) return;
       try {
-        await api.updateProject(drag.origProject.id, buildUpdatePayload(drag.origProject, g.startDate, g.endDate));
+        await api.updateProject(
+          drag.origProject.id,
+          buildUpdatePayload(drag.origProject, g.startDate, g.endDate)
+        );
         onUpdate?.();
       } catch (err) {
         alert(err.message || '更新專案日期失敗');
@@ -410,8 +421,10 @@ export default function StudioProjectsGantt({
       const isAlt = weekIdx % 2 === 1;
       const isWeekday = !isWeekend(d);
       if (isAlt && isWeekday) {
-        if (runStart === -1) { runStart = i; runSpan = 1; }
-        else runSpan += 1;
+        if (runStart === -1) {
+          runStart = i;
+          runSpan = 1;
+        } else runSpan += 1;
       } else if (runStart !== -1) {
         stripes.push({ startIdx: runStart, span: runSpan });
         runStart = -1;
@@ -432,11 +445,14 @@ export default function StudioProjectsGantt({
     syncingRef.current = false;
   }, [dateToX, today]);
 
-  const handleTimelineModeChange = useCallback((e) => {
-    const next = e.target.value;
-    if (timelineControlled) onTimelineModeChange(next);
-    else setFallbackTimelineMode(next);
-  }, [timelineControlled, onTimelineModeChange]);
+  const handleTimelineModeChange = useCallback(
+    (e) => {
+      const next = e.target.value;
+      if (timelineControlled) onTimelineModeChange(next);
+      else setFallbackTimelineMode(next);
+    },
+    [timelineControlled, onTimelineModeChange]
+  );
 
   const tw = timelineViewportW;
   const visT1 = Math.min(totalW, scrollLeft + Math.max(0, tw));
@@ -480,7 +496,10 @@ export default function StudioProjectsGantt({
         );
       })()}
 
-      <div className="relative flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div
+        className="relative flex flex-col overflow-hidden"
+        style={{ maxHeight: 'calc(100vh - 280px)' }}
+      >
         <div
           ref={containerRef}
           className="gantt-scroll gantt-main-scroll min-h-0 flex-1 overflow-x-auto overflow-y-auto"
@@ -495,251 +514,357 @@ export default function StudioProjectsGantt({
             syncingRef.current = false;
           }}
         >
-        <div style={{ width: PINNED_LEFT_W + totalW, minHeight: headerH + Math.max(rows.length, 1) * ROW_H }}>
-          <div className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60" style={{ height: headerH }}>
-            <div style={{ display: 'flex', height: '100%' }}>
-              <div
-                style={{ width: LABEL_W, minWidth: LABEL_W }}
-                className={`flex px-4 border-r border-white/60 sticky left-0 z-30 bg-white/70 backdrop-blur ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
-              >
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">專案</span>
-              </div>
-              <div
-                style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W, left: LABEL_W }}
-                className="sticky shrink-0 border-r border-slate-200/80 bg-slate-50/90 z-[29]"
-              />
-              <div style={{ position: 'relative', width: totalW }}>
-                {showMonthOnlyHeader ? (
-                  <div style={{ display: 'flex', height: '100%', alignItems: 'center' }}>
-                    {monthGroups.map((g, i) => (
-                      <div
-                        key={g.key + i}
-                        style={{ width: g.days * dayW, minWidth: g.days * dayW }}
-                        className="flex h-full items-center border-r border-white/40 px-2 text-xs font-semibold text-slate-600"
-                      >
-                        <span className="truncate">{g.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', height: 36, alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,.06)' }}>
-                      {weekGroups.map((g, i) => (
+          <div
+            style={{
+              width: PINNED_LEFT_W + totalW,
+              minHeight: headerH + Math.max(rows.length, 1) * ROW_H,
+            }}
+          >
+            <div
+              className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60"
+              style={{ height: headerH }}
+            >
+              <div style={{ display: 'flex', height: '100%' }}>
+                <div
+                  style={{ width: LABEL_W, minWidth: LABEL_W }}
+                  className={`flex px-4 border-r border-white/60 sticky left-0 z-30 bg-white/70 backdrop-blur ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
+                >
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    專案
+                  </span>
+                </div>
+                <div
+                  style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W, left: LABEL_W }}
+                  className="sticky shrink-0 border-r border-slate-200/80 bg-slate-50/90 z-[29]"
+                />
+                <div style={{ position: 'relative', width: totalW }}>
+                  {showMonthOnlyHeader ? (
+                    <div style={{ display: 'flex', height: '100%', alignItems: 'center' }}>
+                      {monthGroups.map((g, i) => (
                         <div
-                          key={i}
+                          key={g.key + i}
                           style={{ width: g.days * dayW, minWidth: g.days * dayW }}
-                          className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
+                          className="flex h-full items-center border-r border-white/40 px-2 text-xs font-semibold text-slate-600"
                         >
-                          <span>{g.label}</span>
-                          <span className="text-[9px] font-medium text-slate-400 tabular-nums">W{g.weekNo}</span>
+                          <span className="truncate">{g.label}</span>
                         </div>
                       ))}
                     </div>
-                    <div style={{ display: 'flex', height: 44, alignItems: 'center' }}>
-                      {days.map((d, i) => {
-                        const isToday_ = isToday(d);
-                        const isWknd = isWeekend(d);
-                        return (
-                          <div
-                            key={i}
-                            style={{ width: dayW, minWidth: dayW }}
-                            className={`flex flex-col items-center justify-center h-full border-r border-white/30 ${isWknd ? 'opacity-40' : ''}`}
-                          >
-                            <span className="text-[9px] text-slate-400 uppercase">{format(d, 'EEE')[0]}</span>
-                            <span
-                              className={`text-xs font-medium mt-0.5 w-5 h-5 flex items-center justify-center rounded-full
-                          ${isToday_ ? 'bg-indigo-500 text-white' : 'text-slate-500'}`}
-                            >
-                              {format(d, 'd')}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {rows.map(({ project, span }, rowIdx) => {
-            const color = project.color || 'var(--apple-blue)';
-            const hasBar = span.start && span.end;
-            const rawX = hasBar ? dateToX(span.start) : 0;
-            const rawXEnd = hasBar ? dateToX(span.end) + dayW : 0;
-            const x = Math.max(0, rawX);
-            const xEnd = Math.max(x, rawXEnd);
-            const w = hasBar ? xEnd - x : 0;
-            const isDragging = dragging?.projectId === project.id;
-            const muted = project.status === 'cancelled';
-
-            // Solid (opaque) gradient so bars sit on top of the row's
-            // alt-week / weekend tints without being color-shifted by them.
-            const barBg = {
-              backgroundImage: 'linear-gradient(90deg, #1f2937, #374151)',
-            };
-
-            const rowMinX = hasBar ? dateToX(span.start) : null;
-            const showRowDotLeft = hasBar && barTouchesTimelineViewportLeft(rowMinX, scrollLeft, PINNED_LEFT_W);
-            const showRowDotRight = hasBar && tw > 0 && rowMinX >= visT1;
-
-            return (
-              <div
-                key={project.id}
-                style={{ display: 'flex', height: ROW_H }}
-                className={`border-b border-slate-200/60 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} ${muted ? 'opacity-55' : ''}`}
-              >
-                <div
-                  style={{ width: LABEL_W, minWidth: LABEL_W }}
-                  className="flex flex-col justify-center px-4 border-r border-white/60 shrink-0 sticky left-0 z-10 bg-inherit min-w-0"
-                >
-                  <Link href={`/projects/${project.id}`} className="text-xs font-semibold text-slate-800 truncate hover:text-indigo-600">
-                    {project.name}
-                  </Link>
-                  <p className="text-[10px] text-slate-500 truncate">
-                    {project.client_name || '無客戶'}
-                    {hasBar && span.source === 'allocations' && (
-                      <span className="text-slate-400"> · 依分配推算</span>
-                    )}
-                  </p>
-                  {!hasBar && (
-                    <p className="text-[10px] text-amber-600/90 mt-0.5">未設定時程（請編輯專案日期或新增分配）</p>
-                  )}
-                </div>
-
-                <div
-                  style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W, left: LABEL_W }}
-                  className={`sticky shrink-0 z-[15] flex items-center justify-center border-r border-slate-200/80 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
-                >
-                  {showRowDotLeft && (
-                    <span aria-hidden className="pointer-events-none block" style={offscreenDotStyle} />
-                  )}
-                </div>
-
-                <div style={{ position: 'relative', width: totalW, height: ROW_H, isolation: 'isolate' }}>
-                  {/* Alternating-week tint (drawn first, behind weekend stripes). */}
-                  {altWeekStripes.map((s, i) => (
-                    <div
-                      key={`altw-${i}`}
-                      style={{ position: 'absolute', left: s.startIdx * dayW, top: 0, width: s.span * dayW, height: '100%' }}
-                      className="gantt-alt-week"
-                    />
-                  ))}
-                  {days.map((d, i) =>
-                    isWeekend(d) ? (
-                      <div
-                        key={i}
-                        style={{ position: 'absolute', left: i * dayW, top: 0, width: dayW, height: '100%' }}
-                        className="gantt-weekend"
-                      />
-                    ) : null
-                  )}
-
-                  {showRowDotRight && (
-                    <span
-                      aria-hidden
-                      className="pointer-events-none"
-                      style={{
-                        ...offscreenDotStyle,
-                        position: 'absolute',
-                        left: visT1 - 6,
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 25,
-                      }}
-                    />
-                  )}
-
-                  {hasBar && w > 0 && (
-                    <div style={{ position: 'absolute', left: x + 2, top: 14, width: w - 4, height: 28, zIndex: isDragging ? 20 : 5 }}>
+                  ) : (
+                    <>
                       <div
                         style={{
-                          ...barBg,
-                          borderRadius: 6,
-                          height: '100%',
-                          width: '100%',
-                          opacity: isDragging ? 0.4 : 1,
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                          cursor: 'grab',
                           display: 'flex',
+                          height: 36,
                           alignItems: 'center',
-                          overflow: 'hidden',
-                          position: 'relative',
+                          borderBottom: '1px solid rgba(0,0,0,.06)',
                         }}
-                        onMouseDown={(e) => handleBarMouseDown(e, rowIdx, { project, span }, 'move')}
-                        onMouseEnter={(e) => setTooltip({ project, span, x: e.clientX, y: e.clientY })}
-                        onMouseMove={(e) => setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))}
-                        onMouseLeave={() => setTooltip(null)}
                       >
-                        <div
-                          style={{ position: 'absolute', left: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleBarMouseDown(e, rowIdx, { project, span }, 'resize-left');
-                          }}
-                        />
-                        <span
-                          style={{
-                            color: 'white',
-                            fontSize: 11,
-                            fontWeight: 600,
-                            paddingLeft: 8,
-                            paddingRight: 8,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            pointerEvents: 'none',
-                          }}
-                        >
-                          {project.name}
-                        </span>
-                        <div
-                          style={{ position: 'absolute', right: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', zIndex: 2 }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleBarMouseDown(e, rowIdx, { project, span }, 'resize-right');
-                          }}
-                        />
+                        {weekGroups.map((g, i) => (
+                          <div
+                            key={i}
+                            style={{ width: g.days * dayW, minWidth: g.days * dayW }}
+                            className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
+                          >
+                            <span>{g.label}</span>
+                            <span className="text-[9px] font-medium text-slate-400 tabular-nums">
+                              W{g.weekNo}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    </div>
+                      <div style={{ display: 'flex', height: 44, alignItems: 'center' }}>
+                        {days.map((d, i) => {
+                          const isToday_ = isToday(d);
+                          const isWknd = isWeekend(d);
+                          return (
+                            <div
+                              key={i}
+                              style={{ width: dayW, minWidth: dayW }}
+                              className={`flex flex-col items-center justify-center h-full border-r border-white/30 ${isWknd ? 'opacity-40' : ''}`}
+                            >
+                              <span className="text-[9px] text-slate-400 uppercase">
+                                {format(d, 'EEE')[0]}
+                              </span>
+                              <span
+                                className={`text-xs font-medium mt-0.5 w-5 h-5 flex items-center justify-center rounded-full
+                          ${isToday_ ? 'bg-indigo-500 text-white' : 'text-slate-500'}`}
+                              >
+                                {format(d, 'd')}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
+                </div>
+              </div>
+            </div>
 
-                  {ghost && dragging?.projectId === project.id && ghost.rowIdx === rowIdx && (() => {
-                    const gx = dateToX(format(ghost.startDate, 'yyyy-MM-dd'));
-                    const gxEnd = dateToX(format(ghost.endDate, 'yyyy-MM-dd')) + dayW;
-                    const gw = gxEnd - gx;
-                    if (gw <= 0) return null;
-                    return (
-                      <div style={{ position: 'absolute', left: gx + 2, top: 14, width: gw - 4, height: 28, zIndex: 30, pointerEvents: 'none' }}>
+            {rows.map(({ project, span }, rowIdx) => {
+              const color = project.color || 'var(--apple-blue)';
+              const hasBar = span.start && span.end;
+              const rawX = hasBar ? dateToX(span.start) : 0;
+              const rawXEnd = hasBar ? dateToX(span.end) + dayW : 0;
+              const x = Math.max(0, rawX);
+              const xEnd = Math.max(x, rawXEnd);
+              const w = hasBar ? xEnd - x : 0;
+              const isDragging = dragging?.projectId === project.id;
+              const muted = project.status === 'cancelled';
+
+              // Solid (opaque) gradient so bars sit on top of the row's
+              // alt-week / weekend tints without being color-shifted by them.
+              const barBg = {
+                backgroundImage: 'linear-gradient(90deg, #1f2937, #374151)',
+              };
+
+              const rowMinX = hasBar ? dateToX(span.start) : null;
+              const showRowDotLeft =
+                hasBar && barTouchesTimelineViewportLeft(rowMinX, scrollLeft, PINNED_LEFT_W);
+              const showRowDotRight = hasBar && tw > 0 && rowMinX >= visT1;
+
+              return (
+                <div
+                  key={project.id}
+                  style={{ display: 'flex', height: ROW_H }}
+                  className={`border-b border-slate-200/60 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} ${muted ? 'opacity-55' : ''}`}
+                >
+                  <div
+                    style={{ width: LABEL_W, minWidth: LABEL_W }}
+                    className="flex flex-col justify-center px-4 border-r border-white/60 shrink-0 sticky left-0 z-10 bg-inherit min-w-0"
+                  >
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="text-xs font-semibold text-slate-800 truncate hover:text-indigo-600"
+                    >
+                      {project.name}
+                    </Link>
+                    <p className="text-[10px] text-slate-500 truncate">
+                      {project.client_name || '無客戶'}
+                      {hasBar && span.source === 'allocations' && (
+                        <span className="text-slate-400"> · 依分配推算</span>
+                      )}
+                    </p>
+                    {!hasBar && (
+                      <p className="text-[10px] text-amber-600/90 mt-0.5">
+                        未設定時程（請編輯專案日期或新增分配）
+                      </p>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      width: INDICATOR_GUTTER_W,
+                      minWidth: INDICATOR_GUTTER_W,
+                      left: LABEL_W,
+                    }}
+                    className={`sticky shrink-0 z-[15] flex items-center justify-center border-r border-slate-200/80 ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
+                  >
+                    {showRowDotLeft && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none block"
+                        style={offscreenDotStyle}
+                      />
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: totalW,
+                      height: ROW_H,
+                      isolation: 'isolate',
+                    }}
+                  >
+                    {/* Alternating-week tint (drawn first, behind weekend stripes). */}
+                    {altWeekStripes.map((s, i) => (
+                      <div
+                        key={`altw-${i}`}
+                        style={{
+                          position: 'absolute',
+                          left: s.startIdx * dayW,
+                          top: 0,
+                          width: s.span * dayW,
+                          height: '100%',
+                        }}
+                        className="gantt-alt-week"
+                      />
+                    ))}
+                    {days.map((d, i) =>
+                      isWeekend(d) ? (
+                        <div
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            left: i * dayW,
+                            top: 0,
+                            width: dayW,
+                            height: '100%',
+                          }}
+                          className="gantt-weekend"
+                        />
+                      ) : null
+                    )}
+
+                    {showRowDotRight && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none"
+                        style={{
+                          ...offscreenDotStyle,
+                          position: 'absolute',
+                          left: visT1 - 6,
+                          top: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 25,
+                        }}
+                      />
+                    )}
+
+                    {hasBar && w > 0 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: x + 2,
+                          top: 14,
+                          width: w - 4,
+                          height: 28,
+                          zIndex: isDragging ? 20 : 5,
+                        }}
+                      >
                         <div
                           style={{
                             ...barBg,
                             borderRadius: 6,
                             height: '100%',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                            opacity: 0.85,
+                            width: '100%',
+                            opacity: isDragging ? 0.4 : 1,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                            cursor: 'grab',
                             display: 'flex',
                             alignItems: 'center',
+                            overflow: 'hidden',
+                            position: 'relative',
                           }}
+                          onMouseDown={(e) =>
+                            handleBarMouseDown(e, rowIdx, { project, span }, 'move')
+                          }
+                          onMouseEnter={(e) =>
+                            setTooltip({ project, span, x: e.clientX, y: e.clientY })
+                          }
+                          onMouseMove={(e) =>
+                            setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))
+                          }
+                          onMouseLeave={() => setTooltip(null)}
                         >
-                          <span style={{ color: 'white', fontSize: 11, fontWeight: 600, paddingLeft: 8, whiteSpace: 'nowrap' }}>
-                            {ghost.title}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              width: 6,
+                              height: '100%',
+                              cursor: 'ew-resize',
+                              zIndex: 2,
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleBarMouseDown(e, rowIdx, { project, span }, 'resize-left');
+                            }}
+                          />
+                          <span
+                            style={{
+                              color: 'white',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              paddingLeft: 8,
+                              paddingRight: 8,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            {project.name}
                           </span>
+                          <div
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: 0,
+                              width: 6,
+                              height: '100%',
+                              cursor: 'ew-resize',
+                              zIndex: 2,
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleBarMouseDown(e, rowIdx, { project, span }, 'resize-right');
+                            }}
+                          />
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            );
-          })}
+                    )}
 
-          {rows.length === 0 && (
-            <div className="flex items-center justify-center py-20 text-slate-400 text-sm px-4 text-center">
-              尚無專案，請先到「專案」建立。
-            </div>
-          )}
-        </div>
+                    {ghost &&
+                      dragging?.projectId === project.id &&
+                      ghost.rowIdx === rowIdx &&
+                      (() => {
+                        const gx = dateToX(format(ghost.startDate, 'yyyy-MM-dd'));
+                        const gxEnd = dateToX(format(ghost.endDate, 'yyyy-MM-dd')) + dayW;
+                        const gw = gxEnd - gx;
+                        if (gw <= 0) return null;
+                        return (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: gx + 2,
+                              top: 14,
+                              width: gw - 4,
+                              height: 28,
+                              zIndex: 30,
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            <div
+                              style={{
+                                ...barBg,
+                                borderRadius: 6,
+                                height: '100%',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                                opacity: 0.85,
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: 'white',
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  paddingLeft: 8,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {ghost.title}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                  </div>
+                </div>
+              );
+            })}
+
+            {rows.length === 0 && (
+              <div className="flex items-center justify-center py-20 text-slate-400 text-sm px-4 text-center">
+                尚無專案，請先到「專案」建立。
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -761,34 +886,39 @@ export default function StudioProjectsGantt({
         <div style={{ width: INDICATOR_GUTTER_W + totalW, height: 10 }} />
       </div>
 
-      {tooltip && !dragging && (() => {
-        const OFFSET = 12;
-        const PAD = 8;
-        const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
-        const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
-        let left = tooltip.x + OFFSET;
-        let top = tooltip.y + OFFSET;
-        if (vw && vh && tooltipSize.w && tooltipSize.h) {
-          left = Math.min(left, vw - tooltipSize.w - PAD);
-          top = Math.min(top, vh - tooltipSize.h - PAD);
-          left = Math.max(PAD, left);
-          top = Math.max(PAD, top);
-        }
-        return (
-          <div style={{ position: 'fixed', left, top, zIndex: 100, pointerEvents: 'none' }}>
-            <div ref={tooltipBoxRef} className="bg-gray-900/90 text-white rounded-lg px-3 py-2 text-xs shadow-xl backdrop-blur max-w-xs">
-            <p className="font-semibold">{tooltip.project.name}</p>
-            <p className="text-gray-300">{tooltip.project.client_name || '無客戶'}</p>
-            {tooltip.span.start && tooltip.span.end && (
-              <p className="text-gray-400 mt-0.5">
-                {tooltip.span.start} → {tooltip.span.end}
-                {tooltip.span.source === 'allocations' ? '（依分配推算）' : ''}
-              </p>
-            )}
+      {tooltip &&
+        !dragging &&
+        (() => {
+          const OFFSET = 12;
+          const PAD = 8;
+          const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+          const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+          let left = tooltip.x + OFFSET;
+          let top = tooltip.y + OFFSET;
+          if (vw && vh && tooltipSize.w && tooltipSize.h) {
+            left = Math.min(left, vw - tooltipSize.w - PAD);
+            top = Math.min(top, vh - tooltipSize.h - PAD);
+            left = Math.max(PAD, left);
+            top = Math.max(PAD, top);
+          }
+          return (
+            <div style={{ position: 'fixed', left, top, zIndex: 100, pointerEvents: 'none' }}>
+              <div
+                ref={tooltipBoxRef}
+                className="bg-gray-900/90 text-white rounded-lg px-3 py-2 text-xs shadow-xl backdrop-blur max-w-xs"
+              >
+                <p className="font-semibold">{tooltip.project.name}</p>
+                <p className="text-gray-300">{tooltip.project.client_name || '無客戶'}</p>
+                {tooltip.span.start && tooltip.span.end && (
+                  <p className="text-gray-400 mt-0.5">
+                    {tooltip.span.start} → {tooltip.span.end}
+                    {tooltip.span.source === 'allocations' ? '（依分配推算）' : ''}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

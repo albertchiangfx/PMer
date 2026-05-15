@@ -1,7 +1,14 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { addDays, differenceInCalendarDays, eachDayOfInterval, isValid, isWeekend, parseISO } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  isValid,
+  isWeekend,
+  parseISO,
+} from 'date-fns';
 import { api } from '../lib/api';
 import SchedulePanel from '../components/SchedulePanel';
 import DashboardProjectWidget from '../components/DashboardProjectWidget';
@@ -39,7 +46,8 @@ function memberTaskSlicesOverlapToday(task, viewerId, todayYmd) {
   const allocs = Array.isArray(task?.allocations) ? task.allocations : [];
   for (const a of allocs) {
     if (!memberIdEquals(a?.team_member_id, viewerId)) continue;
-    if (sliceDatesOverlapToday({ start_date: a.start_date, end_date: a.end_date }, todayYmd)) return true;
+    if (sliceDatesOverlapToday({ start_date: a.start_date, end_date: a.end_date }, todayYmd))
+      return true;
   }
   return false;
 }
@@ -106,7 +114,11 @@ export default function Dashboard() {
   const [dataTick, setDataTick] = useState(0);
 
   const loadCore = useCallback(async () => {
-    const [m, a, p] = await Promise.all([api.getTeamMembers(), api.getAllocations(), api.getProjects()]);
+    const [m, a, p] = await Promise.all([
+      api.getTeamMembers(),
+      api.getAllocations(),
+      api.getProjects(),
+    ]);
     setMembers(m);
     setAllocations(Array.isArray(a) ? a : []);
     setProjects(Array.isArray(p) ? p : []);
@@ -186,7 +198,8 @@ export default function Dashboard() {
 
   const { data: viewerTasks = [], mutate: mutateViewerTasks } = useSWR(
     viewerId ? ['viewer-tasks', viewerId] : null,
-    ([, id]) => api.getTasks({ team_member_id: id }).then((rows) => (Array.isArray(rows) ? rows : [])),
+    ([, id]) =>
+      api.getTasks({ team_member_id: id }).then((rows) => (Array.isArray(rows) ? rows : [])),
     { revalidateOnFocus: false }
   );
 
@@ -250,13 +263,18 @@ export default function Dashboard() {
       const endForDelta = toYmd(raw.end_date) || toYmd(raw.task_end_date);
       const remaining = endForDelta ? businessDaysDelta(today, endForDelta) : null;
       const tone =
-        remaining == null ? 'text-slate-500' : remaining < 0 ? 'text-rose-600' : remaining <= 1 ? 'text-amber-700' : 'text-slate-600';
+        remaining == null
+          ? 'text-slate-500'
+          : remaining < 0
+            ? 'text-rose-600'
+            : remaining <= 1
+              ? 'text-amber-700'
+              : 'text-slate-600';
       const remainingAbs = remaining == null ? null : Math.abs(remaining);
       const remainingWord = remaining == null ? '—' : remaining >= 0 ? '剩餘' : '逾期';
 
       const accentColor = raw.project_color || '#6366f1';
-      const notesTrim =
-        typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : '';
+      const notesTrim = typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : '';
       const title =
         kind === 'task'
           ? raw.task_name || '（未命名任務）'
@@ -320,7 +338,13 @@ export default function Dashboard() {
       const remainingAbs = remaining == null ? null : Math.abs(remaining);
       const remainingWord = remaining == null ? '—' : remaining >= 0 ? '剩餘' : '逾期';
       const tone =
-        remaining == null ? 'text-slate-500' : remaining < 0 ? 'text-rose-600' : remaining <= 1 ? 'text-amber-700' : 'text-slate-600';
+        remaining == null
+          ? 'text-slate-500'
+          : remaining < 0
+            ? 'text-rose-600'
+            : remaining <= 1
+              ? 'text-amber-700'
+              : 'text-slate-600';
 
       extra.push({
         key: `task-fallback-${t.id}`,
@@ -418,7 +442,9 @@ export default function Dashboard() {
     <div className="animate-fade-in">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+            Dashboard
+          </h1>
           <p className="mt-1 text-sm text-slate-500">{nowLabel}</p>
         </div>
         {members.length > 0 && (

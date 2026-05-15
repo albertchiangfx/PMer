@@ -266,7 +266,9 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
       </ul>
 
       {sortedMilestones.length === 0 && !fetchErr && (
-        <p className="text-sm text-gray-400 py-2">尚無里程碑 · 可選公版後按「套用」，或下方手動新增。</p>
+        <p className="text-sm text-gray-400 py-2">
+          尚無里程碑 · 可選公版後按「套用」，或下方手動新增。
+        </p>
       )}
 
       <form onSubmit={onAddMilestone} className="flex gap-2 flex-wrap pt-1">

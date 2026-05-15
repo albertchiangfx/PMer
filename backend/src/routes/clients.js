@@ -33,7 +33,13 @@ router.put('/:id', async (req, res, next) => {
     const { rows } = await req.app.locals.db.query(
       `UPDATE clients SET name=$1, contact_email=$2, contact_phone=$3, address=$4, updated_at=CURRENT_TIMESTAMP
        WHERE id=$5 RETURNING *`,
-      [String(name).trim(), contact_email || null, contact_phone || null, address || null, req.params.id]
+      [
+        String(name).trim(),
+        contact_email || null,
+        contact_phone || null,
+        address || null,
+        req.params.id,
+      ]
     );
     if (!rows.length) return res.status(404).json({ error: 'Client not found' });
     res.json(rows[0]);
@@ -46,9 +52,14 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { rows: cr } = await db.query(`SELECT COUNT(*)::int AS n FROM contracts WHERE client_id = $1`, [req.params.id]);
+    const { rows: cr } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM contracts WHERE client_id = $1`,
+      [req.params.id]
+    );
     if (cr[0]?.n > 0) {
-      return res.status(409).json({ error: '仍有合約綁定此客戶，請先刪除或變更合約後再刪除客戶。' });
+      return res
+        .status(409)
+        .json({ error: '仍有合約綁定此客戶，請先刪除或變更合約後再刪除客戶。' });
     }
     const { rowCount } = await db.query(`DELETE FROM clients WHERE id = $1`, [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'Client not found' });

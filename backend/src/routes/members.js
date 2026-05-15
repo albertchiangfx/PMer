@@ -15,13 +15,20 @@ router.get('/:id/allocations', async (req, res, next) => {
       WHERE a.member_id = $1
     `;
     const params = [req.params.id];
-    if (from) { params.push(from); q += ` AND a.end_date >= $${params.length}`; }
-    if (to) { params.push(to); q += ` AND a.start_date <= $${params.length}`; }
+    if (from) {
+      params.push(from);
+      q += ` AND a.end_date >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      q += ` AND a.start_date <= $${params.length}`;
+    }
     q += ' ORDER BY a.start_date, p.name';
     const { rows } = await db.query(q, params);
     res.json(rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 module.exports = router;
-

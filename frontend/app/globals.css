@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --apple-blue: #007AFF;
-  --apple-green: #34C759;
-  --apple-orange: #FF9500;
-  --apple-red: #FF3B30;
+  --apple-blue: #007aff;
+  --apple-green: #34c759;
+  --apple-orange: #ff9500;
+  --apple-red: #ff3b30;
 
   /* ----- Floating left nav theme colors -----
      Edit these to retheme the sidebar's plaster card, dark pill, and divider.
      Foreground colors (brand gradient, active accent, item text) live in
      NAV_STYLE.colors inside frontend/components/AppShell.jsx. */
-  --nav-plaster-from: #c7c7c7;     /* outer gypsum/plaster card top color    */
-  --nav-plaster-to:   #cfcfcf;     /* outer gypsum/plaster card bottom color */
+  --nav-plaster-from: #c7c7c7; /* outer gypsum/plaster card top color    */
+  --nav-plaster-to: #cfcfcf; /* outer gypsum/plaster card bottom color */
   --nav-plaster-border: rgba(15, 23, 42, 0.06);
-  --nav-pill-bg:      #1B1F26;     /* inner dark pill                        */
-  --nav-divider:      rgba(255, 255, 255, 0.06);
+  --nav-pill-bg: #1b1f26; /* inner dark pill                        */
+  --nav-divider: rgba(255, 255, 255, 0.06);
 
   /* Dark pill outer drop shadow.
        offset-x  : horizontal direction. +right / -left.
@@ -29,26 +29,31 @@
        soft float   : x 0 / y 10 / blur 30 / spread -2 / alpha 0.18
        side-lit     : x 8 / y 6 / blur 24 / spread 0 / alpha 0.22
    */
-  --nav-pill-shadow-x:       -6px;
-  --nav-pill-shadow-y:       20px;
-  --nav-pill-shadow-blur:    16px;
-  --nav-pill-shadow-spread:  -4px;
-  --nav-pill-shadow-color:   rgba(15, 23, 42, 0.527);
+  --nav-pill-shadow-x: -6px;
+  --nav-pill-shadow-y: 20px;
+  --nav-pill-shadow-blur: 16px;
+  --nav-pill-shadow-spread: -4px;
+  --nav-pill-shadow-color: rgba(15, 23, 42, 0.527);
 
   /* Gantt timeline: alternating-week tint and weekend tint.
      Both are translucent overlays drawn on top of the row's base bg. */
   --gantt-alt-week-tint: rgba(15, 23, 42, 0.05);
-  --gantt-weekend-tint:  rgba(255, 187, 187, 0.315); /* slate-400 @ ~22% */
+  --gantt-weekend-tint: rgba(255, 187, 187, 0.315); /* slate-400 @ ~22% */
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   background: #eef0f4;
-  color: #1C1C1E;
+  color: #1c1c1e;
 }
 
 /* Soft app background */
@@ -80,22 +85,38 @@ body {
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #AEAEB2; }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d1d6;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #aeaeb2;
+}
 
 /* Dark scrollbar for Gantt (matches nav) */
-.gantt-scroll::-webkit-scrollbar-thumb { background: rgba(17, 24, 39, 0.72); }
-.gantt-scroll::-webkit-scrollbar-thumb:hover { background: rgba(17, 24, 39, 0.88); }
-.gantt-main-scroll::-webkit-scrollbar:horizontal { height: 0px; }
+.gantt-scroll::-webkit-scrollbar-thumb {
+  background: rgba(17, 24, 39, 0.72);
+}
+.gantt-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(17, 24, 39, 0.88);
+}
+.gantt-main-scroll::-webkit-scrollbar:horizontal {
+  height: 0px;
+}
 
 /* Glass card */
 .glass {
-  background: rgba(255,255,255,0.72);
+  background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.5);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 /* New glass tokens (layered look) */
@@ -137,9 +158,8 @@ body {
      via the --nav-pill-shadow-* variables in :root). The two inset shadows
      stay fixed so the pill keeps its top highlight + concave bottom feel. */
   box-shadow:
-    var(--nav-pill-shadow-x) var(--nav-pill-shadow-y)
-      var(--nav-pill-shadow-blur) var(--nav-pill-shadow-spread)
-      var(--nav-pill-shadow-color),
+    var(--nav-pill-shadow-x) var(--nav-pill-shadow-y) var(--nav-pill-shadow-blur)
+      var(--nav-pill-shadow-spread) var(--nav-pill-shadow-color),
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     inset 0 -16px 28px rgba(0, 0, 0, 0.28);
 }
@@ -150,11 +170,17 @@ body {
 }
 
 /* Gantt week stripe overlays. */
-.gantt-alt-week { background: var(--gantt-alt-week-tint); }
-.gantt-weekend  { background: var(--gantt-weekend-tint); }
+.gantt-alt-week {
+  background: var(--gantt-alt-week-tint);
+}
+.gantt-weekend {
+  background: var(--gantt-weekend-tint);
+}
 
 /* Smooth transitions */
-* { transition-property: none; }
+* {
+  transition-property: none;
+}
 .transition-apple {
   transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
@@ -168,14 +194,26 @@ body {
   height: 28px;
   top: 50%;
   transform: translateY(-50%);
-  transition: filter 0.15s ease, opacity 0.15s ease;
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease;
 }
-.gantt-bar:hover { filter: brightness(1.05); }
-.gantt-bar:active { cursor: grabbing; filter: brightness(0.95); }
-.gantt-bar.conflict { outline: 2px solid #FF3B30; outline-offset: 1px; }
+.gantt-bar:hover {
+  filter: brightness(1.05);
+}
+.gantt-bar:active {
+  cursor: grabbing;
+  filter: brightness(0.95);
+}
+.gantt-bar.conflict {
+  outline: 2px solid #ff3b30;
+  outline-offset: 1px;
+}
 
 /* Input focus ring */
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   outline: 2px solid var(--apple-blue);
   outline-offset: 0;
   border-color: transparent !important;

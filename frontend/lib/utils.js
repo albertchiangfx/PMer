@@ -19,10 +19,13 @@ export function fmtCurrency(amount, currency = 'USD') {
 
 export function daysBetween(start, end) {
   if (!start || !end) return 0;
-  return Math.max(0, differenceInDays(
-    typeof end === 'string' ? parseISO(end) : end,
-    typeof start === 'string' ? parseISO(start) : start
-  ) + 1);
+  return Math.max(
+    0,
+    differenceInDays(
+      typeof end === 'string' ? parseISO(end) : end,
+      typeof start === 'string' ? parseISO(start) : start
+    ) + 1
+  );
 }
 
 export function toISO(date) {
@@ -58,7 +61,12 @@ export function statusStyle(status) {
 }
 
 export function initials(name = '') {
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 export function clx(...args) {

@@ -165,8 +165,12 @@ function NavRail({ path, onExpand }) {
     <div className={`flex flex-1 flex-col ${NAV_STYLE.railWidth} ${NAV_STYLE.cardGap}`}>
       {/* TOP plaster card. Dark pill flush to top edge with extra bottom
           padding (NAV_STYLE.pillTailPad) so it extends past the last icon. */}
-      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}>
-        <div className={`nav-pill flex flex-col items-center gap-1 pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}>
+      <div
+        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
+      >
+        <div
+          className={`nav-pill flex flex-col items-center gap-1 pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
+        >
           <button
             type="button"
             onClick={onExpand}
@@ -177,19 +181,35 @@ function NavRail({ path, onExpand }) {
             <span className="text-[11px] font-bold tracking-wide">SP</span>
           </button>
           <div className="nav-divider w-[44px]" />
-          <RailItem active={path === '/'} href="/" label="Dashboard"><IconGrid /></RailItem>
-          <RailItem active={path.startsWith('/projects')} href="/projects" label="專案"><IconFolder /></RailItem>
+          <RailItem active={path === '/'} href="/" label="Dashboard">
+            <IconGrid />
+          </RailItem>
+          <RailItem active={path.startsWith('/projects')} href="/projects" label="專案">
+            <IconFolder />
+          </RailItem>
           <div className="nav-divider w-[44px]" />
-          <RailItem active={path.startsWith('/team')} href="/team" label="成員"><IconUsersMini /></RailItem>
-          <RailItem active={path.startsWith('/contracts')} href="/contracts" label="合約"><IconDocMini /></RailItem>
-          <RailItem active={path.startsWith('/invoices')} href="/invoices" label="發票"><IconReceiptMini /></RailItem>
+          <RailItem active={path.startsWith('/team')} href="/team" label="成員">
+            <IconUsersMini />
+          </RailItem>
+          <RailItem active={path.startsWith('/contracts')} href="/contracts" label="合約">
+            <IconDocMini />
+          </RailItem>
+          <RailItem active={path.startsWith('/invoices')} href="/invoices" label="發票">
+            <IconReceiptMini />
+          </RailItem>
         </div>
       </div>
 
       {/* BOTTOM plaster card. Dark pod anchored to bottom edge. */}
-      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}>
-        <div className={`nav-pill grid place-items-center py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}>
-          <RailItem href="/settings" active={path.startsWith('/settings')} label="設定"><IconGear /></RailItem>
+      <div
+        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}
+      >
+        <div
+          className={`nav-pill grid place-items-center py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}
+        >
+          <RailItem href="/settings" active={path.startsWith('/settings')} label="設定">
+            <IconGear />
+          </RailItem>
         </div>
       </div>
     </div>
@@ -202,14 +222,22 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
     <div className={`flex flex-1 flex-col ${NAV_STYLE.sidebarWidth} ${NAV_STYLE.cardGap}`}>
       {/* TOP plaster card. Dark pill flush to top edge with extra bottom
           padding (NAV_STYLE.pillTailPad) so it extends past the last nav row. */}
-      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}>
-        <div className={`nav-pill flex flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}>
+      <div
+        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
+      >
+        <div
+          className={`nav-pill flex flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
+        >
           <div className="flex items-center gap-3">
-            <div className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[11px] font-bold tracking-wide ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}>
+            <div
+              className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[11px] font-bold tracking-wide ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
+            >
               SP
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-white/95">{viewerTitle || 'Studio PM'}</p>
+              <p className="truncate text-[13px] font-semibold text-white/95">
+                {viewerTitle || 'Studio PM'}
+              </p>
               <p className="truncate text-[11px] text-white/55">{viewerRole || '3D Animation'}</p>
             </div>
             <button
@@ -219,17 +247,27 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
               aria-label="收合導覽"
               title="收合導覽"
             >
-              <span className="h-4 w-4"><IconCollapse /></span>
+              <span className="h-4 w-4">
+                <IconCollapse />
+              </span>
             </button>
           </div>
 
-          <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-white/40">NAVIGATION</p>
+          <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-white/40">
+            NAVIGATION
+          </p>
           <div className="mt-2 flex flex-col gap-1">
             {navItems.map((n) => {
               const active = n.href === '/' ? path === '/' : path.startsWith(n.href);
               const Icon = n.icon;
               return (
-                <SidebarLink key={n.href} href={n.href} label={n.label} active={active} icon={<Icon />} />
+                <SidebarLink
+                  key={n.href}
+                  href={n.href}
+                  label={n.label}
+                  active={active}
+                  icon={<Icon />}
+                />
               );
             })}
           </div>
@@ -237,9 +275,16 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
       </div>
 
       {/* BOTTOM plaster card. Dark pod anchored to bottom edge. */}
-      <div className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}>
+      <div
+        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}
+      >
         <div className={`nav-pill px-2 py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}>
-          <SidebarLink href="/settings" label="設定" active={path.startsWith('/settings')} icon={<IconGear />} />
+          <SidebarLink
+            href="/settings"
+            label="設定"
+            active={path.startsWith('/settings')}
+            icon={<IconGear />}
+          />
         </div>
       </div>
     </div>
@@ -261,7 +306,9 @@ function RailItem({ children, href, active, label }) {
       ].join(' ')}
     >
       {active && (
-        <span className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full ${NAV_STYLE.activeAccent}`} />
+        <span
+          className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full ${NAV_STYLE.activeAccent}`}
+        />
       )}
       <span className="h-[18px] w-[18px]">{children}</span>
     </Link>
@@ -280,7 +327,9 @@ function SidebarLink({ href, label, icon, active }) {
       ].join(' ')}
     >
       {active && (
-        <span className={`absolute left-[5px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full ${NAV_STYLE.activeAccent}`} />
+        <span
+          className={`absolute left-[5px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full ${NAV_STYLE.activeAccent}`}
+        />
       )}
       <span className={active ? NAV_STYLE.itemTextActive : NAV_STYLE.itemTextDim}>{icon}</span>
       <span className="truncate">{label}</span>
@@ -290,7 +339,13 @@ function SidebarLink({ href, label, icon, active }) {
 
 function IconHome() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M3 10.5 12 3l9 7.5V21a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 21V10.5Z" />
       <path d="M9.5 22.5V14a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v8.5" />
     </svg>
@@ -298,7 +353,13 @@ function IconHome() {
 }
 function IconStack() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M12 3 3.5 7.5 12 12l8.5-4.5L12 3Z" />
       <path d="M3.5 12 12 16.5 20.5 12" />
       <path d="M3.5 16.5 12 21l8.5-4.5" />
@@ -307,7 +368,13 @@ function IconStack() {
 }
 function IconUsersMini() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M16 21c0-2.5-2-4.5-4.5-4.5S7 18.5 7 21" />
       <path d="M12 13.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
     </svg>
@@ -315,7 +382,13 @@ function IconUsersMini() {
 }
 function IconReceiptMini() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M6 3h12v18l-2-1-2 1-2-1-2 1-2-1-2 1V3Z" />
       <path d="M9 7h6" />
       <path d="M9 11h6" />
@@ -325,7 +398,13 @@ function IconReceiptMini() {
 }
 function IconClock() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" />
       <path d="M12 6v6l4 2" />
     </svg>
@@ -333,7 +412,13 @@ function IconClock() {
 }
 function IconDocMini() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
       <path d="M16 13H8" />
@@ -344,7 +429,13 @@ function IconDocMini() {
 
 function IconGrid() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M4 4h7v7H4V4Z" />
       <path d="M13 4h7v7h-7V4Z" />
       <path d="M4 13h7v7H4v-7Z" />
@@ -354,14 +445,26 @@ function IconGrid() {
 }
 function IconFolder() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v11Z" />
     </svg>
   );
 }
 function IconCalendar() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M7 2v4" />
       <path d="M17 2v4" />
       <path d="M3 9h18" />
@@ -371,7 +474,13 @@ function IconCalendar() {
 }
 function IconUsers() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M16 21c0-2.5-2-4.5-4.5-4.5S7 18.5 7 21" />
       <path d="M12 13.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
     </svg>
@@ -379,7 +488,13 @@ function IconUsers() {
 }
 function IconDoc() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
       <path d="M16 13H8" />
@@ -389,7 +504,13 @@ function IconDoc() {
 }
 function IconReceipt() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M6 3h12v18l-2-1-2 1-2-1-2 1-2-1-2 1V3Z" />
       <path d="M9 7h6" />
       <path d="M9 11h6" />
@@ -400,7 +521,15 @@ function IconReceipt() {
 
 function IconGear() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+    >
       <path d="M4 6h10" />
       <path d="M18 6h2" />
       <path d="M14 6a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z" />
@@ -416,7 +545,13 @@ function IconGear() {
 
 function IconCollapse() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M20 12H8" />
       <path d="M12 6l-6 6 6 6" />
     </svg>
@@ -425,10 +560,15 @@ function IconCollapse() {
 
 function IconExpand() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
       <path d="M4 12h12" />
       <path d="M12 6l6 6-6 6" />
     </svg>
   );
 }
-

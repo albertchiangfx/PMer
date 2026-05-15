@@ -85,14 +85,21 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [load, version]);
 
   const refresh = () => setVersion((v) => v + 1);
 
   const saveAllocation = async (e) => {
     e.preventDefault();
-    if (!allocForm.project_id || !allocForm.member_id || !allocForm.start_date || !allocForm.end_date) {
+    if (
+      !allocForm.project_id ||
+      !allocForm.member_id ||
+      !allocForm.start_date ||
+      !allocForm.end_date
+    ) {
       alert('請選擇專案、成員並填寫開始／結束日期');
       return;
     }
@@ -122,7 +129,9 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
       refresh();
     } catch (err) {
       if (err.data?.conflicts?.length) {
-        alert(`時程衝突：${err.data.conflicts.map((c) => c.project_name || c.task_name || '分配').join('、')}`);
+        alert(
+          `時程衝突：${err.data.conflicts.map((c) => c.project_name || c.task_name || '分配').join('、')}`
+        );
       } else {
         alert(err.message || '建立失敗');
       }
@@ -140,7 +149,8 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
     for (const allocs of Object.values(byMember)) {
       for (let i = 0; i < allocs.length; i++) {
         for (let j = i + 1; j < allocs.length; j++) {
-          const a = allocs[i], b = allocs[j];
+          const a = allocs[i],
+            b = allocs[j];
           if (a.start_date <= b.end_date && a.end_date >= b.start_date) count++;
         }
       }
@@ -203,7 +213,11 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
             <span className="whitespace-nowrap">提示點顏色</span>
             <input
               type="color"
-              value={/^#[0-9a-fA-F]{6}$/.test(offscreenDotHex) ? offscreenDotHex : GANTT_OFFSCREEN_DOT.backgroundColor}
+              value={
+                /^#[0-9a-fA-F]{6}$/.test(offscreenDotHex)
+                  ? offscreenDotHex
+                  : GANTT_OFFSCREEN_DOT.backgroundColor
+              }
               onChange={(e) => {
                 const v = e.target.value;
                 setOffscreenDotHex(v);
@@ -296,13 +310,23 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
             </div>
             <div>
               <Label>備註</Label>
-              <Input value={allocForm.notes} onChange={(v) => setAllocForm((f) => ({ ...f, notes: v }))} />
+              <Input
+                value={allocForm.notes}
+                onChange={(v) => setAllocForm((f) => ({ ...f, notes: v }))}
+              />
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple">
+              <button
+                type="submit"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple"
+              >
                 建立
               </button>
-              <button type="button" onClick={() => setAllocModalOpen(false)} className="px-4 text-sm text-gray-500">
+              <button
+                type="button"
+                onClick={() => setAllocModalOpen(false)}
+                className="px-4 text-sm text-gray-500"
+              >
                 取消
               </button>
             </div>
@@ -315,11 +339,20 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">✕</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
+          >
+            ✕
+          </button>
         </div>
         <div className="p-6">{children}</div>
       </div>
@@ -327,7 +360,9 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-function Label({ children }) { return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>; }
+function Label({ children }) {
+  return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>;
+}
 function Input({ type = 'text', value, onChange, required, min, max }) {
   return (
     <input
@@ -358,4 +393,3 @@ function Select({ value, onChange, options, required }) {
     </select>
   );
 }
-

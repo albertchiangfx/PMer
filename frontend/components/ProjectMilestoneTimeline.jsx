@@ -428,7 +428,19 @@ export default function ProjectMilestoneTimeline({
       window.removeEventListener('mouseup', onUp);
       if (moveRaf != null) cancelAnimationFrame(moveRaf);
     };
-  }, [dragActive, dayW, xToDate, dateToX, pStart, pEnd, projectId, project, mutate, onProjectDatesSaved, repaint]);
+  }, [
+    dragActive,
+    dayW,
+    xToDate,
+    dateToX,
+    pStart,
+    pEnd,
+    projectId,
+    project,
+    mutate,
+    onProjectDatesSaved,
+    repaint,
+  ]);
 
   const weekGroups = useMemo(() => {
     const groups = [];
@@ -579,14 +591,25 @@ export default function ProjectMilestoneTimeline({
         className="gantt-scroll overflow-x-auto overflow-y-auto max-h-[min(70vh,720px)]"
         onScroll={(e) => setScrollLeft(e.target.scrollLeft)}
       >
-        <div style={{ width: PINNED_LEFT_W + totalW, position: 'relative', minHeight: HEADER_H_FULL + rowsBodyH }}>
-          <div className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60" style={{ height: HEADER_H_FULL }}>
+        <div
+          style={{
+            width: PINNED_LEFT_W + totalW,
+            position: 'relative',
+            minHeight: HEADER_H_FULL + rowsBodyH,
+          }}
+        >
+          <div
+            className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60"
+            style={{ height: HEADER_H_FULL }}
+          >
             <div className="flex h-full">
               <div
                 style={{ width: LABEL_W, minWidth: LABEL_W }}
                 className="flex px-4 border-r border-white/60 items-end pb-2 sticky left-0 z-30 bg-white/70 backdrop-blur"
               >
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">里程碑</span>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  里程碑
+                </span>
               </div>
               <div
                 style={{ width: INDICATOR_GUTTER_W }}
@@ -601,7 +624,9 @@ export default function ProjectMilestoneTimeline({
                       className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap border-r border-white/40"
                     >
                       <span>{g.label}</span>
-                      <span className="text-[9px] font-medium text-slate-400 tabular-nums">W{g.weekNo}</span>
+                      <span className="text-[9px] font-medium text-slate-400 tabular-nums">
+                        W{g.weekNo}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -624,7 +649,13 @@ export default function ProjectMilestoneTimeline({
                     isWeekend(d) ? (
                       <div
                         key={`wk-h-${i}`}
-                        style={{ position: 'absolute', left: i * dayW, top: 0, width: dayW, height: '100%' }}
+                        style={{
+                          position: 'absolute',
+                          left: i * dayW,
+                          top: 0,
+                          width: dayW,
+                          height: '100%',
+                        }}
                         className="gantt-weekend"
                       />
                     ) : null
@@ -639,7 +670,9 @@ export default function ProjectMilestoneTimeline({
                           style={{ width: dayW, minWidth: dayW }}
                           className={`flex flex-col items-center justify-center h-full border-r border-white/30 ${isWknd ? 'opacity-40' : ''}`}
                         >
-                          <span className="text-[9px] text-slate-400 uppercase">{format(d, 'EEE')[0]}</span>
+                          <span className="text-[9px] text-slate-400 uppercase">
+                            {format(d, 'EEE')[0]}
+                          </span>
                           <span
                             className={`text-xs font-medium mt-0.5 w-5 h-5 flex items-center justify-center rounded-full ${
                               isToday_ ? 'bg-indigo-500 text-white' : 'text-slate-500'
@@ -720,7 +753,14 @@ export default function ProjectMilestoneTimeline({
                     />
                   )}
                 </div>
-                <div style={{ position: 'relative', width: totalW, height: ROW_H, isolation: 'isolate' }}>
+                <div
+                  style={{
+                    position: 'relative',
+                    width: totalW,
+                    height: ROW_H,
+                    isolation: 'isolate',
+                  }}
+                >
                   {altWeekStripes.map((s, i) => (
                     <div
                       key={`altw-${seg.id}-${i}`}
@@ -738,7 +778,13 @@ export default function ProjectMilestoneTimeline({
                     isWeekend(d) ? (
                       <div
                         key={`w-${seg.id}-${i}`}
-                        style={{ position: 'absolute', left: i * dayW, top: 0, width: dayW, height: '100%' }}
+                        style={{
+                          position: 'absolute',
+                          left: i * dayW,
+                          top: 0,
+                          width: dayW,
+                          height: '100%',
+                        }}
                         className="gantt-weekend"
                       />
                     ) : null

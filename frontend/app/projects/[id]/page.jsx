@@ -11,7 +11,17 @@ import Gantt from '../../../components/Gantt';
 import ProjectMilestoneTimeline from '../../../components/ProjectMilestoneTimeline';
 import ProjectMilestonesPanel from '../../../components/ProjectMilestonesPanel';
 
-const TASK_TYPES = ['general', 'modeling', 'rigging', 'animation', 'rendering', 'compositing', 'vfx', 'audio', 'review'];
+const TASK_TYPES = [
+  'general',
+  'modeling',
+  'rigging',
+  'animation',
+  'rendering',
+  'compositing',
+  'vfx',
+  'audio',
+  'review',
+];
 const PRIORITIES = ['low', 'medium', 'high'];
 const TASK_STATUSES = ['todo', 'in-progress', 'review', 'done'];
 
@@ -64,7 +74,10 @@ export default function ProjectDetailPage() {
   }
 
   const projectBoundsYmd = useMemo(
-    () => ({ start: sliceProjectYmd(project?.start_date), end: sliceProjectYmd(project?.end_date) }),
+    () => ({
+      start: sliceProjectYmd(project?.start_date),
+      end: sliceProjectYmd(project?.end_date),
+    }),
     [project?.start_date, project?.end_date]
   );
   const scheduleBoundaryForAllocation = useCallback(
@@ -140,7 +153,12 @@ export default function ProjectDetailPage() {
       alert('已指派成員時，請填寫開始／結束日期');
       return;
     }
-    if (projectBoundsYmd.start && projectBoundsYmd.end && taskForm.start_date && taskForm.end_date) {
+    if (
+      projectBoundsYmd.start &&
+      projectBoundsYmd.end &&
+      taskForm.start_date &&
+      taskForm.end_date
+    ) {
       const v = validateIntervalWithinProject(
         taskForm.start_date,
         taskForm.end_date,
@@ -153,29 +171,33 @@ export default function ProjectDetailPage() {
       }
     }
 
-    let saved;
-    if (taskModal === 'create') saved = await api.createTask(data);
-    else saved = await api.updateTask(taskModal.id, data);
+    try {
+      let saved;
+      if (taskModal === 'create') saved = await api.createTask(data);
+      else saved = await api.updateTask(taskModal.id, data);
 
-    // Optional: create a legacy task allocation row for assignee (used by TaskCard and task schedule).
-    if (taskModal === 'create' && memberId) {
-      try {
-        await api.createTimeAllocation({
-          task_id: saved.id,
-          team_member_id: memberId,
-          start_date: taskForm.start_date,
-          end_date: taskForm.end_date,
-          allocated_days: 1,
-          allocated_hours: 8,
-        });
-      } catch (err) {
-        alert(err.message || '指派失敗');
-        return;
+      // Optional: create a legacy task allocation row for assignee (used by TaskCard and task schedule).
+      if (taskModal === 'create' && memberId) {
+        try {
+          await api.createTimeAllocation({
+            task_id: saved.id,
+            team_member_id: memberId,
+            start_date: taskForm.start_date,
+            end_date: taskForm.end_date,
+            allocated_days: 1,
+            allocated_hours: 8,
+          });
+        } catch (err) {
+          alert(err.message || '指派失敗');
+          return;
+        }
       }
+      setTaskModal(null);
+      await load();
+      notifyScheduleDataChanged();
+    } catch (err) {
+      alert(err.message || '任務儲存失敗');
     }
-    setTaskModal(null);
-    await load();
-    notifyScheduleDataChanged();
   };
 
   const delTask = async (t) => {
@@ -216,7 +238,9 @@ export default function ProjectDetailPage() {
       load();
     } catch (err) {
       if (err.data?.conflicts?.length) {
-        alert(`時程衝突：${err.data.conflicts.map((c) => c.project_name || c.task_name || '分配').join('、')}`);
+        alert(
+          `時程衝突：${err.data.conflicts.map((c) => c.project_name || c.task_name || '分配').join('、')}`
+        );
       } else {
         alert(err.message || '建立失敗');
       }
@@ -228,7 +252,12 @@ export default function ProjectDetailPage() {
   }, [load]);
 
   if (!id) return <div className="p-8 text-gray-400">無效的專案網址</div>;
-  if (loading) return <div className="flex items-center justify-center min-h-[240px]"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-[240px]">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   if (!project) return <div className="p-8 text-gray-400">找不到專案</div>;
 
   const s = statusStyle(project.status);
@@ -238,7 +267,9 @@ export default function ProjectDetailPage() {
       {/* Breadcrumb — current project name is a dropdown that lets you switch
           to another project without going back to the projects list. */}
       <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-        <Link href="/projects" className="hover:text-gray-600">專案</Link>
+        <Link href="/projects" className="hover:text-gray-600">
+          專案
+        </Link>
         <span>/</span>
         <div className="relative" ref={projDropdownRef}>
           <button
@@ -248,8 +279,14 @@ export default function ProjectDetailPage() {
           >
             <span>{project.name}</span>
             <svg
-              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
               className={`transition-transform ${projDropdownOpen ? 'rotate-180' : ''}`}
             >
               <polyline points="6 9 12 15 18 9" />
@@ -276,7 +313,9 @@ export default function ProjectDetailPage() {
                         className="w-2 h-2 rounded-full shrink-0"
                         style={{ backgroundColor: p.color || '#6366f1' }}
                       />
-                      <span className={`flex-1 truncate ${isCurrent ? 'text-indigo-700 font-semibold' : 'text-gray-700'}`}>
+                      <span
+                        className={`flex-1 truncate ${isCurrent ? 'text-indigo-700 font-semibold' : 'text-gray-700'}`}
+                      >
                         {p.name}
                       </span>
                       {p.client_name && (
@@ -285,7 +324,17 @@ export default function ProjectDetailPage() {
                         </span>
                       )}
                       {isCurrent && (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 shrink-0">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-indigo-600 shrink-0"
+                        >
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
                       )}
@@ -302,15 +351,25 @@ export default function ProjectDetailPage() {
       <div className="bg-white rounded-apple-xl shadow-apple p-6 mb-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            <div className="w-3 h-16 rounded-full" style={{ backgroundColor: project.color || '#6366f1' }} />
+            <div
+              className="w-3 h-16 rounded-full"
+              style={{ backgroundColor: project.color || '#6366f1' }}
+            />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-              <p className="text-gray-400 text-sm mt-1">{project.client_name || '無客戶'} {project.client_email && `· ${project.client_email}`}</p>
-              {project.description && <p className="text-gray-600 text-sm mt-2 max-w-xl">{project.description}</p>}
+              <p className="text-gray-400 text-sm mt-1">
+                {project.client_name || '無客戶'}{' '}
+                {project.client_email && `· ${project.client_email}`}
+              </p>
+              {project.description && (
+                <p className="text-gray-600 text-sm mt-2 max-w-xl">{project.description}</p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.bg} ${s.text}`}>
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.bg} ${s.text}`}
+            >
               <span className={`w-2 h-2 rounded-full ${s.dot}`} />
               {project.status}
             </span>
@@ -327,9 +386,17 @@ export default function ProjectDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
-        {[['tasks', '任務'], ['milestones', '里程碑'], ['team', '成員分配'], ['gantt', '甘特圖']].map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === k ? 'bg-indigo-600 text-white shadow-apple-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+        {[
+          ['tasks', '任務'],
+          ['milestones', '里程碑'],
+          ['team', '成員分配'],
+          ['gantt', '甘特圖'],
+        ].map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === k ? 'bg-indigo-600 text-white shadow-apple-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
             {label}
           </button>
         ))}
@@ -345,7 +412,8 @@ export default function ProjectDetailPage() {
             <div>
               <h2 className="text-base font-semibold text-gray-900">專案里程碑</h2>
               <p className="text-xs text-gray-500 mt-1">
-                套用公版、調整順序與勾選完成度會反映在 Dashboard「Tasks overview」與本頁「專案」列表的進度條上。
+                套用公版、調整順序與勾選完成度會反映在 Dashboard「Tasks
+                overview」與本頁「專案」列表的進度條上。
               </p>
             </div>
           </div>
@@ -372,9 +440,10 @@ export default function ProjectDetailPage() {
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tasks.map(t => (
+            {tasks.map((t) => (
               <div key={t.id}>
-                <TaskCard task={t}
+                <TaskCard
+                  task={t}
                   onEdit={(t) => {
                     setTaskForm({
                       name: t.name,
@@ -388,7 +457,8 @@ export default function ProjectDetailPage() {
                     });
                     setTaskModal(t);
                   }}
-                  onDelete={delTask} />
+                  onDelete={delTask}
+                />
               </div>
             ))}
             {tasks.length === 0 && (
@@ -417,7 +487,10 @@ export default function ProjectDetailPage() {
           </div>
           <div className="space-y-2">
             {projectAllocations.map((a) => (
-              <div key={a.id} className="surface rounded-[18px] flex flex-wrap items-center gap-4 px-4 py-3">
+              <div
+                key={a.id}
+                className="surface rounded-[18px] flex flex-wrap items-center gap-4 px-4 py-3"
+              >
                 <div className="flex items-center gap-2 min-w-0">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-semibold shrink-0"
@@ -427,10 +500,14 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{a.member_name}</p>
-                    <p className="text-[11px] text-slate-500 truncate">{fmt(a.start_date)} — {fmt(a.end_date)}</p>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {fmt(a.start_date)} — {fmt(a.end_date)}
+                    </p>
                   </div>
                 </div>
-                {a.notes && <p className="text-xs text-slate-600 flex-1 min-w-[160px]">{a.notes}</p>}
+                {a.notes && (
+                  <p className="text-xs text-slate-600 flex-1 min-w-[160px]">{a.notes}</p>
+                )}
                 <button
                   type="button"
                   onClick={async () => {
@@ -461,7 +538,9 @@ export default function ProjectDetailPage() {
                 type="button"
                 onClick={() => setGanttMode('members')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  ganttMode === 'members' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  ganttMode === 'members'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 成員分配
@@ -470,7 +549,9 @@ export default function ProjectDetailPage() {
                 type="button"
                 onClick={() => setGanttMode('milestones')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  ganttMode === 'milestones' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  ganttMode === 'milestones'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 里程碑時程
@@ -499,8 +580,10 @@ export default function ProjectDetailPage() {
           {ganttMode === 'members' ? (
             <>
               <p className="text-sm text-slate-500">
-                橫軸為時間；縱軸每一列為<strong className="font-semibold text-slate-700">一位成員</strong>
-                （同人可多筆分配上下疊列）。拖拉條可改日期；<strong className="font-semibold text-slate-700">不可</strong>
+                橫軸為時間；縱軸每一列為
+                <strong className="font-semibold text-slate-700">一位成員</strong>
+                （同人可多筆分配上下疊列）。拖拉條可改日期；
+                <strong className="font-semibold text-slate-700">不可</strong>
                 拖到人員列之間改指派（請用「成員分配」表單或全頁甘特）。列旁可刪除該筆分配。
               </p>
               <Gantt
@@ -518,7 +601,8 @@ export default function ProjectDetailPage() {
             <>
               <p className="text-sm text-slate-500">
                 依專案里程碑<strong className="font-semibold text-slate-700">各一列</strong>
-                ；與工作時程甘特相同的格線與縮放習慣。尚未寫入 DB 的列會依專案起訖<strong className="font-semibold text-slate-700">均等切分</strong>
+                ；與工作時程甘特相同的格線與縮放習慣。尚未寫入 DB 的列會依專案起訖
+                <strong className="font-semibold text-slate-700">均等切分</strong>
                 ；拖曳放開後會儲存至各里程碑的時程欄位（若儲存失敗請確認已執行 DB migration）。
               </p>
               <ProjectMilestoneTimeline
@@ -534,24 +618,43 @@ export default function ProjectDetailPage() {
 
       {/* Task Modal */}
       {taskModal && (
-        <Modal title={taskModal === 'create' ? '新增任務' : '編輯任務'} onClose={() => setTaskModal(null)}>
+        <Modal
+          title={taskModal === 'create' ? '新增任務' : '編輯任務'}
+          onClose={() => setTaskModal(null)}
+        >
           <form onSubmit={saveTask} className="space-y-4">
             <div>
               <Label>任務名稱 *</Label>
-              <Input value={taskForm.name} onChange={v => setTaskForm(f => ({ ...f, name: v }))} required />
+              <Input
+                value={taskForm.name}
+                onChange={(v) => setTaskForm((f) => ({ ...f, name: v }))}
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>類型</Label>
-                <Select value={taskForm.task_type} onChange={v => setTaskForm(f => ({ ...f, task_type: v }))} options={TASK_TYPES} />
+                <Select
+                  value={taskForm.task_type}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, task_type: v }))}
+                  options={TASK_TYPES}
+                />
               </div>
               <div>
                 <Label>狀態</Label>
-                <Select value={taskForm.status} onChange={v => setTaskForm(f => ({ ...f, status: v }))} options={TASK_STATUSES} />
+                <Select
+                  value={taskForm.status}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, status: v }))}
+                  options={TASK_STATUSES}
+                />
               </div>
               <div>
                 <Label>優先級</Label>
-                <Select value={taskForm.priority} onChange={v => setTaskForm(f => ({ ...f, priority: v }))} options={PRIORITIES} />
+                <Select
+                  value={taskForm.priority}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, priority: v }))}
+                  options={PRIORITIES}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -586,14 +689,27 @@ export default function ProjectDetailPage() {
             </div>
             <div>
               <Label>描述</Label>
-              <textarea value={taskForm.description} onChange={e => setTaskForm(f => ({ ...f, description: e.target.value }))}
-                rows={3} className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <textarea
+                value={taskForm.description}
+                onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+                rows={3}
+                className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple">
+              <button
+                type="submit"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple"
+              >
                 {taskModal === 'create' ? '建立任務' : '儲存'}
               </button>
-              <button type="button" onClick={() => setTaskModal(null)} className="px-4 text-sm text-gray-500">取消</button>
+              <button
+                type="button"
+                onClick={() => setTaskModal(null)}
+                className="px-4 text-sm text-gray-500"
+              >
+                取消
+              </button>
             </div>
           </form>
         </Modal>
@@ -605,8 +721,12 @@ export default function ProjectDetailPage() {
           <form onSubmit={saveProjectAlloc} className="space-y-4">
             <div>
               <Label>成員 *</Label>
-              <Select value={allocForm.member_id} onChange={v => setAllocForm(f => ({ ...f, member_id: v }))}
-                options={members.map(m => ({ value: m.id, label: `${m.name} (${m.role})` }))} required />
+              <Select
+                value={allocForm.member_id}
+                onChange={(v) => setAllocForm((f) => ({ ...f, member_id: v }))}
+                options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` }))}
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -634,11 +754,25 @@ export default function ProjectDetailPage() {
             </div>
             <div>
               <Label>備註</Label>
-              <Input value={allocForm.notes} onChange={v => setAllocForm(f => ({ ...f, notes: v }))} />
+              <Input
+                value={allocForm.notes}
+                onChange={(v) => setAllocForm((f) => ({ ...f, notes: v }))}
+              />
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple">建立</button>
-              <button type="button" onClick={() => setAllocModalOpen(false)} className="px-4 text-sm text-gray-500">取消</button>
+              <button
+                type="submit"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple"
+              >
+                建立
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllocModalOpen(false)}
+                className="px-4 text-sm text-gray-500"
+              >
+                取消
+              </button>
             </div>
           </form>
         </Modal>
@@ -648,22 +782,37 @@ export default function ProjectDetailPage() {
 }
 
 function Stat({ label, value }) {
-  return <div><p className="text-xs text-gray-400">{label}</p><p className="text-base font-semibold text-gray-900 mt-0.5">{value}</p></div>;
+  return (
+    <div>
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-base font-semibold text-gray-900 mt-0.5">{value}</p>
+    </div>
+  );
 }
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">✕</button>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
+          >
+            ✕
+          </button>
         </div>
         <div className="p-6">{children}</div>
       </div>
     </div>
   );
 }
-function Label({ children }) { return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>; }
+function Label({ children }) {
+  return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>;
+}
 function Input({ type = 'text', value, onChange, required, placeholder, min, max }) {
   return (
     <input
@@ -679,12 +828,20 @@ function Input({ type = 'text', value, onChange, required, placeholder, min, max
   );
 }
 function Select({ value, onChange, options, required }) {
-  const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
+  const opts = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} required={required}
-      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    >
       <option value="">請選擇</option>
-      {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      {opts.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
     </select>
   );
 }

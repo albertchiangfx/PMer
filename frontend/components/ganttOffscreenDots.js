@@ -20,7 +20,12 @@ export const GANTT_BAR_EDGE_INSET_PX = 2;
  * True when the painted bar's left edge has reached or passed the viewport cut line
  * (between pinned columns and scrolling timeline).
  */
-export function barTouchesTimelineViewportLeft(gridStartPx, scrollLeftPx, pinnedLeftW, insetPx = GANTT_BAR_EDGE_INSET_PX) {
+export function barTouchesTimelineViewportLeft(
+  gridStartPx,
+  scrollLeftPx,
+  pinnedLeftW,
+  insetPx = GANTT_BAR_EDGE_INSET_PX
+) {
   const eps = 0.5;
   const barContentLeft = pinnedLeftW + gridStartPx + insetPx;
   return barContentLeft <= scrollLeftPx + eps;

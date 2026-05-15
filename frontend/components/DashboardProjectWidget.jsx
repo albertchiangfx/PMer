@@ -63,7 +63,9 @@ export default function DashboardProjectWidget({
   }, [todayAssignments]);
 
   const summaryKey =
-    viewerId && projectIds.length ? ['milestone-sum', viewerId, [...projectIds].sort().join('|')] : null;
+    viewerId && projectIds.length
+      ? ['milestone-sum', viewerId, [...projectIds].sort().join('|')]
+      : null;
   const { data: summary = {}, mutate: mutateSummary } = useSWR(summaryKey, () =>
     api.getMilestoneSummaryByProjects(projectIds)
   );
@@ -85,11 +87,7 @@ export default function DashboardProjectWidget({
   }, [summary]);
 
   const { data: personalTasksFromSwr = [] } = useSWR(
-    personalTasksFromParent !== undefined
-      ? null
-      : viewerId
-        ? ['personal-tasks', viewerId]
-        : null,
+    personalTasksFromParent !== undefined ? null : viewerId ? ['personal-tasks', viewerId] : null,
     () => api.getPersonalTasks({ member_id: viewerId })
   );
   const personalTasks =
@@ -152,7 +150,10 @@ export default function DashboardProjectWidget({
             依上方「檢視身分」僅顯示該成員今日被指派的任務與個人任務；里程碑請至「專案」或專案內「里程碑」
           </p>
         </div>
-        <Link href="/tasks" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1">
+        <Link
+          href="/tasks"
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1"
+        >
           所有任務
         </Link>
       </div>
@@ -210,7 +211,10 @@ export default function DashboardProjectWidget({
                   {empty && (
                     <p className="mt-1 text-[10px] text-stone-400">
                       尚未設定里程碑 ·{' '}
-                      <Link href={`/projects/${p.id}#milestones`} className="text-indigo-600 hover:underline">
+                      <Link
+                        href={`/projects/${p.id}#milestones`}
+                        className="text-indigo-600 hover:underline"
+                      >
                         至專案頁設定
                       </Link>
                     </p>
@@ -228,56 +232,66 @@ export default function DashboardProjectWidget({
               </div>
 
               {showActivityStrip ? (
-                <div className="mt-2.5 ml-0.5 space-y-2 pl-3 border-l border-stone-200/90">
-                  {taskRows.map((row) => (
-                    <div key={row.key} className="text-[11px] leading-snug">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span
-                          className="w-1 h-1 rounded-full shrink-0"
-                          style={{ background: p.color || '#6366f1' }}
-                        />
-                        <Link
-                          href={row.href}
-                          className="font-semibold text-slate-900 hover:text-indigo-700 min-w-0 truncate"
-                          style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
-                        >
-                          {row.title}
-                        </Link>
-                        <Link
-                          href={`/projects/${p.id}#tasks`}
-                          className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 ml-auto sm:ml-0"
-                        >
-                          ＋ 新增任務
-                        </Link>
+                <div className="mt-2.5 ml-0.5 flex items-start gap-3 pl-3 border-l border-stone-200/90 min-w-0">
+                  <div className="flex flex-1 flex-wrap items-start gap-x-5 gap-y-2 min-w-0">
+                    {taskRows.map((row) => (
+                      <div
+                        key={row.key}
+                        className="text-[11px] leading-snug min-w-0 max-w-[11rem] sm:max-w-[14rem]"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-1 h-1 rounded-full shrink-0"
+                            style={{ background: p.color || '#6366f1' }}
+                          />
+                          <Link
+                            href={row.href}
+                            className="font-semibold text-slate-900 hover:text-indigo-700 truncate"
+                            style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
+                          >
+                            {row.title}
+                          </Link>
+                        </div>
+                        <p className="mt-0.5 pl-3 text-[10px] text-stone-400 truncate">
+                          {row.remainingWord !== '—' && row.remainingAbs != null
+                            ? `${row.remainingWord} ${row.remainingAbs} 個工作日 · `
+                            : ''}
+                          {row.badge}
+                        </p>
                       </div>
-                      <p className="mt-0.5 pl-3 text-[10px] text-stone-400">
-                        {row.remainingWord !== '—' && row.remainingAbs != null
-                          ? `${row.remainingWord} ${row.remainingAbs} 個工作日 · `
-                          : ''}
-                        {row.badge}
-                      </p>
-                    </div>
-                  ))}
-                  {personalForProject.map((t) => (
-                    <div key={`pt-${t.id}`} className="text-[11px] leading-snug">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span
-                          className="w-1 h-1 rounded-full shrink-0"
-                          style={{ background: t.urgent ? p.color || '#6366f1' : '#a8a29e' }}
-                        />
-                        <Link
-                          href={`/tasks`}
-                          className={`min-w-0 truncate hover:text-indigo-700 ${
-                            t.urgent ? 'font-semibold text-slate-900' : 'font-medium text-stone-700'
-                          }`}
-                          style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
-                        >
-                          {t.title}
-                        </Link>
-                        <span className="text-[10px] text-stone-400 shrink-0 ml-auto sm:ml-0">個人任務</span>
+                    ))}
+                    {personalForProject.map((t) => (
+                      <div
+                        key={`pt-${t.id}`}
+                        className="text-[11px] leading-snug min-w-0 max-w-[11rem] sm:max-w-[14rem]"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-1 h-1 rounded-full shrink-0"
+                            style={{ background: t.urgent ? p.color || '#6366f1' : '#a8a29e' }}
+                          />
+                          <Link
+                            href="/tasks"
+                            className={`truncate hover:text-indigo-700 ${
+                              t.urgent
+                                ? 'font-semibold text-slate-900'
+                                : 'font-medium text-stone-700'
+                            }`}
+                            style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
+                          >
+                            {t.title}
+                          </Link>
+                        </div>
+                        <p className="mt-0.5 pl-3 text-[10px] text-stone-400">個人任務</p>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <Link
+                    href={`/projects/${p.id}#tasks`}
+                    className="shrink-0 self-center text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
+                  >
+                    ＋ 新增任務
+                  </Link>
                 </div>
               ) : null}
             </div>

@@ -7,10 +7,23 @@ import { api } from '../../lib/api';
 import { fmtCurrency, statusStyle, fmt } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
 import { MILESTONE_TEMPLATE_OPTIONS } from '../../lib/milestone-templates';
-import { MILESTONE_DATA_CHANGED_EVENT, notifyMilestoneDataChanged, notifyScheduleDataChanged } from '../../lib/dashboard-sync';
+import {
+  MILESTONE_DATA_CHANGED_EVENT,
+  notifyMilestoneDataChanged,
+  notifyScheduleDataChanged,
+} from '../../lib/dashboard-sync';
 
 const STATUS_OPTS = ['planning', 'active', 'completed', 'paused', 'cancelled'];
-const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
+const COLORS = [
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#f59e0b',
+  '#10b981',
+  '#3b82f6',
+  '#ef4444',
+  '#14b8a6',
+];
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -64,7 +77,8 @@ export default function ProjectsPage() {
   }, [msSummary]);
   const listsByLc = useMemo(() => {
     const o = {};
-    for (const [k, v] of Object.entries(msLists)) o[String(k).toLowerCase()] = Array.isArray(v) ? v : [];
+    for (const [k, v] of Object.entries(msLists))
+      o[String(k).toLowerCase()] = Array.isArray(v) ? v : [];
     return o;
   }, [msLists]);
 
@@ -101,8 +115,14 @@ export default function ProjectsPage() {
     };
   }, [load]);
 
-  const openCreate = () => { setForm(defaultForm()); setModal('create'); };
-  const openEdit = (p) => { setForm({ ...p, budget: p.budget || '', client_id: p.client_id || '' }); setModal(p); };
+  const openCreate = () => {
+    setForm(defaultForm());
+    setModal('create');
+  };
+  const openEdit = (p) => {
+    setForm({ ...p, budget: p.budget || '', client_id: p.client_id || '' });
+    setModal(p);
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -139,8 +159,11 @@ export default function ProjectsPage() {
     load();
   };
 
-  const filtered = projects.filter(p =>
-    !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.client_name?.toLowerCase().includes(filter.toLowerCase())
+  const filtered = projects.filter(
+    (p) =>
+      !filter ||
+      p.name.toLowerCase().includes(filter.toLowerCase()) ||
+      p.client_name?.toLowerCase().includes(filter.toLowerCase())
   );
 
   return (
@@ -152,8 +175,10 @@ export default function ProjectsPage() {
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">專案</h1>
           <p className="text-gray-400 mt-1 text-sm">{projects.length} 個專案</p>
         </div>
-        <button onClick={openCreate}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors">
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
+        >
           <span>＋</span> 新增專案
         </button>
       </div>
@@ -179,13 +204,18 @@ export default function ProjectsPage() {
 
       {/* Search */}
       <div className="mb-6">
-        <input value={filter} onChange={e => setFilter(e.target.value)}
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
           placeholder="搜尋專案或客戶..."
-          className="w-full max-w-sm bg-white border border-gray-200 rounded-apple px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-apple-sm" />
+          className="w-full max-w-sm bg-white border border-gray-200 rounded-apple px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-apple-sm"
+        />
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex items-center justify-center py-20">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {filtered.map((p) => {
@@ -205,7 +235,12 @@ export default function ProjectsPage() {
           {filtered.length === 0 && (
             <div className="bg-white rounded-apple-lg shadow-apple p-16 text-center">
               <p className="text-gray-400 text-sm">尚無符合條件的專案</p>
-              <button onClick={openCreate} className="mt-4 text-indigo-600 text-sm font-medium hover:text-indigo-700">+ 建立第一個專案</button>
+              <button
+                onClick={openCreate}
+                className="mt-4 text-indigo-600 text-sm font-medium hover:text-indigo-700"
+              >
+                + 建立第一個專案
+              </button>
             </div>
           )}
         </div>
@@ -218,7 +253,11 @@ export default function ProjectsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <Label>專案名稱 *</Label>
-                <Input value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} required />
+                <Input
+                  value={form.name}
+                  onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+                  required
+                />
               </div>
               <div>
                 <Label>客戶</Label>
@@ -246,30 +285,54 @@ export default function ProjectsPage() {
               </div>
               <div>
                 <Label>狀態</Label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {STATUS_OPTS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <Label>開始日期</Label>
-                <Input type="date" value={form.start_date} onChange={v => setForm(f => ({ ...f, start_date: v }))} />
+                <Input
+                  type="date"
+                  value={form.start_date}
+                  onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
+                />
               </div>
               <div>
                 <Label>結束日期</Label>
-                <Input type="date" value={form.end_date} onChange={v => setForm(f => ({ ...f, end_date: v }))} />
+                <Input
+                  type="date"
+                  value={form.end_date}
+                  onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}
+                />
               </div>
               <div>
                 <Label>預算</Label>
-                <Input type="number" value={form.budget} onChange={v => setForm(f => ({ ...f, budget: v }))} placeholder="0.00" />
+                <Input
+                  type="number"
+                  value={form.budget}
+                  onChange={(v) => setForm((f) => ({ ...f, budget: v }))}
+                  placeholder="0.00"
+                />
               </div>
               <div>
                 <Label>顏色</Label>
                 <div className="flex gap-2 flex-wrap mt-1">
-                  {COLORS.map(c => (
-                    <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
+                  {COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, color: c }))}
                       className={`w-7 h-7 rounded-full transition-transform ${form.color === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400' : 'hover:scale-110'}`}
-                      style={{ backgroundColor: c }} />
+                      style={{ backgroundColor: c }}
+                    />
                   ))}
                 </div>
               </div>
@@ -292,8 +355,12 @@ export default function ProjectsPage() {
               )}
               <div className="col-span-2">
                 <Label>描述</Label>
-                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  rows={3} className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  rows={3}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
             </div>
             <div className="flex gap-3 pt-2">
@@ -304,13 +371,23 @@ export default function ProjectsPage() {
               >
                 {saveBusy ? '處理中…' : modal === 'create' ? '建立專案' : '儲存變更'}
               </button>
-              <button type="button" onClick={() => setModal(null)} className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 font-medium">取消</button>
+              <button
+                type="button"
+                onClick={() => setModal(null)}
+                className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
+              >
+                取消
+              </button>
             </div>
           </form>
         </Modal>
       )}
 
-      <ClientsManageModal open={clientsManageOpen} onClose={() => setClientsManageOpen(false)} onSaved={load} />
+      <ClientsManageModal
+        open={clientsManageOpen}
+        onClose={() => setClientsManageOpen(false)}
+        onSaved={load}
+      />
     </div>
   );
 }
@@ -419,15 +496,27 @@ function ClientsManageModal({ open, onClose, onSaved }) {
         </p>
         <div>
           <Label>名稱 *</Label>
-          <Input value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} placeholder="公司／客戶名稱" />
+          <Input
+            value={form.name}
+            onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+            placeholder="公司／客戶名稱"
+          />
         </div>
         <div>
           <Label>聯絡信箱</Label>
-          <Input type="text" value={form.contact_email} onChange={(v) => setForm((f) => ({ ...f, contact_email: v }))} placeholder="name@company.com" />
+          <Input
+            type="text"
+            value={form.contact_email}
+            onChange={(v) => setForm((f) => ({ ...f, contact_email: v }))}
+            placeholder="name@company.com"
+          />
         </div>
         <div>
           <Label>電話</Label>
-          <Input value={form.contact_phone} onChange={(v) => setForm((f) => ({ ...f, contact_phone: v }))} />
+          <Input
+            value={form.contact_phone}
+            onChange={(v) => setForm((f) => ({ ...f, contact_phone: v }))}
+          />
         </div>
         <div>
           <Label>地址</Label>
@@ -448,7 +537,11 @@ function ClientsManageModal({ open, onClose, onSaved }) {
             {saving ? '儲存中…' : editingId ? '儲存客戶' : '新增客戶'}
           </button>
           {editingId && (
-            <button type="button" onClick={cancelEdit} className="px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-apple hover:bg-gray-50">
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-apple hover:bg-gray-50"
+            >
               取消編輯
             </button>
           )}
@@ -465,19 +558,31 @@ function ClientsManageModal({ open, onClose, onSaved }) {
             >
               <div className="min-w-0">
                 <p className="font-medium text-gray-900 truncate">{c.name}</p>
-                {c.contact_email && <p className="text-xs text-gray-500 truncate">{c.contact_email}</p>}
+                {c.contact_email && (
+                  <p className="text-xs text-gray-500 truncate">{c.contact_email}</p>
+                )}
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={() => startEdit(c)} className="text-xs text-indigo-600 hover:underline font-medium">
+                <button
+                  type="button"
+                  onClick={() => startEdit(c)}
+                  className="text-xs text-indigo-600 hover:underline font-medium"
+                >
                   編輯
                 </button>
-                <button type="button" onClick={() => del(c)} className="text-xs text-rose-600 hover:underline font-medium">
+                <button
+                  type="button"
+                  onClick={() => del(c)}
+                  className="text-xs text-rose-600 hover:underline font-medium"
+                >
                   刪除
                 </button>
               </div>
             </li>
           ))}
-          {list.length === 0 && <li className="text-xs text-gray-400 py-2">尚無客戶，請於上方新增。</li>}
+          {list.length === 0 && (
+            <li className="text-xs text-gray-400 py-2">尚無客戶，請於上方新增。</li>
+          )}
         </ul>
       </div>
     </Modal>,
@@ -485,7 +590,14 @@ function ClientsManageModal({ open, onClose, onSaved }) {
   );
 }
 
-function ProjectRow({ project, onEdit, onDelete, milestoneSummary, milestones = [], onMilestonesChanged }) {
+function ProjectRow({
+  project,
+  onEdit,
+  onDelete,
+  milestoneSummary,
+  milestones = [],
+  onMilestonesChanged,
+}) {
   const s = statusStyle(project.status);
   const [msBusyId, setMsBusyId] = useState(null);
   const empty = !milestoneSummary || !milestoneSummary.total;
@@ -516,7 +628,10 @@ function ProjectRow({ project, onEdit, onDelete, milestoneSummary, milestones = 
     <div className="bg-white rounded-apple-lg shadow-apple p-5 flex flex-col gap-4 hover:shadow-apple-lg duration-200 group">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 min-w-0">
         <div className="flex items-start gap-4 min-w-0 flex-1">
-          <div className="w-3 h-12 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: project.color || '#6366f1' }} />
+          <div
+            className="w-3 h-12 rounded-full shrink-0 mt-0.5"
+            style={{ backgroundColor: project.color || '#6366f1' }}
+          />
           <div className="flex-1 min-w-0">
             <Link
               href={`/projects/${project.id}`}
@@ -539,26 +654,40 @@ function ProjectRow({ project, onEdit, onDelete, milestoneSummary, milestones = 
           <div className="text-right hidden sm:block min-w-[7rem]">
             <p className="text-xs text-gray-400">時程</p>
             <p className="text-xs font-medium text-gray-600">
-              {project.start_date ? `${fmt(project.start_date)} — ${fmt(project.end_date)}` : '未設定'}
+              {project.start_date
+                ? `${fmt(project.start_date)} — ${fmt(project.end_date)}`
+                : '未設定'}
             </p>
           </div>
           <div className="text-right hidden md:block min-w-[4.5rem]">
             <p className="text-xs text-gray-400">預算</p>
-            <p className="text-sm font-semibold text-gray-900">{project.budget ? fmtCurrency(project.budget) : '—'}</p>
+            <p className="text-sm font-semibold text-gray-900">
+              {project.budget ? fmtCurrency(project.budget) : '—'}
+            </p>
           </div>
           <div className="text-right min-w-[2.5rem]">
             <p className="text-xs text-gray-400">任務</p>
             <p className="text-sm font-semibold text-gray-900">{project.task_count || 0}</p>
           </div>
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}
+          >
             <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
             {project.status}
           </span>
           <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-            <button type="button" onClick={() => onEdit(project)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+            <button
+              type="button"
+              onClick={() => onEdit(project)}
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+            >
               編輯
             </button>
-            <button type="button" onClick={() => onDelete(project)} className="text-xs text-red-500 hover:text-red-600 font-medium">
+            <button
+              type="button"
+              onClick={() => onDelete(project)}
+              className="text-xs text-red-500 hover:text-red-600 font-medium"
+            >
               刪除
             </button>
           </div>
@@ -597,14 +726,19 @@ function ProjectRow({ project, onEdit, onDelete, milestoneSummary, milestones = 
                   className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
                   aria-label={`里程碑 ${ms.label}`}
                 />
-                <span className={`truncate ${ms.completed ? 'line-through' : 'font-medium'}`}>{ms.label}</span>
+                <span className={`truncate ${ms.completed ? 'line-through' : 'font-medium'}`}>
+                  {ms.label}
+                </span>
               </label>
             ))}
           </div>
         ) : (
           <p className="mt-2 text-[10px] text-gray-400">
             尚未設定里程碑 ·{' '}
-            <Link href={`/projects/${project.id}#milestones`} className="text-indigo-600 hover:underline font-medium">
+            <Link
+              href={`/projects/${project.id}#milestones`}
+              className="text-indigo-600 hover:underline font-medium"
+            >
               至專案設定
             </Link>
           </p>
@@ -629,15 +763,30 @@ function Modal({ title, onClose, children, zClass = 'z-50' }) {
       >
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors">✕</button>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+          >
+            ✕
+          </button>
         </div>
         <div className="p-6">{children}</div>
       </div>
     </div>
   );
 }
-function Label({ children }) { return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>; }
+function Label({ children }) {
+  return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>;
+}
 function Input({ type = 'text', value, onChange, required, placeholder }) {
-  return <input type={type} value={value} onChange={e => onChange(e.target.value)} required={required} placeholder={placeholder}
-    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />;
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+      placeholder={placeholder}
+      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    />
+  );
 }

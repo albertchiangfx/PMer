@@ -73,9 +73,10 @@ router.patch('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await req.app.locals.db.query(`DELETE FROM member_personal_tasks WHERE id = $1`, [
-      req.params.id,
-    ]);
+    const { rowCount } = await req.app.locals.db.query(
+      `DELETE FROM member_personal_tasks WHERE id = $1`,
+      [req.params.id]
+    );
     if (!rowCount) return res.status(404).json({ error: 'Task not found' });
     res.status(204).end();
   } catch (e) {
