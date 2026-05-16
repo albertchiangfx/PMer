@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS project_milestones (
   repeatable BOOLEAN NOT NULL DEFAULT false,
   timeline_start_date DATE,
   timeline_end_date DATE,
+  timeline_detail_nodes JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

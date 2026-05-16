@@ -7,13 +7,18 @@ import { api } from '../lib/api';
 import Gantt from './Gantt';
 import StudioProjectsGantt from './StudioProjectsGantt';
 import { GANTT_OFFSCREEN_DOT, GANTT_OFFSCREEN_DOT_STORAGE_KEY } from './ganttOffscreenDots';
-import { notifyScheduleDataChanged } from '../lib/dashboard-sync';
+import {
+  notifyScheduleDataChanged,
+  MILESTONE_DATA_CHANGED_EVENT,
+} from '../lib/dashboard-sync';
 import { validateIntervalWithinProject } from '../lib/projectScheduleBounds';
 
 export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程' }) {
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
+  /** 專案 id → 里程碑列（含 timeline_detail_nodes），供 studio 甘特 keypoint 徽章／tooltip */
+  const [milestonesByProject, setMilestonesByProject] = useState({});
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
   /** studio = 全工作室依「專案」列；members = 依「分配／成員」列 */
@@ -91,6 +96,43 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
   }, [load, version]);
 
   const refresh = () => setVersion((v) => v + 1);
+
+  const projectIdsKey = useMemo(
+    () =>
+      (projects || [])
+        .map((p) => String(p.id))
+        .filter(Boolean)
+        .sort()
+        .join(','),
+    [projects]
+  );
+
+  useEffect(() => {
+    if (!projectIdsKey) {
+      setMilestonesByProject({});
+      return;
+    }
+    const ids = projectIdsKey.split(',').filter(Boolean);
+    let cancelled = false;
+    api
+      .getProjectMilestonesByProjects(ids)
+      .then((map) => {
+        if (!cancelled) setMilestonesByProject(map && typeof map === 'object' ? map : {});
+      })
+      .catch((e) => {
+        console.error(e);
+        if (!cancelled) setMilestonesByProject({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectIdsKey, version]);
+
+  useEffect(() => {
+    const onMilestoneSync = () => setVersion((v) => v + 1);
+    window.addEventListener(MILESTONE_DATA_CHANGED_EVENT, onMilestoneSync);
+    return () => window.removeEventListener(MILESTONE_DATA_CHANGED_EVENT, onMilestoneSync);
+  }, []);
 
   const saveAllocation = async (e) => {
     e.preventDefault();
@@ -242,11 +284,13 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
         <StudioProjectsGantt
           projects={projects}
           allocations={allocations}
+          milestonesByProjectId={milestonesByProject}
           onUpdate={refresh}
           rangeWeeks={rangeWeeks}
           timelineMode={ganttTimelineMode}
           onTimelineModeChange={setGanttTimelineMode}
           offscreenDotColor={offscreenDotHex}
+          enableProjectBarDrag={false}
         />
       ) : (
         <Gantt

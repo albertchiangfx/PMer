@@ -104,7 +104,8 @@ router.post('/', async (req, res, next) => {
 async function updateMilestoneById(req, res, next) {
   try {
     const db = req.app.locals.db;
-    const { completed, label, sort_order, timeline_start_date, timeline_end_date } = req.body;
+    const { completed, label, sort_order, timeline_start_date, timeline_end_date, timeline_detail_nodes } =
+      req.body;
     const fields = [];
     const params = [];
     let i = 1;
@@ -127,6 +128,13 @@ async function updateMilestoneById(req, res, next) {
     if (timeline_end_date !== undefined) {
       fields.push(`timeline_end_date = $${i++}`);
       params.push(timeline_end_date || null);
+    }
+    if (timeline_detail_nodes !== undefined) {
+      if (!Array.isArray(timeline_detail_nodes)) {
+        return res.status(400).json({ error: 'timeline_detail_nodes must be an array' });
+      }
+      fields.push(`timeline_detail_nodes = $${i++}::jsonb`);
+      params.push(JSON.stringify(timeline_detail_nodes));
     }
     if (!fields.length) return res.status(400).json({ error: 'no updates' });
     params.push(req.params.id);

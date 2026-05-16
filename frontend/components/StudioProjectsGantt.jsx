@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   addDays,
   format,
@@ -13,6 +14,7 @@ import {
   isWeekend,
 } from 'date-fns';
 import { api } from '../lib/api';
+import { parseTimelineDetailNodes } from '../lib/timeline-detail-nodes';
 import {
   GANTT_OFFSCREEN_DOT,
   GANTT_OFFSCREEN_DOT_STORAGE_KEY,
@@ -51,6 +53,24 @@ function getProjectTimelineSpan(project, projectAllocations) {
   return { start: minS, end: maxE, source: 'allocations' };
 }
 
+/** 專案底下所有里程碑的時程細節節點（扁平、依日期排序） */
+function flattenMilestoneKeypoints(milestones) {
+  const list = [];
+  for (const m of milestones || []) {
+    const ml = String(m?.label || '').trim() || '里程碑';
+    for (const n of parseTimelineDetailNodes(m?.timeline_detail_nodes)) {
+      list.push({
+        id: n.id,
+        date: n.date,
+        label: n.label,
+        milestoneLabel: ml,
+      });
+    }
+  }
+  list.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
+  return list;
+}
+
 function buildUpdatePayload(project, startDate, endDate) {
   return {
     name: project.name,
@@ -77,6 +97,10 @@ export default function StudioProjectsGantt({
   timelineMode: timelineModeProp,
   onTimelineModeChange,
   offscreenDotColor,
+  /** Dashboard：專案 id → 里程碑列（含 timeline_detail_nodes） */
+  milestonesByProjectId = {},
+  /** Dashboard 等情境可設為 false，暫停專案條平移／左右縮放 */
+  enableProjectBarDrag = true,
 }) {
   const containerRef = useRef(null);
   const hScrollRef = useRef(null);
@@ -111,6 +135,27 @@ export default function StudioProjectsGantt({
   const [timelineViewportW, setTimelineViewportW] = useState(0);
   const [storedOffscreenDotHex, setStoredOffscreenDotHex] = useState(null);
   const today = useMemo(() => new Date(), []);
+  const tooltipHideTimerRef = useRef(null);
+  const clearTooltipHideTimer = useCallback(() => {
+    if (tooltipHideTimerRef.current != null) {
+      clearTimeout(tooltipHideTimerRef.current);
+      tooltipHideTimerRef.current = null;
+    }
+  }, []);
+  const scheduleTooltipHide = useCallback(() => {
+    clearTooltipHideTimer();
+    tooltipHideTimerRef.current = window.setTimeout(() => {
+      tooltipHideTimerRef.current = null;
+      setTooltip(null);
+    }, 220);
+  }, [clearTooltipHideTimer]);
+
+  useEffect(
+    () => () => {
+      if (tooltipHideTimerRef.current != null) clearTimeout(tooltipHideTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     try {
@@ -134,16 +179,16 @@ export default function StudioProjectsGantt({
     timelineMode === 'monthOnly' || (timelineMode === 'auto' && dayW < MIN_DAY_W);
   const headerH = showMonthOnlyHeader ? HEADER_H_COMPACT : HEADER_H_FULL;
 
-  useEffect(() => {
-    if (!tooltip) return;
-    const raf = window.requestAnimationFrame(() => {
-      const el = tooltipBoxRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setTooltipSize({ w: r.width, h: r.height });
-    });
-    return () => window.cancelAnimationFrame(raf);
-  }, [tooltip?.project?.id, tooltip?.span?.start, tooltip?.span?.end]);
+  useLayoutEffect(() => {
+    if (!tooltip) {
+      setTooltipSize({ w: 0, h: 0 });
+      return;
+    }
+    const el = tooltipBoxRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setTooltipSize({ w: r.width, h: r.height });
+  }, [tooltip?.project?.id, tooltip?.span?.start, tooltip?.span?.end, tooltip?.kp?.total]);
 
   const allocsByProject = useMemo(() => {
     const m = {};
@@ -173,6 +218,27 @@ export default function StudioProjectsGantt({
     });
     return list;
   }, [projects, allocsByProject]);
+
+  const keypointStatsByProjectId = useMemo(() => {
+    const ymd = format(today, 'yyyy-MM-dd');
+    const weekEndYmd = format(addDays(today, 7), 'yyyy-MM-dd');
+    const map = {};
+    for (const { project } of rows) {
+      const pid = project.id;
+      const ms =
+        milestonesByProjectId[pid] ?? milestonesByProjectId[String(pid)] ?? [];
+      const nodes = flattenMilestoneKeypoints(ms);
+      const upcoming = nodes.filter((n) => n.date >= ymd);
+      const inWeek = nodes.filter((n) => n.date >= ymd && n.date <= weekEndYmd);
+      map[pid] = {
+        total: nodes.length,
+        upcomingCount: upcoming.length,
+        in7: inWeek,
+        next: upcoming[0] ?? null,
+      };
+    }
+    return map;
+  }, [rows, milestonesByProjectId, today]);
 
   useEffect(() => {
     ghostRef.current = ghost;
@@ -209,6 +275,9 @@ export default function StudioProjectsGantt({
 
   const handleBarMouseDown = useCallback(
     (e, rowIdx, row, type) => {
+      clearTooltipHideTimer();
+      setTooltip(null);
+      if (!enableProjectBarDrag) return;
       const { span } = row;
       if (!span.start || !span.end) return;
       e.preventDefault();
@@ -226,7 +295,7 @@ export default function StudioProjectsGantt({
       });
       setGhost(null);
     },
-    [dateToX]
+    [dateToX, enableProjectBarDrag, clearTooltipHideTimer]
   );
 
   useEffect(() => {
@@ -405,34 +474,6 @@ export default function StudioProjectsGantt({
       }
     }
     return groups;
-  }, [days]);
-
-  // Alternating-week tint stripes. Only weekdays of "odd" weeks are tinted
-  // so weekend cells stay clean (and get only the weekend overlay on top).
-  // Color is controlled by --gantt-alt-week-tint in globals.css.
-  const altWeekStripes = useMemo(() => {
-    const stripes = [];
-    let weekIdx = -1;
-    let runStart = -1;
-    let runSpan = 0;
-    days.forEach((d, i) => {
-      const isMonday = d.getDay() === 1;
-      if (isMonday || i === 0) weekIdx += 1;
-      const isAlt = weekIdx % 2 === 1;
-      const isWeekday = !isWeekend(d);
-      if (isAlt && isWeekday) {
-        if (runStart === -1) {
-          runStart = i;
-          runSpan = 1;
-        } else runSpan += 1;
-      } else if (runStart !== -1) {
-        stripes.push({ startIdx: runStart, span: runSpan });
-        runStart = -1;
-        runSpan = 0;
-      }
-    });
-    if (runStart !== -1) stripes.push({ startIdx: runStart, span: runSpan });
-    return stripes;
   }, [days]);
 
   const scrollToToday = useCallback(() => {
@@ -634,12 +675,14 @@ export default function StudioProjectsGantt({
                     style={{ width: LABEL_W, minWidth: LABEL_W }}
                     className="flex flex-col justify-center px-4 border-r border-white/60 shrink-0 sticky left-0 z-10 bg-inherit min-w-0"
                   >
-                    <Link
-                      href={`/projects/${project.id}`}
-                      className="text-xs font-semibold text-slate-800 truncate hover:text-indigo-600"
-                    >
-                      {project.name}
-                    </Link>
+                    <div className="min-w-0">
+                      <Link
+                        href={`/projects/${project.id}`}
+                        className="text-xs font-semibold text-slate-800 truncate hover:text-indigo-600 block"
+                      >
+                        {project.name}
+                      </Link>
+                    </div>
                     <p className="text-[10px] text-slate-500 truncate">
                       {project.client_name || '無客戶'}
                       {hasBar && span.source === 'allocations' && (
@@ -678,20 +721,6 @@ export default function StudioProjectsGantt({
                       isolation: 'isolate',
                     }}
                   >
-                    {/* Alternating-week tint (drawn first, behind weekend stripes). */}
-                    {altWeekStripes.map((s, i) => (
-                      <div
-                        key={`altw-${i}`}
-                        style={{
-                          position: 'absolute',
-                          left: s.startIdx * dayW,
-                          top: 0,
-                          width: s.span * dayW,
-                          height: '100%',
-                        }}
-                        className="gantt-alt-week"
-                      />
-                    ))}
                     {days.map((d, i) =>
                       isWeekend(d) ? (
                         <div
@@ -733,6 +762,11 @@ export default function StudioProjectsGantt({
                           height: 28,
                           zIndex: isDragging ? 20 : 5,
                         }}
+                        title={
+                          enableProjectBarDrag
+                            ? undefined
+                            : '此檢視暫停拖曳調整專案日期（僅供檢視）'
+                        }
                       >
                         <div
                           style={{
@@ -742,7 +776,7 @@ export default function StudioProjectsGantt({
                             width: '100%',
                             opacity: isDragging ? 0.4 : 1,
                             boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                            cursor: 'grab',
+                            cursor: enableProjectBarDrag ? 'grab' : 'default',
                             display: 'flex',
                             alignItems: 'center',
                             overflow: 'hidden',
@@ -751,13 +785,23 @@ export default function StudioProjectsGantt({
                           onMouseDown={(e) =>
                             handleBarMouseDown(e, rowIdx, { project, span }, 'move')
                           }
-                          onMouseEnter={(e) =>
-                            setTooltip({ project, span, x: e.clientX, y: e.clientY })
-                          }
+                          onMouseEnter={(e) => {
+                            clearTooltipHideTimer();
+                            setTooltipSize({ w: 0, h: 0 });
+                            setTooltip({
+                              project,
+                              span,
+                              kp: keypointStatsByProjectId[project.id],
+                              x: e.clientX,
+                              y: e.clientY,
+                            });
+                          }}
                           onMouseMove={(e) =>
-                            setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))
+                            setTooltip((t) =>
+                              t ? { ...t, x: e.clientX, y: e.clientY } : t
+                            )
                           }
-                          onMouseLeave={() => setTooltip(null)}
+                          onMouseLeave={scheduleTooltipHide}
                         >
                           <div
                             style={{
@@ -766,7 +810,7 @@ export default function StudioProjectsGantt({
                               top: 0,
                               width: 6,
                               height: '100%',
-                              cursor: 'ew-resize',
+                              cursor: enableProjectBarDrag ? 'ew-resize' : 'default',
                               zIndex: 2,
                             }}
                             onMouseDown={(e) => {
@@ -796,7 +840,7 @@ export default function StudioProjectsGantt({
                               top: 0,
                               width: 6,
                               height: '100%',
-                              cursor: 'ew-resize',
+                              cursor: enableProjectBarDrag ? 'ew-resize' : 'default',
                               zIndex: 2,
                             }}
                             onMouseDown={(e) => {
@@ -888,21 +932,30 @@ export default function StudioProjectsGantt({
 
       {tooltip &&
         !dragging &&
-        (() => {
+        typeof document !== 'undefined' &&
+        createPortal(
+          (() => {
           const OFFSET = 12;
           const PAD = 8;
           const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
           const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
           let left = tooltip.x + OFFSET;
           let top = tooltip.y + OFFSET;
-          if (vw && vh && tooltipSize.w && tooltipSize.h) {
-            left = Math.min(left, vw - tooltipSize.w - PAD);
-            top = Math.min(top, vh - tooltipSize.h - PAD);
-            left = Math.max(PAD, left);
-            top = Math.max(PAD, top);
+          if (vw && vh && tooltipSize.w > 0 && tooltipSize.h > 0) {
+            const maxLeft = vw - tooltipSize.w - PAD;
+            const maxTop = vh - tooltipSize.h - PAD;
+            left = tooltip.x + OFFSET;
+            if (left > maxLeft) left = Math.max(PAD, maxLeft);
+            if (left < PAD) left = PAD;
+            const topAbove = tooltip.y - tooltipSize.h - OFFSET;
+            top = topAbove >= PAD ? topAbove : tooltip.y + OFFSET;
+            if (top > maxTop) top = Math.max(PAD, maxTop);
+            if (top < PAD) top = PAD;
+          } else {
+            top = tooltip.y - 56;
           }
           return (
-            <div style={{ position: 'fixed', left, top, zIndex: 100, pointerEvents: 'none' }}>
+            <div style={{ position: 'fixed', left, top, zIndex: 10000, pointerEvents: 'none' }}>
               <div
                 ref={tooltipBoxRef}
                 className="bg-gray-900/90 text-white rounded-lg px-3 py-2 text-xs shadow-xl backdrop-blur max-w-xs"
@@ -915,10 +968,55 @@ export default function StudioProjectsGantt({
                     {tooltip.span.source === 'allocations' ? '（依分配推算）' : ''}
                   </p>
                 )}
+                {tooltip.kp && tooltip.kp.total > 0 ? (
+                  <div className="mt-2 pt-2 border-t border-white/15 space-y-1">
+                    <p className="text-gray-200 font-medium">
+                      時程節點 · 共 {tooltip.kp.total} 個
+                      {tooltip.kp.upcomingCount > 0
+                        ? `（未來 ${tooltip.kp.upcomingCount}）`
+                        : '（皆為過去）'}
+                    </p>
+                    {tooltip.kp.next ? (
+                      <p className="text-gray-300 leading-snug">
+                        下一個：{tooltip.kp.next.date} · {tooltip.kp.next.label}
+                        <span className="text-gray-500">（{tooltip.kp.next.milestoneLabel}）</span>
+                      </p>
+                    ) : (
+                      <p className="text-gray-500 text-[11px]">目前無未來日期的節點</p>
+                    )}
+                    {(() => {
+                      const in7List = Array.isArray(tooltip.kp.in7) ? tooltip.kp.in7 : [];
+                      if (in7List.length === 0) return null;
+                      return (
+                      <div>
+                        <p className="text-gray-400 text-[11px] mb-0.5">7 日內：</p>
+                        <ul className="text-gray-400 text-[11px] space-y-0.5 list-disc pl-4">
+                          {in7List.slice(0, 4).map((n) => (
+                            <li key={`${n.id}-${n.date}`}>
+                              {n.date} · {n.label}
+                            </li>
+                          ))}
+                        </ul>
+                        {in7List.length > 4 && (
+                          <p className="text-gray-500 text-[10px] mt-0.5">
+                            …還有 {in7List.length - 4} 個
+                          </p>
+                        )}
+                      </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 mt-2 text-[11px] leading-snug">
+                    尚無里程碑時程節點。至專案頁「里程碑時程」建立 keypoint。
+                  </p>
+                )}
               </div>
             </div>
           );
-        })()}
+        })(),
+          document.body
+        )}
     </div>
   );
 }

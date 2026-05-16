@@ -561,34 +561,6 @@ export default function Gantt({
     return groups;
   }, [days]);
 
-  // Alternating-week tint stripes. Only weekdays of "odd" weeks are tinted
-  // so weekend cells stay clean (and get only the weekend overlay on top).
-  // Color is controlled by --gantt-alt-week-tint in globals.css.
-  const altWeekStripes = useMemo(() => {
-    const stripes = [];
-    let weekIdx = -1;
-    let runStart = -1;
-    let runSpan = 0;
-    days.forEach((d, i) => {
-      const isMonday = d.getDay() === 1;
-      if (isMonday || i === 0) weekIdx += 1;
-      const isAlt = weekIdx % 2 === 1;
-      const isWeekday = !isWeekend(d);
-      if (isAlt && isWeekday) {
-        if (runStart === -1) {
-          runStart = i;
-          runSpan = 1;
-        } else runSpan += 1;
-      } else if (runStart !== -1) {
-        stripes.push({ startIdx: runStart, span: runSpan });
-        runStart = -1;
-        runSpan = 0;
-      }
-    });
-    if (runStart !== -1) stripes.push({ startIdx: runStart, span: runSpan });
-    return stripes;
-  }, [days]);
-
   const scrollToToday = useCallback(() => {
     const todayX = dateToX(today);
     const target = Math.max(0, todayX);
@@ -828,20 +800,6 @@ export default function Gantt({
                       isolation: 'isolate',
                     }}
                   >
-                    {/* Alternating-week tint (drawn first, behind weekend stripes). */}
-                    {altWeekStripes.map((s, i) => (
-                      <div
-                        key={`altw-${i}`}
-                        style={{
-                          position: 'absolute',
-                          left: s.startIdx * dayW,
-                          top: 0,
-                          width: s.span * dayW,
-                          height: '100%',
-                        }}
-                        className="gantt-alt-week"
-                      />
-                    ))}
                     {days.map((d, i) =>
                       isWeekend(d) ? (
                         <div
