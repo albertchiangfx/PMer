@@ -62,29 +62,47 @@ function dayIndex(days, dateVal) {
   return days.findIndex((d) => ymd(d) === ymd(dateVal));
 }
 
+/** 每個日期對應的月份帶狀索引（交替亮暗） */
+function buildMonthBands(days) {
+  const bands = [];
+  let band = 0;
+  let prev = null;
+  for (const d of days) {
+    const k = format(d, 'yyyy-MM');
+    if (prev !== null && k !== prev) band += 1;
+    bands.push(band % 2 === 0 ? 'month-band-a' : 'month-band-b');
+    prev = k;
+  }
+  return bands;
+}
+
 function buildMonthCells(days) {
   if (!days.length) return '';
   const parts = [];
   let i = 0;
+  let monthIdx = 0;
   while (i < days.length) {
     const key = format(days[i], 'yyyy-MM');
     let j = i + 1;
     while (j < days.length && format(days[j], 'yyyy-MM') === key) j++;
     const span = j - i;
+    const alt = monthIdx % 2 === 0 ? 'month-alt-a' : 'month-alt-b';
     parts.push(
-      `<div class="month-cell" style="grid-column: span ${span}">${format(days[i], 'yyyy年M月')}</div>`
+      `<div class="month-cell ${alt}" style="grid-column: span ${span}">${format(days[i], 'yyyy年M月')}</div>`
     );
     i = j;
+    monthIdx += 1;
   }
   return parts.join('');
 }
 
-function buildDateHeaderCells(days) {
+function buildDateHeaderCells(days, monthBands) {
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
   return days
-    .map((d) => {
+    .map((d, i) => {
       const wknd = getDay(d) === 0 || getDay(d) === 6;
-      return `<div class="day-cell head-cell${wknd ? ' weekend' : ''}">
+      const band = monthBands[i] || 'month-band-a';
+      return `<div class="day-cell head-cell ${band}${wknd ? ' weekend' : ''}">
         <span class="head-d">${format(d, 'd')}</span>
         <span class="head-w">${weekdays[getDay(d)]}</span>
       </div>`;
@@ -116,7 +134,7 @@ function buildMilestoneLane(days, segs) {
   </div>`;
 }
 
-function buildNodeCells(days, allNodes) {
+function buildNodeCells(days, allNodes, monthBands) {
   const byDate = {};
   for (const n of allNodes) {
     const k = n.date;
@@ -124,17 +142,18 @@ function buildNodeCells(days, allNodes) {
     byDate[k].push(n);
   }
   return days
-    .map((d) => {
+    .map((d, i) => {
       const key = ymd(d);
       const list = byDate[key] || [];
       const wknd = getDay(d) === 0 || getDay(d) === 6;
+      const band = monthBands?.[i] || 'month-band-a';
       if (!list.length) {
-        return `<div class="day-cell node-cell empty${wknd ? ' weekend' : ''}"></div>`;
+        return `<div class="day-cell node-cell empty ${band}${wknd ? ' weekend' : ''}"></div>`;
       }
       const notes = list
         .map((n) => `<span class="node-note">${esc(n.label)}</span>`)
         .join('');
-      return `<div class="day-cell node-cell filled${wknd ? ' weekend' : ''}">
+      return `<div class="day-cell node-cell filled ${band}${wknd ? ' weekend' : ''}">
         <div class="node-fill"></div>
         <div class="node-notes">${notes}</div>
       </div>`;
@@ -144,12 +163,13 @@ function buildNodeCells(days, allNodes) {
 
 function buildDailyChart(days, projName, segs, allNodes) {
   const n = days.length;
+  const monthBands = buildMonthBands(days);
   const cols = `72px repeat(${n}, ${DAY_W}px)`;
   return `<div class="chart-grid" style="grid-template-columns: ${cols}">
     <span class="row-label">月份</span>
     ${buildMonthCells(days)}
     <span class="row-label">日期</span>
-    ${buildDateHeaderCells(days)}
+    ${buildDateHeaderCells(days, monthBands)}
     <span class="row-label">專案</span>
     <div class="day-cell proj-cell" style="grid-column: span ${n}">
       <span class="proj-bar">${esc(projName)}</span>
@@ -157,7 +177,7 @@ function buildDailyChart(days, projName, segs, allNodes) {
     <span class="row-label">里程碑</span>
     ${buildMilestoneLane(days, segs)}
     <span class="row-label">節點</span>
-    ${buildNodeCells(days, allNodes)}
+    ${buildNodeCells(days, allNodes, monthBands)}
   </div>`;
 }
 
@@ -340,12 +360,17 @@ export function buildClientTimelineHtml(project, segments) {
       font-size: 0.7rem;
       font-weight: 700;
       color: #475569;
-      background: #e2e8f0;
       text-align: center;
       white-space: nowrap;
       border-right: 1px solid #cbd5e1;
       border-bottom: 1px solid #cbd5e1;
     }
+    .month-alt-a { background: #dce3ed; }
+    .month-alt-b { background: #c5d0de; }
+    .head-cell.month-band-a { background: #f8fafc; }
+    .head-cell.month-band-b { background: #eef2f7; }
+    .node-cell.empty.month-band-a { background: #fafbfc; }
+    .node-cell.empty.month-band-b { background: #f1f5f9; }
     .head-cell {
       display: flex;
       flex-direction: column;
@@ -353,7 +378,6 @@ export function buildClientTimelineHtml(project, segments) {
       justify-content: center;
       padding: 2px 0;
       min-height: 36px;
-      background: #fafafa;
     }
     .head-d { font-size: 0.72rem; font-weight: 700; color: #334155; line-height: 1.1; }
     .head-w { font-size: 0.58rem; color: #94a3b8; }
@@ -415,7 +439,6 @@ export function buildClientTimelineHtml(project, segments) {
       padding: 0;
       background: #fff;
     }
-    .node-cell.empty { background: #fafafa; }
     .node-cell.filled { background: #fff !important; }
     .node-cell.filled .node-fill {
       flex: 0 0 12px;
@@ -458,15 +481,30 @@ export function buildClientTimelineHtml(project, segments) {
     .footer { margin-top: 24px; font-size: 0.72rem; color: #94a3b8; text-align: center; }
     @media print {
       body { background: #fff; padding: 0; }
-      .sheet { box-shadow: none; border: none; padding: 0; }
+      .sheet { box-shadow: none; border: none; padding: 0; max-width: none; }
       .toolbar { display: none !important; }
+      .timeline-wrap {
+        overflow: visible !important;
+        border: none;
+        padding: 0;
+        page-break-inside: avoid;
+      }
+      .timeline-inner { display: inline-block; }
+      .month-cell, .ms-bar, .proj-bar, .node-fill, .head-cell, .node-cell {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .proj-bar {
+        background: #4f46e5 !important;
+        background-image: none !important;
+      }
     }
   </style>
 </head>
 <body>
   <div class="sheet">
     <div class="toolbar">
-      <span>每日一格時間軸 · 列印請選橫向</span>
+      <span>PDF：橫向、勾選「背景圖形」；時間軸會自動縮放塞入頁寬</span>
       <button type="button" onclick="window.print()">列印 / 另存 PDF</button>
     </div>
     <h1>${esc(projName)}</h1>
@@ -490,6 +528,37 @@ export function buildClientTimelineHtml(project, segments) {
     </div>
     <p class="footer">Studio PM · 客戶時間軸匯出</p>
   </div>
+  <script>
+  (function () {
+    var inner = null;
+    function resetScale() {
+      if (!inner) inner = document.querySelector('.timeline-inner');
+      if (!inner) return;
+      inner.style.transform = '';
+      inner.style.transformOrigin = '';
+      var wrap = inner.parentElement;
+      if (wrap) wrap.style.height = '';
+    }
+    function fitScale() {
+      if (!inner) inner = document.querySelector('.timeline-inner');
+      if (!inner) return;
+      resetScale();
+      var cw = inner.scrollWidth;
+      var sheet = document.querySelector('.sheet');
+      var available = (sheet ? sheet.clientWidth : window.innerWidth) - 24;
+      if (available < 200) available = window.innerWidth - 40;
+      var scale = cw > available ? available / cw : 1;
+      if (scale < 0.995) {
+        inner.style.transform = 'scale(' + scale + ')';
+        inner.style.transformOrigin = 'top left';
+        var wrap = inner.parentElement;
+        if (wrap) wrap.style.height = Math.ceil(inner.offsetHeight * scale) + 'px';
+      }
+    }
+    window.addEventListener('beforeprint', fitScale);
+    window.addEventListener('afterprint', resetScale);
+  })();
+  </script>
 </body>
 </html>`;
 

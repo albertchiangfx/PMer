@@ -609,6 +609,7 @@ export default function ProjectDetailPage() {
                 projectId={id}
                 project={project}
                 rangeWeeks={ganttWeeks}
+                pastWeeks={4}
                 onProjectDatesSaved={() => load()}
               />
             </>

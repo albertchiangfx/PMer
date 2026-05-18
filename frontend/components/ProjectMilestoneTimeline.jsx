@@ -1,14 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import {
   addDays,
   differenceInCalendarDays,
   eachDayOfInterval,
+  endOfMonth,
   format,
+  getDay,
   isValid,
   parseISO,
+  startOfMonth,
   startOfWeek,
   isWeekend,
   isToday,
@@ -22,26 +25,62 @@ import { GANTT_OFFSCREEN_DOT, barTouchesTimelineViewportLeft } from './ganttOffs
 const DEFAULT_DAY_W = 16;
 const MIN_DAY_W = 12;
 const MAX_DAY_W = 80;
-const ROW_H = 28;
-const LABEL_W = 228;
+const LABEL_W = 72;
 const INDICATOR_GUTTER_W = 14;
 const PINNED_LEFT_W = LABEL_W + INDICATOR_GUTTER_W;
-const HEADER_H_FULL = 80;
-const BAR_H = 12;
-const BAR_GAP = 4;
+const ROW_MONTH_H = 22;
+const ROW_DATE_H = 36;
+const ROW_PROJECT_H = 30;
+const ROW_MS_BAR_H = 26;
+const ROW_NODE_H = 32;
+const WEEKDAYS_ZH = ['日', '一', '二', '三', '四', '五', '六'];
 
-/** 表頭：僅垂直日欄線（水平分割靠列 border） */
-function timelineHeaderGridStyle(dayW, totalW, heightPx) {
-  return {
-    width: totalW,
-    height: heightPx,
-    pointerEvents: 'none',
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    zIndex: 2,
-    backgroundImage: `repeating-linear-gradient(to right, rgb(203 213 225) 0, rgb(203 213 225) 1px, transparent 1px, transparent ${dayW}px)`,
-  };
+const MILESTONE_COLORS = [
+  '#c7d2fe',
+  '#bae6fd',
+  '#a7f3d0',
+  '#fde68a',
+  '#fbcfe8',
+  '#ddd6fe',
+  '#fed7aa',
+];
+
+function buildMonthBands(days) {
+  const bands = [];
+  let band = 0;
+  let prev = null;
+  for (const d of days) {
+    const k = format(d, 'yyyy-MM');
+    if (prev !== null && k !== prev) band += 1;
+    bands.push(band % 2 === 0 ? 'month-band-a' : 'month-band-b');
+    prev = k;
+  }
+  return bands;
+}
+
+/** 重疊里程碑分層，避免同一泳道互相遮住 */
+function layoutMilestoneRows(segments) {
+  const sorted = [...segments].sort(
+    (a, b) => a.start - b.start || a.end - b.end || String(a.id).localeCompare(String(b.id))
+  );
+  const rowEnds = [];
+  const assignment = new Map();
+  for (const s of sorted) {
+    let placed = false;
+    for (let r = 0; r < rowEnds.length; r++) {
+      if (differenceInCalendarDays(s.start, rowEnds[r]) > 0) {
+        rowEnds[r] = s.end;
+        assignment.set(s.id, r);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      assignment.set(s.id, rowEnds.length);
+      rowEnds.push(s.end);
+    }
+  }
+  return { assignment, rowCount: Math.max(1, rowEnds.length) };
 }
 
 /** 資料列：垂直日欄 + 列底水平線 */
@@ -225,16 +264,6 @@ function remapSegmentsProportional(segments, oldStart, oldEnd, newStart, newEnd)
   });
 }
 
-/** 節點在進度條內的相對位置（0–1），用於繪製標記 */
-function detailNodeOffsetInBar(nodeDateYmd, segStart, segEnd) {
-  const nd = parseISO(String(nodeDateYmd).slice(0, 10));
-  if (!isValid(nd) || !isValid(segStart) || !isValid(segEnd)) return null;
-  if (nd < segStart || nd > segEnd) return null;
-  const span = differenceInCalendarDays(segEnd, segStart);
-  if (span <= 0) return 0.5;
-  return differenceInCalendarDays(nd, segStart) / span;
-}
-
 export default function ProjectMilestoneTimeline({
   projectId,
   project,
@@ -274,23 +303,79 @@ export default function ProjectMilestoneTimeline({
     [today, pastWeeks]
   );
   const totalDays = (pastWeeks + rangeWeeks) * 7 - 1;
-  const days = useMemo(
-    () => eachDayOfInterval({ start: rangeStart, end: addDays(rangeStart, totalDays) }),
-    [rangeStart, totalDays]
-  );
+  const pStart = project?.start_date ? parseISO(String(project.start_date).slice(0, 10)) : null;
+  const pEnd = project?.end_date ? parseISO(String(project.end_date).slice(0, 10)) : null;
   const [dayW, setDayW] = useState(DEFAULT_DAY_W);
   const dayWRef = useRef(dayW);
   useEffect(() => {
     dayWRef.current = dayW;
   }, [dayW]);
-  const totalW = days.length * dayW;
   const containerRef = useRef(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [timelineViewportW, setTimelineViewportW] = useState(0);
-  const [showProjectSpan, setShowProjectSpan] = useState(true);
-  /** 僅平移模式：滑鼠幾乎沒動時視為「點擊」以展開列，不寫入 PATCH */
+
+  /** 專案前後留出可拖曳緩衝（整月對齊 + 週數由 pastWeeks / rangeWeeks 控制） */
+  const coreDays = useMemo(() => {
+    const fallbackEnd = addDays(rangeStart, totalDays);
+    let start = rangeStart;
+    let end = fallbackEnd;
+
+    if (pStart && pEnd && isValid(pStart) && isValid(pEnd) && pEnd >= pStart) {
+      start = startOfMonth(addDays(pStart, -pastWeeks * 7));
+      end = endOfMonth(addDays(pEnd, rangeWeeks * 7));
+
+      for (const s of canonical) {
+        if (s.start && isValid(s.start)) {
+          const segPad = startOfMonth(addDays(s.start, -pastWeeks * 7));
+          if (segPad < start) start = segPad;
+        }
+        if (s.end && isValid(s.end)) {
+          const segPad = endOfMonth(addDays(s.end, rangeWeeks * 7));
+          if (segPad > end) end = segPad;
+        }
+      }
+    }
+
+    return eachDayOfInterval({ start, end });
+  }, [pStart, pEnd, rangeStart, totalDays, pastWeeks, rangeWeeks, canonical]);
+
+  /** 欄數不足時向左右補日，讓泳道至少填滿可視寬度 */
+  const displayDays = useMemo(() => {
+    if (!coreDays.length) return coreDays;
+    let start = coreDays[0];
+    let end = coreDays[coreDays.length - 1];
+    if (timelineViewportW > 0 && dayW > 0) {
+      const needed = Math.ceil(timelineViewportW / dayW);
+      if (coreDays.length < needed) {
+        const extra = needed - coreDays.length;
+        const padBefore = Math.floor(extra / 2);
+        const padAfter = extra - padBefore;
+        start = addDays(start, -padBefore);
+        end = addDays(end, padAfter);
+      }
+    }
+    if (start === coreDays[0] && end === coreDays[coreDays.length - 1]) return coreDays;
+    return eachDayOfInterval({ start, end });
+  }, [coreDays, timelineViewportW, dayW]);
+
+  const days = displayDays;
+  const timelineStart = days[0] ?? rangeStart;
+  const projectSpan = useMemo(() => {
+    if (!pStart || !pEnd || !days.length) return null;
+    const i0 = differenceInCalendarDays(pStart, timelineStart);
+    const i1 = differenceInCalendarDays(pEnd, timelineStart);
+    return {
+      startIdx: Math.max(0, i0),
+      endIdx: Math.min(days.length - 1, i1),
+    };
+  }, [pStart, pEnd, days.length, timelineStart]);
+  const totalW = days.length * dayW;
+  const chartMinW = Math.max(totalW, timelineViewportW);
+
+  /** 僅平移模式：滑鼠幾乎沒動時視為「點擊」，不寫入 PATCH */
   const miniMoveRef = useRef(false);
-  const [expandedSegId, setExpandedSegId] = useState(null);
+  /** 在節點列新增節點時，預設歸屬的里程碑 */
+  const [activeSegId, setActiveSegId] = useState(null);
 
   const draggingRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
@@ -310,32 +395,69 @@ export default function ProjectMilestoneTimeline({
     const items = [];
     for (const s of displaySegs) {
       for (const n of s.detailNodes || []) {
-        items.push({ milestoneLabel: s.label, date: n.date, label: n.label, segId: s.id });
+        items.push({
+          milestoneLabel: s.label,
+          date: n.date,
+          label: n.label,
+          segId: s.id,
+          id: n.id,
+        });
       }
     }
     items.sort((a, b) => a.date.localeCompare(b.date) || a.milestoneLabel.localeCompare(b.milestoneLabel));
     return items;
   }, [displaySegs]);
 
-  const pStart = project?.start_date ? parseISO(String(project.start_date).slice(0, 10)) : null;
-  const pEnd = project?.end_date ? parseISO(String(project.end_date).slice(0, 10)) : null;
+  const nodesByDate = useMemo(() => {
+    const m = {};
+    for (const n of allDetailNodesFlat) {
+      if (!m[n.date]) m[n.date] = [];
+      m[n.date].push(n);
+    }
+    return m;
+  }, [allDetailNodesFlat]);
 
   const dateToX = useCallback(
     (d) => {
       if (!d) return 0;
       const dd = d instanceof Date ? d : parseISO(String(d).slice(0, 10));
-      return differenceInCalendarDays(dd, rangeStart) * dayW;
+      return differenceInCalendarDays(dd, timelineStart) * dayW;
     },
-    [rangeStart, dayW]
+    [timelineStart, dayW]
   );
 
   const xToDate = useCallback(
     (x) => {
       const idx = Math.round(x / dayW);
-      return addDays(rangeStart, Math.max(0, Math.min(idx, days.length - 1)));
+      return addDays(timelineStart, Math.max(0, Math.min(idx, days.length - 1)));
     },
-    [rangeStart, days.length, dayW]
+    [timelineStart, days.length, dayW]
   );
+
+  const monthSpans = useMemo(() => {
+    const parts = [];
+    let i = 0;
+    let monthIdx = 0;
+    while (i < days.length) {
+      const key = format(days[i], 'yyyy-MM');
+      let j = i + 1;
+      while (j < days.length && format(days[j], 'yyyy-MM') === key) j++;
+      parts.push({
+        startIdx: i,
+        span: j - i,
+        label: format(days[i], 'yyyy年M月'),
+        alt: monthIdx % 2,
+      });
+      i = j;
+      monthIdx += 1;
+    }
+    return parts;
+  }, [days]);
+
+  const monthBands = useMemo(() => buildMonthBands(days), [days]);
+  const msLayout = useMemo(() => layoutMilestoneRows(displaySegs), [displaySegs]);
+  const msLaneH = Math.max(ROW_MS_BAR_H + 8, msLayout.rowCount * (ROW_MS_BAR_H + 3) + 8);
+  const chartBodyH = ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H + msLaneH + ROW_NODE_H;
 
   const initDraftFromCanonical = useCallback(() => {
     const init = canonical.map((s) => ({
@@ -366,6 +488,8 @@ export default function ProjectMilestoneTimeline({
           ? s.detailNodes.map((n) => ({ ...n }))
           : [],
       }));
+      const segId = snap[index]?.id;
+      if (segId) setActiveSegId(segId);
       draggingRef.current = {
         kind: 'milestone',
         index,
@@ -493,7 +617,7 @@ export default function ProjectMilestoneTimeline({
           draftRef.current = shiftSegments(d.snapshot, deltaDays);
         } else if (d.mode === 'resize-left') {
           let ns = xToDate(dateToX(d.origStart) + snappedPx);
-          ns = clampDate(ns, rangeStart, addDays(d.origEnd, -1));
+          ns = clampDate(ns, timelineStart, addDays(d.origEnd, -1));
           d.previewStart = ns;
           d.previewEnd = new Date(d.origEnd);
           draftRef.current = remapSegmentsProportional(
@@ -506,7 +630,7 @@ export default function ProjectMilestoneTimeline({
           d.dxPx = 0;
         } else if (d.mode === 'resize-right') {
           let ne = xToDate(dateToX(d.origEnd) + snappedPx);
-          ne = clampDate(ne, addDays(d.origStart, 1), addDays(rangeStart, days.length - 1));
+          ne = clampDate(ne, addDays(d.origStart, 1), addDays(timelineStart, days.length - 1));
           d.previewStart = new Date(d.origStart);
           d.previewEnd = ne;
           draftRef.current = remapSegmentsProportional(
@@ -647,7 +771,10 @@ export default function ProjectMilestoneTimeline({
 
       if (wasMilestoneClickNoMove) {
         const sid = d.snapshot[d.index]?.id;
-        if (sid) setExpandedSegId((cur) => (cur === sid ? null : sid));
+        if (sid) {
+          setActiveSegId(sid);
+          void toggleMilestoneCompleted(sid);
+        }
         draftRef.current = null;
         setDraft(null);
         return;
@@ -759,7 +886,7 @@ export default function ProjectMilestoneTimeline({
     dayW,
     xToDate,
     dateToX,
-    rangeStart,
+    timelineStart,
     days.length,
     pStart,
     pEnd,
@@ -770,25 +897,10 @@ export default function ProjectMilestoneTimeline({
     repaint,
   ]);
 
-  const weekGroups = useMemo(() => {
-    const groups = [];
-    let cur = null;
-    let lastMonth = null;
-    let weekNoInMonth = 0;
-    for (const d of days) {
-      const isStartOfWeek = d.getDay() === 1;
-      if (isStartOfWeek || !cur) {
-        const month = d.getMonth();
-        if (month !== lastMonth) {
-          weekNoInMonth = 1;
-          lastMonth = month;
-        } else weekNoInMonth += 1;
-        cur = { label: isStartOfWeek ? format(d, 'MMM') : '', days: 1, weekNo: weekNoInMonth };
-        groups.push(cur);
-      } else cur.days += 1;
-    }
-    return groups;
-  }, [days]);
+  const didInitialScroll = useRef(false);
+  useEffect(() => {
+    didInitialScroll.current = false;
+  }, [canonKey]);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -805,6 +917,15 @@ export default function ProjectMilestoneTimeline({
     setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
     return () => ro.disconnect();
   }, []);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (didInitialScroll.current || !el || !pStart || !days.length || timelineViewportW <= 0) return;
+    const idx = differenceInCalendarDays(pStart, timelineStart);
+    if (idx < 0) return;
+    el.scrollLeft = Math.max(0, idx * dayW - 56);
+    didInitialScroll.current = true;
+  }, [canonKey, days.length, timelineViewportW, dayW, pStart, timelineStart]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -865,33 +986,23 @@ export default function ProjectMilestoneTimeline({
   }
 
   const tw = timelineViewportW;
-  const visT1 = Math.min(totalW, scrollLeft + Math.max(0, tw));
+  const visT1 = Math.min(chartMinW, scrollLeft + Math.max(0, tw));
   const todayPx = dateToX(today) + dayW / 2;
-  const barBg = { backgroundImage: 'linear-gradient(90deg, #1f2937, #374151)' };
 
-  let rowsBodyH = 0;
-  for (const s of displaySegs) {
-    rowsBodyH += ROW_H;
-    if (expandedSegId === s.id) rowsBodyH += ROW_H;
-  }
+  const rowLabelCls =
+    'flex items-center justify-end px-2 text-[10px] font-bold text-slate-500 border-b border-slate-200 bg-slate-50 shrink-0';
+  const projBarLeft = dateToX(projStart);
+  const projBarW = Math.max(dayW, dateToX(projEnd) + dayW - projBarLeft);
+  const showProjDotLeft = barTouchesTimelineViewportLeft(projBarLeft, scrollLeft, PINNED_LEFT_W);
+  const showProjDotRight = tw > 0 && projBarLeft >= visT1;
 
   return (
     <div className="surface overflow-hidden select-none rounded-[18px] border border-white/60">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
-        <div className="flex flex-wrap items-center gap-3 min-w-0">
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer shrink-0">
-            <input
-              type="checkbox"
-              checked={showProjectSpan}
-              onChange={(e) => setShowProjectSpan(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            在日期列顯示專案整體區間（半透明，可左右平移）
-          </label>
-          <p className="text-xs text-slate-500 max-w-xl hidden lg:block">
-            進度條輕點展開細節列；紫點＝節點（隨條拖曳移動）。左側名稱點擊標記完成。
-          </p>
-        </div>
+        <p className="text-xs text-slate-500 max-w-2xl min-w-0">
+          每日一格泳道圖 · 拖曳／縮放里程碑與專案條 · 輕點里程碑色塊標記完成 ·
+          節點列點空白格新增 · 左右可捲動至專案前後月份（緩衝依上方「週」設定）
+        </p>
         <button
           type="button"
           onClick={() => {
@@ -906,6 +1017,28 @@ export default function ProjectMilestoneTimeline({
         </button>
       </div>
 
+      <div className="px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-semibold text-slate-500 shrink-0">選取里程碑</span>
+        {displaySegs.map((seg, i) => (
+          <button
+            key={seg.id}
+            type="button"
+            onClick={() => setActiveSegId(seg.id)}
+            className={`text-[10px] px-2 py-0.5 rounded-md border font-medium ${
+              activeSegId === seg.id
+                ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            } ${seg.completed ? 'line-through opacity-70' : ''}`}
+            style={{
+              borderLeftWidth: 3,
+              borderLeftColor: MILESTONE_COLORS[i % MILESTONE_COLORS.length],
+            }}
+          >
+            {seg.label}
+          </button>
+        ))}
+      </div>
+
       <div
         ref={containerRef}
         className="gantt-scroll overflow-x-auto overflow-y-auto max-h-[min(70vh,720px)]"
@@ -913,445 +1046,376 @@ export default function ProjectMilestoneTimeline({
       >
         <div
           style={{
-            width: PINNED_LEFT_W + totalW,
+            width: PINNED_LEFT_W + chartMinW,
             position: 'relative',
-            minHeight: HEADER_H_FULL + rowsBodyH,
+            minHeight: chartBodyH,
           }}
         >
-          <div
-            className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-300"
-            style={{ height: HEADER_H_FULL }}
-          >
-            <div className="flex h-full">
-              <div
-                style={{ width: LABEL_W, minWidth: LABEL_W }}
-                className="flex px-4 border-r border-slate-300 items-end pb-2 sticky left-0 z-30 bg-white/80 backdrop-blur"
-              >
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  里程碑
-                </span>
+          <div className="flex" style={{ minHeight: chartBodyH }}>
+            <div
+              className="sticky left-0 z-30 flex flex-col shrink-0 border-r-2 border-slate-400 bg-white"
+              style={{ width: LABEL_W }}
+            >
+              <div className={rowLabelCls} style={{ height: ROW_MONTH_H }}>
+                月份
               </div>
-              <div
-                style={{ width: INDICATOR_GUTTER_W }}
-                className="sticky shrink-0 border-r border-slate-300 bg-white z-[29]"
-              />
-              <div style={{ position: 'relative', width: totalW, height: HEADER_H_FULL }}>
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute left-0 top-0"
-                  style={timelineHeaderGridStyle(dayW, totalW, HEADER_H_FULL)}
-                />
-                <div className="relative z-[3] flex flex-col h-full">
-                <div className="flex h-9 items-center border-b border-slate-300 shrink-0">
-                  {weekGroups.map((g, i) => (
-                    <div
-                      key={i}
-                      style={{ width: g.days * dayW, minWidth: g.days * dayW }}
-                      className="flex items-baseline gap-1.5 text-xs font-semibold text-slate-500 px-2 overflow-hidden whitespace-nowrap"
-                    >
-                      <span>{g.label}</span>
-                      <span className="text-[9px] font-medium text-slate-400 tabular-nums">
-                        W{g.weekNo}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="relative flex flex-1 min-h-0 h-11 items-stretch border-b border-slate-300">
-                  {days.map((d, i) =>
-                    isWeekend(d) ? (
-                      <div
-                        key={`wk-h-${i}`}
-                        style={{
-                          position: 'absolute',
-                          left: i * dayW,
-                          top: 0,
-                          width: dayW,
-                          height: '100%',
-                          zIndex: 1,
-                        }}
-                        className="gantt-weekend"
-                      />
-                    ) : null
-                  )}
-                  <div className="relative z-[4] flex flex-1">
-                    {days.map((d, i) => {
-                      const isToday_ = isToday(d);
-                      const isWknd = isWeekend(d);
-                      return (
-                        <div
-                          key={i}
-                          style={{ width: dayW, minWidth: dayW }}
-                          className={`flex flex-col items-center justify-center h-full ${isWknd ? 'opacity-40' : ''}`}
-                        >
-                          <span className="text-[9px] text-slate-400 uppercase">
-                            {format(d, 'EEE')[0]}
-                          </span>
-                          <span
-                            className={`text-xs font-medium mt-0.5 w-5 h-5 flex items-center justify-center rounded-full ${
-                              isToday_ ? 'bg-indigo-500 text-white' : 'text-slate-500'
-                            }`}
-                          >
-                            {format(d, 'd')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {showProjectSpan && pStart && pEnd && (
-                    <div
-                      className="absolute left-0 right-0 bottom-1 z-[5] pointer-events-auto group"
-                      style={{ height: 9 }}
-                      title="專案整體區間（拖曳平移；左右緣調整起訖，底下里程碑會連動）"
-                    >
-                      <div
-                        className="absolute rounded shadow-sm ring-1 ring-white/40"
-                        style={{
-                          left: dateToX(projStart),
-                          width: Math.max(dayW, dateToX(projEnd) + dayW - dateToX(projStart)),
-                          top: 0,
-                          height: 9,
-                          background: projectColor,
-                          opacity: 0.42,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          aria-label="調整專案開始"
-                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l bg-white/30 opacity-0 group-hover:opacity-100"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            onProjectBarMouseDown(e, 'resize-left');
-                          }}
-                        />
-                        <button
-                          type="button"
-                          aria-label="平移專案區間"
-                          className="absolute inset-y-0 left-2 right-2 cursor-grab active:cursor-grabbing rounded"
-                          onMouseDown={(e) => onProjectBarMouseDown(e, 'move')}
-                        />
-                        <button
-                          type="button"
-                          aria-label="調整專案結束"
-                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r bg-white/30 opacity-0 group-hover:opacity-100"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            onProjectBarMouseDown(e, 'resize-right');
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-                </div>
+              <div className={rowLabelCls} style={{ height: ROW_DATE_H }}>
+                日期
+              </div>
+              <div className={rowLabelCls} style={{ height: ROW_PROJECT_H }}>
+                專案
+              </div>
+              <div className={rowLabelCls} style={{ height: msLaneH }}>
+                里程碑
+              </div>
+              <div className={rowLabelCls} style={{ height: ROW_NODE_H }}>
+                節點
               </div>
             </div>
-          </div>
-
-          {displaySegs.map((seg, rowIdx) => {
-            const rawX = dateToX(seg.start);
-            const showRowDotLeft = barTouchesTimelineViewportLeft(rawX, scrollLeft, PINNED_LEFT_W);
-            const showRowDotRight = tw > 0 && rawX >= visT1;
-            const rowExpanded = expandedSegId === seg.id;
-            const barTop = (ROW_H - BAR_H) / 2;
-            const detailNodes = Array.isArray(seg.detailNodes) ? seg.detailNodes : [];
-            const segLoYmd = fmtYmd(seg.start);
-            const segHiYmd = fmtYmd(seg.end);
-
-            return (
-              <Fragment key={seg.id}>
-                <div
-                  style={{ display: 'flex', height: ROW_H }}
-                  className="border-b border-slate-300 bg-white"
-                >
-                  <div
-                    style={{ width: LABEL_W, minWidth: LABEL_W }}
-                    className="flex flex-row items-center gap-2 px-2 border-r border-slate-300 shrink-0 sticky left-0 z-10 bg-white"
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        seg.completed ? 'bg-emerald-500' : 'bg-slate-400'
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => toggleMilestoneCompleted(seg.id)}
-                        className={`text-[11px] font-semibold truncate text-left hover:underline ${
-                          seg.completed ? 'text-emerald-700' : 'text-slate-800'
-                        }`}
-                        title={seg.completed ? '標記為未完成' : '標記為完成'}
-                      >
-                        {seg.label}
-                      </button>
-                    </div>
-                  </div>
-                  <div
-                    style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W }}
-                    className="sticky shrink-0 z-[15] flex items-center justify-center border-r border-slate-300 bg-white"
-                  >
-                    {showRowDotLeft && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none block"
-                        style={{
-                          width: GANTT_OFFSCREEN_DOT.width,
-                          height: GANTT_OFFSCREEN_DOT.height,
-                          borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
-                          backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
-                          boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div
+            <div
+              style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W }}
+              className="sticky left-[72px] z-[29] shrink-0 border-r border-slate-200 bg-white flex flex-col"
+            >
+              <div style={{ height: ROW_MONTH_H }} />
+              <div style={{ height: ROW_DATE_H }} />
+              <div
+                style={{ height: ROW_PROJECT_H }}
+                className="flex items-center justify-center"
+              >
+                {showProjDotLeft && (
+                  <span
+                    aria-hidden
                     style={{
-                      position: 'relative',
-                      width: totalW,
-                      height: ROW_H,
-                      isolation: 'isolate',
+                      width: GANTT_OFFSCREEN_DOT.width,
+                      height: GANTT_OFFSCREEN_DOT.height,
+                      borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
+                      backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
+                      boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
+                    }}
+                  />
+                )}
+              </div>
+              <div style={{ height: msLaneH }} />
+              <div style={{ height: ROW_NODE_H }} />
+            </div>
+            <div
+              className="relative shrink-0"
+              style={{ width: chartMinW, minWidth: chartMinW, height: chartBodyH }}
+            >
+              {projectSpan && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute bg-indigo-50/35 border-x border-indigo-200/25"
+                  style={{
+                    left: projectSpan.startIdx * dayW,
+                    width: (projectSpan.endIdx - projectSpan.startIdx + 1) * dayW,
+                    top: ROW_MONTH_H,
+                    height: chartBodyH - ROW_MONTH_H,
+                    zIndex: 0,
+                  }}
+                />
+              )}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={timelineBodyGridStyle(dayW, chartMinW)}
+              />
+              {/* 月份列 */}
+              <div
+                className="absolute left-0 right-0 top-0 border-b border-slate-300"
+                style={{ height: ROW_MONTH_H }}
+              >
+                {monthSpans.map((m) => (
+                  <div
+                    key={`${m.startIdx}-${m.label}`}
+                    className={`absolute flex items-center justify-center text-[10px] font-bold text-slate-600 whitespace-nowrap border-r border-slate-300 ${
+                      m.alt ? 'bg-slate-300' : 'bg-slate-200'
+                    }`}
+                    style={{
+                      left: m.startIdx * dayW,
+                      width: m.span * dayW,
+                      height: ROW_MONTH_H,
                     }}
                   >
+                    {m.label}
+                  </div>
+                ))}
+              </div>
+              {/* 日期列 */}
+              <div
+                className="absolute left-0 right-0 flex border-b border-slate-300"
+                style={{ top: ROW_MONTH_H, height: ROW_DATE_H }}
+              >
+                {days.map((d, i) => {
+                  const wknd = isWeekend(d);
+                  const band = monthBands[i];
+                  const isToday_ = isToday(d);
+                  return (
                     <div
-                      aria-hidden
-                      className="pointer-events-none absolute left-0 top-0"
-                      style={timelineBodyGridStyle(dayW, totalW)}
-                    />
-                    {days.map((d, i) =>
-                      isWeekend(d) ? (
-                        <div
-                          key={`w-${seg.id}-${i}`}
-                          style={{
-                            position: 'absolute',
-                            left: i * dayW,
-                            top: 0,
-                            width: dayW,
-                            height: '100%',
-                            zIndex: 1,
-                          }}
-                          className="gantt-weekend"
-                        />
-                      ) : null
-                    )}
-
-                    {showRowDotRight && (
+                      key={`hd-${i}`}
+                      style={{ width: dayW, minWidth: dayW }}
+                      className={`flex flex-col items-center justify-center shrink-0 border-r border-slate-200 ${
+                        band === 'month-band-b' ? 'bg-slate-100/90' : 'bg-slate-50'
+                      } ${wknd ? 'bg-red-50/90' : ''}`}
+                    >
                       <span
-                        aria-hidden
-                        className="pointer-events-none"
-                        style={{
-                          width: GANTT_OFFSCREEN_DOT.width,
-                          height: GANTT_OFFSCREEN_DOT.height,
-                          borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
-                          backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
-                          boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
-                          position: 'absolute',
-                          left: visT1 - 6,
-                          top: barTop + BAR_H / 2,
-                          transform: 'translate(-50%, -50%)',
-                          zIndex: 25,
-                        }}
-                      />
-                    )}
-
-                    <div
-                      className="absolute rounded shadow-sm group z-10 overflow-hidden"
-                      style={{
-                        left: dateToX(seg.start),
-                        width: Math.max(dayW, dateToX(seg.end) + dayW - dateToX(seg.start)),
-                        top: barTop,
-                        height: BAR_H,
-                        ...(seg.completed
-                          ? { backgroundImage: 'linear-gradient(90deg, #059669, #10b981)' }
-                          : barBg),
-                      }}
-                    >
-                      {!rowExpanded &&
-                        detailNodes.map((n) => {
-                          const pct = detailNodeOffsetInBar(n.date, seg.start, seg.end);
-                          if (pct == null) return null;
-                          return (
-                            <span
-                              key={`kp-${seg.id}-${n.id}`}
-                              className="pointer-events-none absolute z-[3] rounded-full bg-indigo-300 ring-1 ring-white/90"
-                              style={{
-                                left: `${pct * 100}%`,
-                                bottom: 1,
-                                width: 5,
-                                height: 5,
-                                transform: 'translateX(-50%)',
-                              }}
-                              title={`${n.date} · ${n.label}`}
-                            />
-                          );
-                        })}
-                      <button
-                        type="button"
-                        aria-label="調整開始"
-                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/25 opacity-0 group-hover:opacity-100 rounded-l"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          onSegMouseDown(e, rowIdx, 'resize-left');
-                        }}
-                      />
-                      <button
-                        type="button"
-                        aria-label="平移（小範圍點擊可展開／收合細節列）"
-                        title="拖曳以平移；點擊展開或收合下一列細節格"
-                        className="absolute inset-y-0 left-2 right-2 cursor-grab active:cursor-grabbing"
-                        onMouseDown={(e) => onSegMouseDown(e, rowIdx, 'move')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="調整結束"
-                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/25 opacity-0 group-hover:opacity-100 rounded-r"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          onSegMouseDown(e, rowIdx, 'resize-right');
-                        }}
-                      />
+                        className={`text-[10px] font-bold leading-none ${
+                          isToday_ ? 'text-indigo-600' : 'text-slate-700'
+                        }`}
+                      >
+                        {format(d, 'd')}
+                      </span>
+                      <span className="text-[8px] text-slate-400 leading-none mt-0.5">
+                        {WEEKDAYS_ZH[getDay(d)]}
+                      </span>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+              {/* 專案列 */}
+              <div
+                className="absolute left-0 right-0 border-b border-slate-300"
+                style={{ top: ROW_MONTH_H + ROW_DATE_H, height: ROW_PROJECT_H }}
+              >
+                <div
+                  className="absolute rounded-md shadow-sm group overflow-hidden flex items-center justify-center"
+                  style={{
+                    left: projBarLeft,
+                    width: projBarW,
+                    top: 4,
+                    height: ROW_PROJECT_H - 8,
+                    background: `linear-gradient(90deg, ${projectColor}, ${projectColor}dd)`,
+                  }}
+                  title="專案整體區間（拖曳平移；左右緣調整起訖）"
+                >
+                  <span className="pointer-events-none text-[10px] font-bold text-white truncate px-2 max-w-full">
+                    {project?.name || '專案'}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="調整專案開始"
+                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/30 opacity-0 group-hover:opacity-100"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onProjectBarMouseDown(e, 'resize-left');
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="平移專案區間"
+                    className="absolute inset-y-0 left-2 right-2 cursor-grab active:cursor-grabbing"
+                    onMouseDown={(e) => onProjectBarMouseDown(e, 'move')}
+                  />
+                  <button
+                    type="button"
+                    aria-label="調整專案結束"
+                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/30 opacity-0 group-hover:opacity-100"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onProjectBarMouseDown(e, 'resize-right');
+                    }}
+                  />
                 </div>
-
-                {rowExpanded && (
-                  <div
-                    style={{ display: 'flex', height: ROW_H }}
-                    className="border-b border-slate-300 bg-white"
-                  >
-                    <div
-                      style={{ width: LABEL_W, minWidth: LABEL_W }}
-                      className="flex flex-row items-center gap-2 px-2 border-r border-slate-300 shrink-0 sticky left-0 z-10 bg-white"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-400" />
-                      <span className="text-[11px] font-semibold text-slate-600 truncate">細節</span>
-                    </div>
-                    <div
-                      style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W }}
-                      className="sticky shrink-0 z-[15] border-r border-slate-300 bg-white"
-                    />
-                    <div
-                      style={{
-                        position: 'relative',
-                        width: totalW,
-                        height: ROW_H,
-                        isolation: 'isolate',
-                      }}
-                    >
-                      <div
-                        aria-hidden
-                        className="pointer-events-none absolute left-0 top-0"
-                        style={timelineBodyGridStyle(dayW, totalW)}
-                      />
-                      {days.map((d, i) =>
-                        isWeekend(d) ? (
-                          <div
-                            key={`w2-${seg.id}-${i}`}
-                            style={{
-                              position: 'absolute',
-                              left: i * dayW,
-                              top: 0,
-                              width: dayW,
-                              height: '100%',
-                              zIndex: 1,
-                            }}
-                            className="gantt-weekend"
-                          />
-                        ) : null
-                      )}
-                      <div className="relative z-[12] flex h-full w-full">
-                        {days.map((d, i) => {
-                          const ymd = fmtYmd(d);
-                          if (ymd < segLoYmd || ymd > segHiYmd) {
-                            return (
-                              <div
-                                key={`dn-out-${seg.id}-${i}`}
-                                aria-hidden
-                                className="shrink-0 bg-slate-100/50"
-                                style={{ width: dayW, minWidth: dayW, height: '100%' }}
-                              />
-                            );
-                          }
-                          const onThisDay = detailNodes.filter((n) => n.date === ymd);
-                          if (onThisDay.length > 0) {
-                            const titles = onThisDay.map((n) => n.label).join(' · ');
-                            const short =
-                              onThisDay.length === 1
-                                ? onThisDay[0].label.slice(0, dayW >= 20 ? 4 : 2)
-                                : String(onThisDay.length);
-                            return (
-                              <button
-                                key={`dn-${seg.id}-${i}`}
-                                type="button"
-                                aria-label={`${ymd} 細節節點，點擊移除`}
-                                title={`${ymd} ${titles}（點擊移除）`}
-                                className="shrink-0 box-border p-0 min-h-0 flex items-center justify-center bg-indigo-100/90 hover:bg-indigo-200/90 text-indigo-900 font-semibold leading-none overflow-hidden"
-                                style={{
-                                  width: dayW,
-                                  minWidth: dayW,
-                                  height: '100%',
-                                  fontSize: dayW >= 18 ? 9 : 8,
-                                }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onThisDay.length === 1) {
-                                    if (
-                                      typeof window !== 'undefined' &&
-                                      !window.confirm(`移除「${onThisDay[0].label}」？`)
-                                    )
-                                      return;
-                                    removeTimelineDetailNode(seg.id, onThisDay[0].id);
-                                    return;
-                                  }
-                                  const first = onThisDay[0];
-                                  if (
-                                    typeof window !== 'undefined' &&
-                                    window.confirm(
-                                      `此日有 ${onThisDay.length} 個節點，將先移除「${first.label}」`
-                                    )
-                                  ) {
-                                    removeTimelineDetailNode(seg.id, first.id);
-                                  }
-                                }}
-                              >
-                                <span className="truncate px-px max-w-full">{short}</span>
-                              </button>
-                            );
-                          }
-                          return (
-                            <button
-                              key={`dn-add-${seg.id}-${i}`}
-                              type="button"
-                              aria-label={`${ymd} 新增細節節點`}
-                              title={`${ymd} — 點擊新增`}
-                              className="shrink-0 box-border p-0 min-h-0 bg-transparent hover:bg-slate-100/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-400"
-                              style={{ width: dayW, minWidth: dayW, height: '100%' }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addTimelineDetailNode(seg.id, ymd);
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
+                {showProjDotRight && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute"
+                    style={{
+                      left: visT1 - 6,
+                      top: ROW_PROJECT_H / 2,
+                      transform: 'translate(-50%, -50%)',
+                      width: GANTT_OFFSCREEN_DOT.width,
+                      height: GANTT_OFFSCREEN_DOT.height,
+                      borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
+                      backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
+                      boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
+                      zIndex: 25,
+                    }}
+                  />
                 )}
-              </Fragment>
-            );
-          })}
-
-          <div
-            className="pointer-events-none absolute z-[7] bg-indigo-400/60"
-            style={{
-              left: PINNED_LEFT_W + todayPx,
-              top: 0,
-              width: 1.5,
-              height: HEADER_H_FULL + rowsBodyH,
-            }}
-          />
+              </div>
+              {/* 里程碑泳道 */}
+              <div
+                className="absolute left-0 right-0 border-b border-slate-300 bg-slate-50/50"
+                style={{
+                  top: ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H,
+                  height: msLaneH,
+                }}
+              >
+                {displaySegs.map((seg, rowIdx) => {
+                  const subRow = msLayout.assignment.get(seg.id) ?? 0;
+                  const top = 4 + subRow * (ROW_MS_BAR_H + 3);
+                  const left = dateToX(seg.start);
+                  const width = Math.max(dayW, dateToX(seg.end) + dayW - left);
+                  const showDotL = barTouchesTimelineViewportLeft(left, scrollLeft, PINNED_LEFT_W);
+                  const showDotR = tw > 0 && left >= visT1;
+                  const bg = MILESTONE_COLORS[rowIdx % MILESTONE_COLORS.length];
+                  return (
+                    <div key={seg.id}>
+                      {showDotL && (
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute"
+                          style={{
+                            left: PINNED_LEFT_W - scrollLeft - 8,
+                            top: top + ROW_MS_BAR_H / 2,
+                            transform: 'translateY(-50%)',
+                            width: GANTT_OFFSCREEN_DOT.width,
+                            height: GANTT_OFFSCREEN_DOT.height,
+                            borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
+                            backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
+                            boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
+                            zIndex: 30,
+                          }}
+                        />
+                      )}
+                      <div
+                        className={`absolute rounded group overflow-hidden flex items-center justify-center border border-slate-900/10 ${
+                          seg.completed ? 'ring-2 ring-emerald-500/80 opacity-75' : ''
+                        } ${activeSegId === seg.id ? 'ring-2 ring-indigo-500' : ''}`}
+                        style={{
+                          left,
+                          width,
+                          top,
+                          height: ROW_MS_BAR_H,
+                          background: seg.completed ? '#86efac' : bg,
+                          zIndex: 10 + subRow,
+                        }}
+                        title={
+                          seg.completed
+                            ? `${seg.label}（已完成，輕點取消）`
+                            : `${seg.label}（輕點標記完成；拖曳平移／縮放）`
+                        }
+                      >
+                        <span className="pointer-events-none text-[9px] font-bold text-slate-800 truncate px-1.5 max-w-full text-center">
+                          {seg.label}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="調整開始"
+                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40 opacity-0 group-hover:opacity-100"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            onSegMouseDown(e, rowIdx, 'resize-left');
+                          }}
+                        />
+                        <button
+                          type="button"
+                          aria-label="平移"
+                          className="absolute inset-y-0 left-2 right-2 cursor-grab active:cursor-grabbing"
+                          onMouseDown={(e) => onSegMouseDown(e, rowIdx, 'move')}
+                        />
+                        <button
+                          type="button"
+                          aria-label="調整結束"
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40 opacity-0 group-hover:opacity-100"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            onSegMouseDown(e, rowIdx, 'resize-right');
+                          }}
+                        />
+                      </div>
+                      {showDotR && (
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute"
+                          style={{
+                            left: visT1 - 6,
+                            top: top + ROW_MS_BAR_H / 2,
+                            transform: 'translate(-50%, -50%)',
+                            width: GANTT_OFFSCREEN_DOT.width,
+                            height: GANTT_OFFSCREEN_DOT.height,
+                            borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
+                            backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
+                            boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
+                            zIndex: 25,
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 節點列 */}
+              <div
+                className="absolute left-0 right-0 flex"
+                style={{
+                  top: ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H + msLaneH,
+                  height: ROW_NODE_H,
+                }}
+              >
+                {days.map((d, i) => {
+                  const ymdCell = fmtYmd(d);
+                  const wknd = isWeekend(d);
+                  const band = monthBands[i];
+                  const onThisDay = nodesByDate[ymdCell] || [];
+                  if (onThisDay.length > 0) {
+                    const titles = onThisDay.map((n) => `${n.label} (${n.milestoneLabel})`).join(' · ');
+                    return (
+                      <button
+                        key={`nd-${i}`}
+                        type="button"
+                        title={`${ymdCell} ${titles}（點擊移除第一個）`}
+                        className={`shrink-0 flex flex-col items-stretch p-0 border-r border-slate-200 overflow-hidden hover:opacity-90 ${
+                          band === 'month-band-b' ? 'bg-slate-50' : 'bg-white'
+                        } ${wknd ? 'bg-red-50/80' : ''}`}
+                        style={{ width: dayW, minWidth: dayW, height: ROW_NODE_H }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const first = onThisDay[0];
+                          if (
+                            typeof window !== 'undefined' &&
+                            !window.confirm(`移除「${first.label}」？`)
+                          )
+                            return;
+                          removeTimelineDetailNode(first.segId, first.id);
+                        }}
+                      >
+                        <div className="bg-indigo-400 shrink-0" style={{ height: 12 }} />
+                        <span className="text-[8px] font-semibold text-slate-700 truncate px-0.5 text-center leading-tight mt-auto pb-0.5">
+                          {onThisDay[0].label}
+                        </span>
+                      </button>
+                    );
+                  }
+                  return (
+                    <button
+                      key={`nd-add-${i}`}
+                      type="button"
+                      title={`${ymdCell} 新增節點`}
+                      className={`shrink-0 border-r border-slate-200 hover:bg-indigo-50/80 ${
+                        band === 'month-band-b' ? 'bg-slate-50' : 'bg-white'
+                      } ${wknd ? 'bg-red-50/60' : ''}`}
+                      style={{ width: dayW, minWidth: dayW, height: ROW_NODE_H }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const sid = activeSegId || displaySegs[0]?.id;
+                        if (!sid) {
+                          alert('請先點選里程碑色塊或下方標籤');
+                          return;
+                        }
+                        addTimelineDetailNode(sid, ymdCell);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              {/* 今日線 */}
+              {todayPx >= 0 && todayPx <= chartMinW && (
+                <div
+                  className="pointer-events-none absolute z-[20] bg-indigo-400/70"
+                  style={{
+                    left: todayPx,
+                    top: 0,
+                    width: 1.5,
+                    height: chartBodyH,
+                  }}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1382,9 +1446,13 @@ export default function ProjectMilestoneTimeline({
               <li key={`${n.segId}-${n.date}-${n.label}`}>
                 <button
                   type="button"
-                  className="text-[10px] px-2 py-0.5 rounded-md border border-indigo-200 bg-white text-slate-700 hover:bg-indigo-50"
-                  title={`${n.milestoneLabel} — 點擊展開該里程碑細節列`}
-                  onClick={() => setExpandedSegId(n.segId)}
+                  className={`text-[10px] px-2 py-0.5 rounded-md border ${
+                    activeSegId === n.segId
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                      : 'border-indigo-200 bg-white text-slate-700 hover:bg-indigo-50'
+                  }`}
+                  title={`${n.milestoneLabel} — 點選後在節點列新增`}
+                  onClick={() => setActiveSegId(n.segId)}
                 >
                   <span className="text-indigo-600 tabular-nums">{n.date}</span>
                   <span className="text-slate-400 mx-1">·</span>
