@@ -16,6 +16,7 @@ import {
 import { api } from '../lib/api';
 import { notifyMilestoneDataChanged } from '../lib/dashboard-sync';
 import { parseTimelineDetailNodes } from '../lib/timeline-detail-nodes';
+import { exportClientTimeline } from '../lib/client-timeline-export';
 import { GANTT_OFFSCREEN_DOT, barTouchesTimelineViewportLeft } from './ganttOffscreenDots';
 
 const DEFAULT_DAY_W = 16;
@@ -27,8 +28,6 @@ const INDICATOR_GUTTER_W = 14;
 const PINNED_LEFT_W = LABEL_W + INDICATOR_GUTTER_W;
 const HEADER_H_FULL = 80;
 const BAR_H = 12;
-/** 展開時進度條正下方細節格列（表格式、點格新增／移除） */
-const DETAIL_RAIL_H = 14;
 const BAR_GAP = 4;
 
 /** 表頭：僅垂直日欄線（水平分割靠列 border） */
@@ -155,12 +154,48 @@ function clampDate(d, lo, hi) {
   return d;
 }
 
+function shiftDetailNodes(nodes, deltaDays, segStart, segEnd) {
+  if (!nodes?.length) return [];
+  return nodes.map((n) => {
+    const nd = parseISO(String(n.date).slice(0, 10));
+    if (!isValid(nd)) return n;
+    let newD = addDays(nd, deltaDays);
+    newD = clampDate(newD, segStart, segEnd);
+    return { ...n, date: fmtYmd(newD) };
+  });
+}
+
+function remapDetailNodes(nodes, oldStart, oldEnd, newStart, newEnd) {
+  if (!nodes?.length) return [];
+  const oldTotal = Math.max(0, differenceInCalendarDays(oldEnd, oldStart));
+  const newTotal = Math.max(0, differenceInCalendarDays(newEnd, newStart));
+  return nodes.map((n) => {
+    const nd = parseISO(String(n.date).slice(0, 10));
+    if (!isValid(nd)) return n;
+    let off = Math.max(0, differenceInCalendarDays(nd, oldStart));
+    off = Math.min(off, oldTotal);
+    let newD;
+    if (oldTotal === 0) {
+      newD = new Date(newStart);
+    } else {
+      newD = addDays(newStart, Math.round((off / oldTotal) * newTotal));
+    }
+    newD = clampDate(newD, newStart, newEnd);
+    return { ...n, date: fmtYmd(newD) };
+  });
+}
+
 function shiftSegments(segments, deltaDays) {
-  return segments.map((s) => ({
-    ...s,
-    start: addDays(s.start, deltaDays),
-    end: addDays(s.end, deltaDays),
-  }));
+  return segments.map((s) => {
+    const ns = addDays(s.start, deltaDays);
+    const ne = addDays(s.end, deltaDays);
+    return {
+      ...s,
+      start: ns,
+      end: ne,
+      detailNodes: shiftDetailNodes(s.detailNodes, deltaDays, ns, ne),
+    };
+  });
 }
 
 /** 專案起訖變更時，各里程碑依在舊區間內的比例映射到新區間 */
@@ -181,8 +216,23 @@ function remapSegmentsProportional(segments, oldStart, oldEnd, newStart, newEnd)
       ne = addDays(newStart, Math.round((endOff / oldTotal) * newTotal));
     }
     if (ne < ns) ne = ns;
-    return { ...s, start: ns, end: ne };
+    return {
+      ...s,
+      start: ns,
+      end: ne,
+      detailNodes: remapDetailNodes(s.detailNodes, s.start, s.end, ns, ne),
+    };
   });
+}
+
+/** 節點在進度條內的相對位置（0–1），用於繪製標記 */
+function detailNodeOffsetInBar(nodeDateYmd, segStart, segEnd) {
+  const nd = parseISO(String(nodeDateYmd).slice(0, 10));
+  if (!isValid(nd) || !isValid(segStart) || !isValid(segEnd)) return null;
+  if (nd < segStart || nd > segEnd) return null;
+  const span = differenceInCalendarDays(segEnd, segStart);
+  if (span <= 0) return 0.5;
+  return differenceInCalendarDays(nd, segStart) / span;
 }
 
 export default function ProjectMilestoneTimeline({
@@ -255,6 +305,17 @@ export default function ProjectMilestoneTimeline({
     }
     return segments;
   }, [dragActive, segments, dragTick]);
+
+  const allDetailNodesFlat = useMemo(() => {
+    const items = [];
+    for (const s of displaySegs) {
+      for (const n of s.detailNodes || []) {
+        items.push({ milestoneLabel: s.label, date: n.date, label: n.label, segId: s.id });
+      }
+    }
+    items.sort((a, b) => a.date.localeCompare(b.date) || a.milestoneLabel.localeCompare(b.milestoneLabel));
+    return items;
+  }, [displaySegs]);
 
   const pStart = project?.start_date ? parseISO(String(project.start_date).slice(0, 10)) : null;
   const pEnd = project?.end_date ? parseISO(String(project.end_date).slice(0, 10)) : null;
@@ -496,26 +557,57 @@ export default function ProjectMilestoneTimeline({
             ns = addDays(ne, -len);
           }
         }
-        base[i] = { ...base[i], start: ns, end: ne };
+        const oldS = snap0[i].start;
+        const oldE = snap0[i].end;
+        base[i] = {
+          ...base[i],
+          start: ns,
+          end: ne,
+          detailNodes: shiftDetailNodes(snap0[i].detailNodes, differenceInCalendarDays(ns, oldS), ns, ne),
+        };
       } else if (d.mode === 'resize-left') {
         let ns = xToDate(dateToX(snap0[i].start) + snappedPx);
         ns = clampDate(ns, i === 0 ? pStart : addDays(snap0[i - 1].end, 1), snap0[i].end);
+        const oldSi = snap0[i].start;
+        const oldEi = snap0[i].end;
         base[i].start = ns;
+        base[i].detailNodes = remapDetailNodes(snap0[i].detailNodes, oldSi, oldEi, ns, base[i].end);
         if (i > 0) {
+          const oldSp = snap0[i - 1].start;
+          const oldEp = snap0[i - 1].end;
           base[i - 1].end = addDays(ns, -1);
           if (differenceInCalendarDays(base[i - 1].end, base[i - 1].start) < 0) {
             base[i - 1].end = new Date(base[i - 1].start);
           }
+          base[i - 1].detailNodes = remapDetailNodes(
+            snap0[i - 1].detailNodes,
+            oldSp,
+            oldEp,
+            base[i - 1].start,
+            base[i - 1].end
+          );
         }
       } else if (d.mode === 'resize-right') {
         let ne = xToDate(dateToX(snap0[i].end) + snappedPx);
         ne = clampDate(ne, snap0[i].start, i === n - 1 ? pEnd : addDays(snap0[i + 1].end, -1));
+        const oldSi = snap0[i].start;
+        const oldEi = snap0[i].end;
         base[i].end = ne;
+        base[i].detailNodes = remapDetailNodes(snap0[i].detailNodes, oldSi, oldEi, base[i].start, ne);
         if (i < n - 1) {
+          const oldSn = snap0[i + 1].start;
+          const oldEn = snap0[i + 1].end;
           base[i + 1].start = addDays(ne, 1);
           if (differenceInCalendarDays(base[i + 1].end, base[i + 1].start) < 0) {
             base[i + 1].start = new Date(base[i + 1].end);
           }
+          base[i + 1].detailNodes = remapDetailNodes(
+            snap0[i + 1].detailNodes,
+            oldSn,
+            oldEn,
+            base[i + 1].start,
+            base[i + 1].end
+          );
         }
       }
 
@@ -584,10 +676,16 @@ export default function ProjectMilestoneTimeline({
               const priorTe = ymdFromApi(row?.timeline_end_date);
               const nextTs = fmtYmd(s.start);
               const nextTe = fmtYmd(s.end);
-              if (priorTs === nextTs && priorTe === nextTe) continue;
+              const nextNodes = Array.isArray(s.detailNodes)
+                ? s.detailNodes.map((n) => ({ id: n.id, date: n.date, label: n.label }))
+                : [];
+              const priorNodes = JSON.stringify(parseTimelineDetailNodes(row?.timeline_detail_nodes));
+              const nextNodesJson = JSON.stringify(nextNodes);
+              if (priorTs === nextTs && priorTe === nextTe && priorNodes === nextNodesJson) continue;
               await api.updateProjectMilestone(s.id, {
                 timeline_start_date: nextTs,
                 timeline_end_date: nextTe,
+                ...(priorNodes !== nextNodesJson ? { timeline_detail_nodes: nextNodes } : {}),
               });
             }
           }
@@ -614,10 +712,16 @@ export default function ProjectMilestoneTimeline({
             const row = milestonesRef.current.find((m) => m.id === s.id);
             const priorTs = ymdFromApi(row?.timeline_start_date);
             const priorTe = ymdFromApi(row?.timeline_end_date);
-            if (priorTs === ns && priorTe === ne) continue;
+            const nextNodes = Array.isArray(s.detailNodes)
+              ? s.detailNodes.map((n) => ({ id: n.id, date: n.date, label: n.label }))
+              : [];
+            const priorNodes = JSON.stringify(parseTimelineDetailNodes(row?.timeline_detail_nodes));
+            const nextNodesJson = JSON.stringify(nextNodes);
+            if (priorTs === ns && priorTe === ne && priorNodes === nextNodesJson) continue;
             await api.updateProjectMilestone(s.id, {
               timeline_start_date: ns,
               timeline_end_date: ne,
+              ...(priorNodes !== nextNodesJson ? { timeline_detail_nodes: nextNodes } : {}),
             });
             saved += 1;
           }
@@ -768,24 +872,38 @@ export default function ProjectMilestoneTimeline({
   let rowsBodyH = 0;
   for (const s of displaySegs) {
     rowsBodyH += ROW_H;
-    if (expandedSegId === s.id) rowsBodyH += DETAIL_RAIL_H;
+    if (expandedSegId === s.id) rowsBodyH += ROW_H;
   }
 
   return (
     <div className="surface overflow-hidden select-none rounded-[18px] border border-white/60">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
-        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showProjectSpan}
-            onChange={(e) => setShowProjectSpan(e.target.checked)}
-            className="rounded border-slate-300"
-          />
-          在日期列顯示專案整體區間（半透明，可左右平移）
-        </label>
-        <p className="text-xs text-slate-500 max-w-xl">
-          格線樣式與工作時程甘特一致（週末淡色、今日線、滾輪左右平移、Ctrl+滾輪縮放）。進度條中央輕點可展開／收合條下日期細格（空白格點擊新增、填色格點擊移除）；拖曳平移／左右緣調整仍會寫入資料庫。左側名稱點擊可標記完成（綠色）。
-        </p>
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={showProjectSpan}
+              onChange={(e) => setShowProjectSpan(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            在日期列顯示專案整體區間（半透明，可左右平移）
+          </label>
+          <p className="text-xs text-slate-500 max-w-xl hidden lg:block">
+            進度條輕點展開細節列；紫點＝節點（隨條拖曳移動）。左側名稱點擊標記完成。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const result = exportClientTimeline(project, canonical);
+            if (result?.ok === false && result.message) alert(result.message);
+          }}
+          disabled={!canonical.length}
+          className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          title="產生含專案、客戶、時間軸、里程碑、節點與預算的 HTML，可轉 PDF 寄給客戶"
+        >
+          匯出客戶時間軸
+        </button>
       </div>
 
       <div
@@ -938,6 +1056,8 @@ export default function ProjectMilestoneTimeline({
             const rowExpanded = expandedSegId === seg.id;
             const barTop = (ROW_H - BAR_H) / 2;
             const detailNodes = Array.isArray(seg.detailNodes) ? seg.detailNodes : [];
+            const segLoYmd = fmtYmd(seg.start);
+            const segHiYmd = fmtYmd(seg.end);
 
             return (
               <Fragment key={seg.id}>
@@ -947,14 +1067,14 @@ export default function ProjectMilestoneTimeline({
                 >
                   <div
                     style={{ width: LABEL_W, minWidth: LABEL_W }}
-                    className="flex flex-row items-start gap-2 px-2 py-1 border-r border-slate-300 shrink-0 sticky left-0 z-10 bg-white"
+                    className="flex flex-row items-center gap-2 px-2 border-r border-slate-300 shrink-0 sticky left-0 z-10 bg-white"
                   >
                     <span
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1 ${
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                         seg.completed ? 'bg-emerald-500' : 'bg-slate-400'
                       }`}
                     />
-                    <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
+                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => toggleMilestoneCompleted(seg.id)}
@@ -1035,7 +1155,7 @@ export default function ProjectMilestoneTimeline({
                     )}
 
                     <div
-                      className="absolute rounded shadow-sm group z-10"
+                      className="absolute rounded shadow-sm group z-10 overflow-hidden"
                       style={{
                         left: dateToX(seg.start),
                         width: Math.max(dayW, dateToX(seg.end) + dayW - dateToX(seg.start)),
@@ -1046,6 +1166,25 @@ export default function ProjectMilestoneTimeline({
                           : barBg),
                       }}
                     >
+                      {!rowExpanded &&
+                        detailNodes.map((n) => {
+                          const pct = detailNodeOffsetInBar(n.date, seg.start, seg.end);
+                          if (pct == null) return null;
+                          return (
+                            <span
+                              key={`kp-${seg.id}-${n.id}`}
+                              className="pointer-events-none absolute z-[3] rounded-full bg-indigo-300 ring-1 ring-white/90"
+                              style={{
+                                left: `${pct * 100}%`,
+                                bottom: 1,
+                                width: 5,
+                                height: 5,
+                                transform: 'translateX(-50%)',
+                              }}
+                              title={`${n.date} · ${n.label}`}
+                            />
+                          );
+                        })}
                       <button
                         type="button"
                         aria-label="調整開始"
@@ -1077,16 +1216,15 @@ export default function ProjectMilestoneTimeline({
 
                 {rowExpanded && (
                   <div
-                    style={{ display: 'flex', height: DETAIL_RAIL_H }}
+                    style={{ display: 'flex', height: ROW_H }}
                     className="border-b border-slate-300 bg-white"
                   >
                     <div
                       style={{ width: LABEL_W, minWidth: LABEL_W }}
-                      className="flex items-center px-2 border-r border-slate-300 shrink-0 sticky left-0 z-10 bg-white"
+                      className="flex flex-row items-center gap-2 px-2 border-r border-slate-300 shrink-0 sticky left-0 z-10 bg-white"
                     >
-                      <span className="text-[9px] text-slate-400 leading-tight">
-                        細節（空白格新增 · 灰格移除 · 點進度條收合）
-                      </span>
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-400" />
+                      <span className="text-[11px] font-semibold text-slate-600 truncate">細節</span>
                     </div>
                     <div
                       style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W }}
@@ -1096,7 +1234,7 @@ export default function ProjectMilestoneTimeline({
                       style={{
                         position: 'relative',
                         width: totalW,
-                        height: DETAIL_RAIL_H,
+                        height: ROW_H,
                         isolation: 'isolate',
                       }}
                     >
@@ -1124,17 +1262,36 @@ export default function ProjectMilestoneTimeline({
                       <div className="relative z-[12] flex h-full w-full">
                         {days.map((d, i) => {
                           const ymd = fmtYmd(d);
+                          if (ymd < segLoYmd || ymd > segHiYmd) {
+                            return (
+                              <div
+                                key={`dn-out-${seg.id}-${i}`}
+                                aria-hidden
+                                className="shrink-0 bg-slate-100/50"
+                                style={{ width: dayW, minWidth: dayW, height: '100%' }}
+                              />
+                            );
+                          }
                           const onThisDay = detailNodes.filter((n) => n.date === ymd);
                           if (onThisDay.length > 0) {
                             const titles = onThisDay.map((n) => n.label).join(' · ');
+                            const short =
+                              onThisDay.length === 1
+                                ? onThisDay[0].label.slice(0, dayW >= 20 ? 4 : 2)
+                                : String(onThisDay.length);
                             return (
                               <button
                                 key={`dn-${seg.id}-${i}`}
                                 type="button"
                                 aria-label={`${ymd} 細節節點，點擊移除`}
                                 title={`${ymd} ${titles}（點擊移除）`}
-                                className="shrink-0 box-border p-0 min-h-0 bg-slate-300/30 hover:bg-slate-300/50"
-                                style={{ width: dayW, minWidth: dayW, height: '100%' }}
+                                className="shrink-0 box-border p-0 min-h-0 flex items-center justify-center bg-indigo-100/90 hover:bg-indigo-200/90 text-indigo-900 font-semibold leading-none overflow-hidden"
+                                style={{
+                                  width: dayW,
+                                  minWidth: dayW,
+                                  height: '100%',
+                                  fontSize: dayW >= 18 ? 9 : 8,
+                                }}
                                 onMouseDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1157,7 +1314,9 @@ export default function ProjectMilestoneTimeline({
                                     removeTimelineDetailNode(seg.id, first.id);
                                   }
                                 }}
-                              />
+                              >
+                                <span className="truncate px-px max-w-full">{short}</span>
+                              </button>
                             );
                           }
                           return (
@@ -1212,6 +1371,31 @@ export default function ProjectMilestoneTimeline({
           ))}
         </div>
       </div>
+
+      {allDetailNodesFlat.length > 0 && (
+        <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/80">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            時程節點一覽（共 {allDetailNodesFlat.length}）
+          </p>
+          <ul className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            {allDetailNodesFlat.map((n) => (
+              <li key={`${n.segId}-${n.date}-${n.label}`}>
+                <button
+                  type="button"
+                  className="text-[10px] px-2 py-0.5 rounded-md border border-indigo-200 bg-white text-slate-700 hover:bg-indigo-50"
+                  title={`${n.milestoneLabel} — 點擊展開該里程碑細節列`}
+                  onClick={() => setExpandedSegId(n.segId)}
+                >
+                  <span className="text-indigo-600 tabular-nums">{n.date}</span>
+                  <span className="text-slate-400 mx-1">·</span>
+                  <span className="font-medium">{n.label}</span>
+                  <span className="text-slate-400 ml-1">({n.milestoneLabel})</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
