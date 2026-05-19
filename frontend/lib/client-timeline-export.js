@@ -1,7 +1,10 @@
 import { eachDayOfInterval, format, parseISO, isValid, getDay } from 'date-fns';
 import { fmtCurrency } from './utils';
+import { NODE_KINDS, nodeKindMeta } from './timeline-detail-nodes';
 
 const DAY_W = 30;
+const LABEL_COL_W = 156;
+const MS_ROW_H = 28;
 
 function esc(s) {
   return String(s ?? '')
@@ -49,7 +52,10 @@ const MILESTONE_COLORS = [
   '#fed7aa',
 ];
 
-const NODE_FILL = '#818cf8';
+function exportGridLineCss(dayW) {
+  const lineAt = Math.max(0, dayW - 1);
+  return `repeating-linear-gradient(to right, transparent 0, transparent ${lineAt}px, #cbd5e1 ${lineAt}px, #cbd5e1 ${dayW}px)`;
+}
 
 function buildDays(rangeStart, rangeEnd) {
   const rs = toDate(rangeStart);
@@ -110,77 +116,105 @@ function buildDateHeaderCells(days, monthBands) {
     .join('');
 }
 
-/** 里程碑：連續橫條跨過週末，文字單行置中 */
-function buildMilestoneLane(days, segs) {
+function buildNodeLegendHtml() {
+  const items = NODE_KINDS.map(
+    (k) =>
+      `<li><span class="legend-swatch" style="background:${k.color}"></span>${esc(k.label)}</li>`
+  ).join('');
+  return `<div class="node-legend"><span class="node-legend-title">節點圖例</span><ul>${items}</ul></div>`;
+}
+
+function clampSegIdx(days, start, end) {
   const n = days.length;
-  if (!n) return '';
-  const bars = segs
-    .map((s, i) => {
-      let startIdx = dayIndex(days, s.start);
-      let endIdx = dayIndex(days, s.end);
-      if (startIdx < 0) startIdx = 0;
-      if (endIdx < 0) endIdx = n - 1;
-      if (endIdx < startIdx) endIdx = startIdx;
-      const colStart = startIdx + 1;
-      const colEnd = endIdx + 2;
-      const bg = MILESTONE_COLORS[i % MILESTONE_COLORS.length];
-      return `<div class="ms-bar" style="grid-column:${colStart} / ${colEnd};background:${bg}" title="${esc(s.label)} ${ymdZh(s.start)} — ${ymdZh(s.end)}">
-        <span class="ms-bar-label">${esc(s.label)}</span>
-      </div>`;
+  let startIdx = dayIndex(days, start);
+  let endIdx = dayIndex(days, end);
+  if (startIdx < 0) startIdx = 0;
+  if (endIdx < 0) endIdx = n - 1;
+  if (endIdx < startIdx) endIdx = startIdx;
+  return { startIdx, endIdx };
+}
+
+/** 專案列：色條對齊專案起訖 */
+function buildProjLane(days, projName, pStart, pEnd, monthBands) {
+  const n = days.length;
+  const trackW = n * DAY_W;
+  const { startIdx, endIdx } = clampSegIdx(days, pStart, pEnd);
+  const barLeft = startIdx * DAY_W;
+  const barW = (endIdx - startIdx + 1) * DAY_W;
+  const dayCells = days
+    .map((d, i) => {
+      const wknd = getDay(d) === 0 || getDay(d) === 6;
+      const band = monthBands[i] || 'month-band-a';
+      return `<div class="lane-day ${band}${wknd ? ' weekend' : ''}"></div>`;
     })
     .join('');
-  return `<div class="ms-lane" style="grid-column:span ${n}">
-    <div class="ms-track" style="grid-template-columns:repeat(${n},${DAY_W}px)">${bars}</div>
+  return `<div class="proj-lane data-lane" style="grid-column:span ${n}">
+    <div class="lane-track lane-track--proj" style="width:${trackW}px">
+      <div class="proj-bar-abs" style="left:${barLeft}px;width:${barW}px"><span>${esc(projName)}</span></div>
+      ${dayCells}
+    </div>
   </div>`;
 }
 
-function buildNodeCells(days, allNodes, monthBands) {
+/** 里程碑一列：flex 日格 + 絕對定位色條，節點疊在色條上 */
+function buildMilestoneLaneWithNodes(days, s, colorIdx, monthBands) {
+  const n = days.length;
+  const trackW = n * DAY_W;
+  const { startIdx, endIdx } = clampSegIdx(days, s.start, s.end);
+  const barLeft = startIdx * DAY_W;
+  const barW = (endIdx - startIdx + 1) * DAY_W;
+  const bg = MILESTONE_COLORS[colorIdx % MILESTONE_COLORS.length];
+  const nodes = Array.isArray(s.detailNodes) ? s.detailNodes : [];
   const byDate = {};
-  for (const n of allNodes) {
-    const k = n.date;
-    if (!byDate[k]) byDate[k] = [];
-    byDate[k].push(n);
+  for (const node of nodes) {
+    if (node?.date) byDate[node.date] = node;
   }
-  return days
+
+  const dayCells = days
     .map((d, i) => {
       const key = ymd(d);
-      const list = byDate[key] || [];
+      const node = byDate[key];
       const wknd = getDay(d) === 0 || getDay(d) === 6;
-      const band = monthBands?.[i] || 'month-band-a';
-      if (!list.length) {
-        return `<div class="day-cell node-cell empty ${band}${wknd ? ' weekend' : ''}"></div>`;
+      const band = monthBands[i] || 'month-band-a';
+      let overlay = '';
+      if (node) {
+        const meta = nodeKindMeta(node.kind);
+        overlay = `<span class="node-overlay" style="background:${meta.color}" title="${esc(node.label)}（${esc(meta.label)}）"></span>`;
       }
-      const notes = list
-        .map((n) => `<span class="node-note">${esc(n.label)}</span>`)
-        .join('');
-      return `<div class="day-cell node-cell filled ${band}${wknd ? ' weekend' : ''}">
-        <div class="node-fill"></div>
-        <div class="node-notes">${notes}</div>
-      </div>`;
+      return `<div class="lane-day ${band}${wknd ? ' weekend' : ''}">${overlay}</div>`;
     })
     .join('');
-}
 
-function buildDailyChart(days, projName, segs, allNodes) {
-  const n = days.length;
-  const monthBands = buildMonthBands(days);
-  const cols = `72px repeat(${n}, ${DAY_W}px)`;
-  return `<div class="chart-grid" style="grid-template-columns: ${cols}">
-    <span class="row-label">月份</span>
-    ${buildMonthCells(days)}
-    <span class="row-label">日期</span>
-    ${buildDateHeaderCells(days, monthBands)}
-    <span class="row-label">專案</span>
-    <div class="day-cell proj-cell" style="grid-column: span ${n}">
-      <span class="proj-bar">${esc(projName)}</span>
+  const bar = `<div class="ms-bar-abs" style="left:${barLeft}px;width:${barW}px;background:${bg}" title="${esc(s.label)} ${ymdZh(s.start)} — ${ymdZh(s.end)}">
+      <span class="ms-bar-label">${esc(s.label)}</span>
+    </div>`;
+
+  return `<div class="ms-lane data-lane" style="grid-column:span ${n}">
+    <div class="lane-track lane-track--ms" style="width:${trackW}px">
+      ${bar}
+      ${dayCells}
     </div>
-    <span class="row-label">里程碑</span>
-    ${buildMilestoneLane(days, segs)}
-    <span class="row-label">節點</span>
-    ${buildNodeCells(days, allNodes, monthBands)}
   </div>`;
 }
 
+function buildDailyChart(days, projName, segs, pStart, pEnd) {
+  const n = days.length;
+  const monthBands = buildMonthBands(days);
+  const cols = `${LABEL_COL_W}px repeat(${n}, ${DAY_W}px)`;
+  let rows = `<span class="row-label">月份</span>
+    ${buildMonthCells(days)}
+    <span class="row-label row-label--static">日期</span>
+    ${buildDateHeaderCells(days, monthBands)}
+    <span class="row-label">專案</span>
+    ${buildProjLane(days, projName, pStart, pEnd, monthBands)}`;
+
+  segs.forEach((s, i) => {
+    rows += `<span class="row-label ms-label">${esc(s.label)}</span>`;
+    rows += buildMilestoneLaneWithNodes(days, s, i, monthBands);
+  });
+
+  return `<div class="chart-grid chart-grid--swimlane" style="grid-template-columns: ${cols}">${rows}</div>`;
+}
 /**
  * @param {{ name?, client_name?, start_date?, end_date?, budget?, description? }} project
  * @param {Array<{ label, start, end, detailNodes? }>} segments
@@ -208,7 +242,12 @@ export function buildClientTimelineHtml(project, segments) {
   for (const s of segs) {
     for (const n of s.detailNodes) {
       if (n?.date && n?.label) {
-        allNodes.push({ date: n.date, label: n.label, milestoneLabel: s.label });
+        allNodes.push({
+          date: n.date,
+          label: n.label,
+          kind: n.kind,
+          milestoneLabel: s.label,
+        });
       }
     }
   }
@@ -217,13 +256,15 @@ export function buildClientTimelineHtml(project, segments) {
   );
 
   const days = buildDays(pStart, pEnd);
-  const chartW = 72 + days.length * DAY_W;
+  const chartW = LABEL_COL_W + days.length * DAY_W;
+  const gridBg = exportGridLineCss(DAY_W);
+  const nodeLegendHtml = buildNodeLegendHtml();
 
   const timelineBlock =
     days.length > 0
       ? `<div class="timeline-wrap">
           <div class="timeline-inner" style="min-width:${chartW}px">
-            ${buildDailyChart(days, projName, segs, allNodes)}
+            ${buildDailyChart(days, projName, segs, pStart, pEnd)}
           </div>
         </div>`
       : '<p class="muted pad">請先在專案資料設定開始／結束日期，才能產生時間軸圖。</p>';
@@ -341,13 +382,70 @@ export function buildClientTimelineHtml(project, segments) {
       justify-content: flex-end;
     }
     .day-cell {
-      border-right: 1px solid #e2e8f0;
+      border-right: 1px solid #cbd5e1;
       border-bottom: 1px solid #e2e8f0;
       min-width: ${DAY_W}px;
       max-width: ${DAY_W}px;
     }
+    .chart-grid--swimlane .data-lane {
+      background-image: ${gridBg};
+      background-color: #fafafa;
+    }
+    .chart-grid--swimlane .head-cell,
+    .chart-grid--swimlane .lane-day {
+      background-image: ${gridBg};
+    }
+    .row-label--static {
+      pointer-events: none;
+    }
+    .node-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 14px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.68rem;
+      color: #475569;
+    }
+    .node-legend-title {
+      font-weight: 700;
+      color: #64748b;
+      margin-right: 2px;
+    }
+    .node-legend ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+    }
+    .node-legend li {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      flex-shrink: 0;
+    }
+    .row-label.ms-label {
+      justify-content: flex-start;
+      text-align: left;
+      gap: 6px;
+      height: ${MS_ROW_H}px;
+      min-height: ${MS_ROW_H}px;
+      box-sizing: border-box;
+    }
     .head-cell.weekend { background-color: #fff5f5 !important; }
-    .node-cell.empty.weekend { background-color: #fff8f8 !important; }
+    .lane-day.weekend { background-color: #fff5f5; }
     .month-cell {
       max-width: none !important;
       min-width: 0;
@@ -369,8 +467,8 @@ export function buildClientTimelineHtml(project, segments) {
     .month-alt-b { background: #c5d0de; }
     .head-cell.month-band-a { background: #f8fafc; }
     .head-cell.month-band-b { background: #eef2f7; }
-    .node-cell.empty.month-band-a { background: #fafbfc; }
-    .node-cell.empty.month-band-b { background: #f1f5f9; }
+    .lane-day.month-band-a { background-color: #fafbfc; }
+    .lane-day.month-band-b { background-color: #f1f5f9; }
     .head-cell {
       display: flex;
       flex-direction: column;
@@ -381,17 +479,49 @@ export function buildClientTimelineHtml(project, segments) {
     }
     .head-d { font-size: 0.72rem; font-weight: 700; color: #334155; line-height: 1.1; }
     .head-w { font-size: 0.58rem; color: #94a3b8; }
-    .proj-cell {
-      padding: 0;
-      border-bottom: 1px solid #e2e8f0;
+    .proj-lane,
+    .ms-lane {
       max-width: none !important;
       min-width: 0;
+      padding: 0;
+      margin: 0;
+      overflow: hidden;
+      border-bottom: 1px solid #e2e8f0;
     }
-    .proj-bar {
-      display: block;
-      margin: 6px 4px;
-      padding: 6px 10px;
-      border-radius: 6px;
+    .ms-lane {
+      height: ${MS_ROW_H}px;
+    }
+    .lane-track {
+      position: relative;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      box-sizing: border-box;
+      background-color: #fafafa;
+    }
+    .lane-track--proj {
+      height: ${MS_ROW_H}px;
+    }
+    .lane-track--ms {
+      height: ${MS_ROW_H}px;
+    }
+    .lane-day {
+      flex: 0 0 ${DAY_W}px;
+      width: ${DAY_W}px;
+      height: 100%;
+      position: relative;
+      box-sizing: border-box;
+      border-right: 1px solid #cbd5e1;
+    }
+    .proj-bar-abs {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      border-radius: 4px;
       background: linear-gradient(90deg, #4f46e5, #6366f1);
       color: #fff;
       font-size: 0.75rem;
@@ -399,27 +529,27 @@ export function buildClientTimelineHtml(project, segments) {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      box-sizing: border-box;
     }
-    .ms-lane {
-      max-width: none !important;
-      min-width: 0;
-      padding: 3px 0;
-      border-bottom: 1px solid #e2e8f0;
-      background: #fafafa;
-    }
-    .ms-track {
-      display: grid;
-      min-height: 30px;
-      align-items: stretch;
-    }
-    .ms-bar {
+    .ms-bar-abs {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      z-index: 1;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 2px 1px;
       border-radius: 4px;
       border: 1px solid rgba(15, 23, 42, 0.1);
-      min-height: 26px;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .node-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .ms-bar-label {
       font-size: 0.62rem;
@@ -431,37 +561,6 @@ export function buildClientTimelineHtml(project, segments) {
       padding: 0 8px;
       text-align: center;
       max-width: 100%;
-    }
-    .node-cell {
-      min-height: 38px;
-      display: flex;
-      flex-direction: column;
-      padding: 0;
-      background: #fff;
-    }
-    .node-cell.filled { background: #fff !important; }
-    .node-cell.filled .node-fill {
-      flex: 0 0 12px;
-      min-height: 12px;
-      background: ${NODE_FILL};
-    }
-    .node-notes {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-      padding: 1px 2px 2px;
-      flex: 1;
-      justify-content: flex-end;
-    }
-    .node-note {
-      font-size: 0.52rem;
-      font-weight: 600;
-      color: #1e293b;
-      text-align: center;
-      line-height: 1.15;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
     .notes {
       margin-top: 8px;
@@ -490,11 +589,11 @@ export function buildClientTimelineHtml(project, segments) {
         page-break-inside: avoid;
       }
       .timeline-inner { display: inline-block; }
-      .month-cell, .ms-bar, .proj-bar, .node-fill, .head-cell, .node-cell {
+      .month-cell, .ms-bar-abs, .proj-bar-abs, .head-cell, .node-overlay {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      .proj-bar {
+      .proj-bar-abs {
         background: #4f46e5 !important;
         background-image: none !important;
       }
@@ -515,6 +614,7 @@ export function buildClientTimelineHtml(project, segments) {
       <div><dt>預算</dt><dd>${esc(budget)}</dd></div>
     </dl>
     <h2>時間軸總覽</h2>
+    ${nodeLegendHtml}
     ${timelineBlock}
     <div class="notes">
       <h3>專案說明</h3>

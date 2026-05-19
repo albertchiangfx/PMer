@@ -37,6 +37,7 @@ const ROW_DATE_H = 36;
 const ROW_PROJECT_H = 30;
 const ROW_MS_ROW_H = 28;
 const MS_BAR_RADIUS = 4;
+const PINNED_Z = 100;
 const WEEKDAYS_ZH = ['日', '一', '二', '三', '四', '五', '六'];
 
 const MILESTONE_COLORS = [
@@ -1035,76 +1036,81 @@ export default function ProjectMilestoneTimeline({
         >
           <div className="flex" style={{ minHeight: chartBodyH }}>
             <div
-              className="sticky left-0 z-30 flex flex-col shrink-0 border-r-2 border-slate-400 bg-white shadow-[8px_0_12px_-6px_rgba(255,255,255,1)]"
-              style={{ width: LABEL_W }}
+              className="sticky left-0 isolate flex shrink-0 bg-white border-r-2 border-slate-400 shadow-[10px_0_16px_-8px_rgba(255,255,255,1)]"
+              style={{ width: PINNED_LEFT_W, zIndex: PINNED_Z }}
             >
-              <div className={rowLabelCls} style={{ height: ROW_MONTH_H }}>
-                月份
-              </div>
-              <div className={rowLabelCls} style={{ height: ROW_DATE_H }}>
-                日期
-              </div>
-              <div className={rowLabelCls} style={{ height: ROW_PROJECT_H }}>
-                專案
-              </div>
-              {displaySegs.map((seg, i) => (
-                <button
-                  key={`lbl-${seg.id}`}
-                  type="button"
-                  onClick={() => void toggleMilestoneCompleted(seg.id)}
-                  className={`${rowLabelCls} cursor-pointer hover:bg-slate-100 ${
-                    seg.completed ? 'text-emerald-800 bg-emerald-50/80' : ''
-                  } ${activeSegId === seg.id ? 'ring-1 ring-inset ring-indigo-400' : ''}`}
-                  style={{ height: ROW_MS_ROW_H }}
-                  title={
-                    seg.completed
-                      ? `${seg.label}（已完成，點擊取消）`
-                      : `${seg.label}（點擊標記完成）`
-                  }
+              <div className="flex flex-col shrink-0" style={{ width: LABEL_W }}>
+                <div className={rowLabelCls} style={{ height: ROW_MONTH_H }}>
+                  月份
+                </div>
+                <div
+                  className={`${rowLabelCls} pointer-events-none select-none`}
+                  style={{ height: ROW_DATE_H }}
                 >
-                  <span
-                    className="w-2 h-2 rounded-sm shrink-0 border border-slate-300"
-                    style={{
-                      backgroundColor: seg.completed
-                        ? '#10b981'
-                        : MILESTONE_COLORS[i % MILESTONE_COLORS.length],
-                    }}
-                  />
-                  <span className="leading-tight line-clamp-2 break-words min-w-0 flex-1">
-                    {seg.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div
-              className="sticky z-[29] shrink-0 border-r border-slate-200 bg-white flex flex-col"
-              style={{ width: INDICATOR_GUTTER_W, minWidth: INDICATOR_GUTTER_W, left: LABEL_W }}
-            >
-              <div style={{ height: ROW_MONTH_H }} />
-              <div style={{ height: ROW_DATE_H }} />
-              <div
-                style={{ height: ROW_PROJECT_H }}
-                className="flex items-center justify-center"
-              >
-                {showProjDotLeft && (
-                  <span
-                    aria-hidden
-                    style={{
-                      width: GANTT_OFFSCREEN_DOT.width,
-                      height: GANTT_OFFSCREEN_DOT.height,
-                      borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
-                      backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
-                      boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
-                    }}
-                  />
-                )}
+                  日期
+                </div>
+                <div className={rowLabelCls} style={{ height: ROW_PROJECT_H }}>
+                  專案
+                </div>
+                {displaySegs.map((seg, i) => (
+                  <button
+                    key={`lbl-${seg.id}`}
+                    type="button"
+                    onClick={() => void toggleMilestoneCompleted(seg.id)}
+                    className={`${rowLabelCls} cursor-pointer hover:bg-slate-100 ${
+                      seg.completed ? 'text-emerald-800 bg-emerald-50/80' : ''
+                    } ${activeSegId === seg.id ? 'ring-1 ring-inset ring-indigo-400' : ''}`}
+                    style={{ height: ROW_MS_ROW_H }}
+                    title={
+                      seg.completed
+                        ? `${seg.label}（已完成，點擊取消）`
+                        : `${seg.label}（點擊標記完成）`
+                    }
+                  >
+                    <span
+                      className="w-2 h-2 rounded-sm shrink-0 border border-slate-300"
+                      style={{
+                        backgroundColor: seg.completed
+                          ? '#10b981'
+                          : MILESTONE_COLORS[i % MILESTONE_COLORS.length],
+                      }}
+                    />
+                    <span className="leading-tight line-clamp-2 break-words min-w-0 flex-1">
+                      {seg.label}
+                    </span>
+                  </button>
+                ))}
               </div>
-              {displaySegs.map((seg) => (
-                <div key={`gut-${seg.id}`} style={{ height: ROW_MS_ROW_H }} />
-              ))}
+              <div
+                className="flex flex-col shrink-0 border-l border-slate-200 bg-white"
+                style={{ width: INDICATOR_GUTTER_W }}
+              >
+                <div style={{ height: ROW_MONTH_H }} />
+                <div style={{ height: ROW_DATE_H }} />
+                <div
+                  style={{ height: ROW_PROJECT_H }}
+                  className="flex items-center justify-center"
+                >
+                  {showProjDotLeft && (
+                    <span
+                      aria-hidden
+                      style={{
+                        width: GANTT_OFFSCREEN_DOT.width,
+                        height: GANTT_OFFSCREEN_DOT.height,
+                        borderRadius: GANTT_OFFSCREEN_DOT.borderRadius,
+                        backgroundColor: GANTT_OFFSCREEN_DOT.backgroundColor,
+                        boxShadow: GANTT_OFFSCREEN_DOT.boxShadow,
+                      }}
+                    />
+                  )}
+                </div>
+                {displaySegs.map((seg) => (
+                  <div key={`gut-${seg.id}`} style={{ height: ROW_MS_ROW_H }} />
+                ))}
+              </div>
             </div>
             <div
-              className="relative shrink-0 overflow-hidden"
+              className="relative shrink-0 overflow-hidden z-[1]"
               style={{ width: chartMinW, minWidth: chartMinW, height: chartBodyH }}
             >
               {projectSpan && (
@@ -1148,7 +1154,7 @@ export default function ProjectMilestoneTimeline({
               </div>
               {/* 日期列 */}
               <div
-                className="absolute left-0 right-0 flex border-b border-slate-300"
+                className="absolute left-0 right-0 flex border-b border-slate-300 pointer-events-none select-none"
                 style={{ top: ROW_MONTH_H, height: ROW_DATE_H }}
               >
                 {days.map((d, i) => {
@@ -1267,7 +1273,7 @@ export default function ProjectMilestoneTimeline({
                   />
                 )}
               </div>
-              {/* 里程碑：一列一個 */}
+              {/* 里程碑：一列一個，節點疊在色條日格上 */}
               {displaySegs.map((seg, rowIdx) => {
                 const rowTop = ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H + rowIdx * ROW_MS_ROW_H;
                 const bar = barLayoutInChart(seg.start, seg.end, dateToX, dayW, chartMinW);
@@ -1299,7 +1305,7 @@ export default function ProjectMilestoneTimeline({
                     />
                     <div
                       aria-hidden
-                      className="absolute flex items-center justify-center pointer-events-none z-[60] px-1"
+                      className="absolute flex items-center justify-center pointer-events-none z-[20] px-1"
                       style={{ left, width, top: 0, height: ROW_MS_ROW_H }}
                     >
                       <span className="text-[9px] font-bold text-slate-800 truncate max-w-full text-center leading-tight drop-shadow-[0_0_2px_rgba(255,255,255,0.9)]">
@@ -1310,7 +1316,7 @@ export default function ProjectMilestoneTimeline({
                       type="button"
                       aria-label="平移里程碑"
                       title="拖曳色條頂端細線以平移"
-                      className="absolute z-[53] cursor-grab active:cursor-grabbing opacity-0 hover:opacity-100 bg-white/50"
+                      className="absolute z-[25] cursor-grab active:cursor-grabbing opacity-0 hover:opacity-100 bg-white/50"
                       style={{ left, width, top: 0, height: 5 }}
                       onMouseDown={(e) => {
                         e.stopPropagation();
@@ -1386,7 +1392,7 @@ export default function ProjectMilestoneTimeline({
                     {showDotL && (
                       <span
                         aria-hidden
-                        className="pointer-events-none absolute z-[40]"
+                        className="pointer-events-none absolute z-[15]"
                         style={{
                           left: 0,
                           top: ROW_MS_ROW_H / 2,
@@ -1399,11 +1405,10 @@ export default function ProjectMilestoneTimeline({
                         }}
                       />
                     )}
-
                     {showDotR && (
                       <span
                         aria-hidden
-                        className="pointer-events-none absolute z-[40]"
+                        className="pointer-events-none absolute z-[15]"
                         style={{
                           left: visT1 - 6,
                           top: ROW_MS_ROW_H / 2,
