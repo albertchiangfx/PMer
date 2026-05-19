@@ -464,3 +464,7 @@ postgres/   PostgreSQL 16（Docker 官方映像）
 ---
 
 *若你更新了部署方式（例如 NAS 實際備份排程路徑），建議在本檔「備份」一節補上你的 IP、路徑、排程頻率，未來的自己會感謝你。*
+
+待辦
+freelance by case紀錄
+ganntt 得重疊+入、交付、回饋時間點
