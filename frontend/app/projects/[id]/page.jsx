@@ -51,9 +51,8 @@ export default function ProjectDetailPage() {
   const [allocModalOpen, setAllocModalOpen] = useState(false);
   const [taskForm, setTaskForm] = useState(defaultTaskForm());
   const [allocForm, setAllocForm] = useState(defaultAllocForm());
-  const [tab, setTab] = useState('tasks');
-  const [ganttWeeks, setGanttWeeks] = useState(12);
-  const [ganttMode, setGanttMode] = useState('members');
+  const [tab, setTab] = useState('gantt');
+  const [ganttMode, setGanttMode] = useState('milestones');
   const [projDropdownOpen, setProjDropdownOpen] = useState(false);
   const projDropdownRef = useRef(null);
 
@@ -347,22 +346,22 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Header */}
-      <div className="bg-white rounded-apple-xl shadow-apple p-6 mb-6">
+      {/* Header（較緊湊約 90%） */}
+      <div className="bg-white rounded-apple-xl shadow-apple p-5 mb-5">
         <div className="flex items-start justify-between">
-          <div className="flex items-start gap-4">
+          <div className="flex items-start gap-3">
             <div
-              className="w-3 h-16 rounded-full"
+              className="w-2.5 h-14 rounded-full"
               style={{ backgroundColor: project.color || '#6366f1' }}
             />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-              <p className="text-gray-400 text-sm mt-1">
+              <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
+              <p className="text-gray-400 text-[13px] mt-0.5">
                 {project.client_name || '無客戶'}{' '}
                 {project.client_email && `· ${project.client_email}`}
               </p>
               {project.description && (
-                <p className="text-gray-600 text-sm mt-2 max-w-xl">{project.description}</p>
+                <p className="text-gray-600 text-[13px] mt-1.5 max-w-xl">{project.description}</p>
               )}
             </div>
           </div>
@@ -376,7 +375,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-100">
+        <div className="grid grid-cols-4 gap-3 mt-5 pt-5 border-t border-gray-100">
           <Stat label="預算" value={project.budget ? fmtCurrency(project.budget) : '—'} />
           <Stat label="任務" value={tasks.length} />
           <Stat label="開始" value={fmt(project.start_date)} />
@@ -387,10 +386,10 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
         {[
-          ['tasks', '任務'],
-          ['milestones', '里程碑'],
-          ['team', '成員分配'],
           ['gantt', '甘特圖'],
+          ['milestones', '項目'],
+          ['team', '成員'],
+          ['tasks', '任務'],
         ].map(([k, label]) => (
           <button
             key={k}
@@ -410,7 +409,7 @@ export default function ProjectDetailPage() {
         >
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-base font-semibold text-gray-900">專案里程碑</h2>
+              <h2 className="text-base font-semibold text-gray-900">專案項目</h2>
               <p className="text-xs text-gray-500 mt-1">
                 套用公版、調整順序與勾選完成度會反映在 Dashboard「Tasks
                 overview」與本頁「專案」列表的進度條上。
@@ -532,87 +531,50 @@ export default function ProjectDetailPage() {
 
       {tab === 'gantt' && (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setGanttMode('members')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  ganttMode === 'members'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                成員分配
-              </button>
-              <button
-                type="button"
-                onClick={() => setGanttMode('milestones')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  ganttMode === 'milestones'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                里程碑時程
-              </button>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <Link
-                href={`/projects/${id}/schedule`}
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
-              >
-                開啟專案時程甘特（全頁）→
-              </Link>
-              <select
-                value={ganttWeeks}
-                onChange={(e) => setGanttWeeks(Number(e.target.value))}
-                className="bg-white/55 border border-white/60 rounded-2xl px-3 py-2 text-sm text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
-              >
-                <option value={8}>8 週</option>
-                <option value={12}>12 週</option>
-                <option value={16}>16 週</option>
-                <option value={24}>24 週</option>
-              </select>
-            </div>
+          <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setGanttMode('milestones')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                ganttMode === 'milestones'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              項目時程
+            </button>
+            <button
+              type="button"
+              onClick={() => setGanttMode('members')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                ganttMode === 'members'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              成員分配
+            </button>
           </div>
 
           {ganttMode === 'members' ? (
-            <>
-              <p className="text-sm text-slate-500">
-                橫軸為時間；縱軸每一列為
-                <strong className="font-semibold text-slate-700">一位成員</strong>
-                （同人可多筆分配上下疊列）。拖拉條可改日期；
-                <strong className="font-semibold text-slate-700">不可</strong>
-                拖到人員列之間改指派（請用「成員分配」表單或全頁甘特）。列旁可刪除該筆分配。
-              </p>
-              <Gantt
-                members={members}
-                allocations={projectAllocations}
-                onUpdate={load}
-                rangeWeeks={ganttWeeks}
-                showRowDelete
-                lockMemberRowOnMove
-                labelColumnTitle="成員"
-                scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
-              />
-            </>
+            <Gantt
+              members={members}
+              allocations={projectAllocations}
+              onUpdate={load}
+              rangeWeeks={12}
+              showRowDelete
+              lockMemberRowOnMove
+              labelColumnTitle="成員"
+              scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
+            />
           ) : (
-            <>
-              <p className="text-sm text-slate-500">
-                依專案里程碑<strong className="font-semibold text-slate-700">各一列</strong>
-                ；與工作時程甘特相同的格線與縮放習慣。尚未寫入 DB 的列會依專案起訖
-                <strong className="font-semibold text-slate-700">均等切分</strong>
-                ；拖曳放開後會儲存至各里程碑的時程欄位（若儲存失敗請確認已執行 DB migration）。
-              </p>
-              <ProjectMilestoneTimeline
-                projectId={id}
-                project={project}
-                rangeWeeks={ganttWeeks}
-                pastWeeks={4}
-                onProjectDatesSaved={() => load()}
-              />
-            </>
+            <ProjectMilestoneTimeline
+              projectId={id}
+              project={project}
+              rangeWeeks={12}
+              pastWeeks={4}
+              onProjectDatesSaved={() => load()}
+            />
           )}
         </div>
       )}

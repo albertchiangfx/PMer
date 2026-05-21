@@ -24,6 +24,16 @@ import {
   parseTimelineDetailNodes,
 } from '../lib/timeline-detail-nodes';
 import { exportClientTimeline } from '../lib/client-timeline-export';
+import {
+  ADDABLE_HOLIDAY_COUNTRIES,
+  BASE_HOLIDAY_COUNTRIES,
+  countWorkingDaysInclusive,
+  countryLabel,
+  holidayTooltip,
+  loadEnabledHolidayCountries,
+  loadHolidayIndex,
+  saveEnabledHolidayCountries,
+} from '../lib/public-holidays';
 import { GANTT_OFFSCREEN_DOT, barTouchesTimelineViewportLeft } from './ganttOffscreenDots';
 
 const DEFAULT_DAY_W = 16;
@@ -282,6 +292,23 @@ export default function ProjectMilestoneTimeline({
   const milestonesRef = useRef(milestones);
   milestonesRef.current = milestones;
 
+  const applyListToMilestoneCache = useCallback((list) => {
+    const cur = milestonesRef.current;
+    if (!Array.isArray(cur) || !list?.length) return cur;
+    return cur.map((m) => {
+      const s = list.find((x) => x.id === m.id);
+      if (!s) return m;
+      return {
+        ...m,
+        timeline_start_date: fmtYmd(s.start),
+        timeline_end_date: fmtYmd(s.end),
+        timeline_detail_nodes: Array.isArray(s.detailNodes)
+          ? s.detailNodes.map((n) => ({ id: n.id, date: n.date, label: n.label, kind: n.kind }))
+          : [],
+      };
+    });
+  }, []);
+
   const canonical = useMemo(() => buildSegments(project, milestones), [project, milestones]);
   const canonKey = useMemo(
     () =>
@@ -316,7 +343,41 @@ export default function ProjectMilestoneTimeline({
   }, [dayW]);
   const containerRef = useRef(null);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const scrollLeftRef = useRef(0);
+  const pendingScrollRestoreRef = useRef(null);
+  /** 拖曳／儲存期間凍結日欄，避免 coreDays 重算造成整圖位移 */
+  const layoutFreezeRef = useRef(null);
   const [timelineViewportW, setTimelineViewportW] = useState(0);
+
+  const scheduleScrollRestore = useCallback(() => {
+    const left = pendingScrollRestoreRef.current;
+    if (left == null) {
+      layoutFreezeRef.current = null;
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = containerRef.current;
+        if (el) {
+          el.scrollLeft = left;
+          scrollLeftRef.current = left;
+          setScrollLeft(left);
+        }
+        pendingScrollRestoreRef.current = null;
+        layoutFreezeRef.current = null;
+      });
+    });
+  }, []);
+
+  const captureScrollBeforeSave = useCallback(() => {
+    pendingScrollRestoreRef.current =
+      containerRef.current?.scrollLeft ?? scrollLeftRef.current;
+  }, []);
+
+  const clearLayoutFreeze = useCallback(() => {
+    layoutFreezeRef.current = null;
+    pendingScrollRestoreRef.current = null;
+  }, []);
 
   /** 專案前後留出可拖曳緩衝（整月對齊 + 週數由 pastWeeks / rangeWeeks 控制） */
   const coreDays = useMemo(() => {
@@ -364,22 +425,28 @@ export default function ProjectMilestoneTimeline({
 
   const days = displayDays;
   const timelineStart = days[0] ?? rangeStart;
+  const layoutDays =
+    layoutFreezeRef.current?.days?.length ? layoutFreezeRef.current.days : days;
+  const layoutTimelineStart =
+    layoutFreezeRef.current?.timelineStart ?? timelineStart;
   const projectSpan = useMemo(() => {
-    if (!pStart || !pEnd || !days.length) return null;
-    const i0 = differenceInCalendarDays(pStart, timelineStart);
-    const i1 = differenceInCalendarDays(pEnd, timelineStart);
+    if (!pStart || !pEnd || !layoutDays.length) return null;
+    const i0 = differenceInCalendarDays(pStart, layoutTimelineStart);
+    const i1 = differenceInCalendarDays(pEnd, layoutTimelineStart);
     return {
       startIdx: Math.max(0, i0),
-      endIdx: Math.min(days.length - 1, i1),
+      endIdx: Math.min(layoutDays.length - 1, i1),
     };
-  }, [pStart, pEnd, days.length, timelineStart]);
-  const totalW = days.length * dayW;
+  }, [pStart, pEnd, layoutDays.length, layoutTimelineStart]);
+  const totalW = layoutDays.length * dayW;
   const chartMinW = Math.max(totalW, timelineViewportW);
 
   /** 僅平移模式：滑鼠幾乎沒動時視為「點擊」，不寫入 PATCH */
   const miniMoveRef = useRef(false);
   /** 在節點列新增節點時，預設歸屬的里程碑 */
   const [activeSegId, setActiveSegId] = useState(null);
+  const [nodeCreateModal, setNodeCreateModal] = useState(null);
+  const [nodeCreateSaving, setNodeCreateSaving] = useState(false);
 
   const draggingRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
@@ -417,15 +484,18 @@ export default function ProjectMilestoneTimeline({
     (d) => {
       if (!d) return 0;
       const dd = d instanceof Date ? d : parseISO(String(d).slice(0, 10));
-      return differenceInCalendarDays(dd, timelineStart) * dayW;
+      const ts = layoutFreezeRef.current?.timelineStart ?? timelineStart;
+      return differenceInCalendarDays(dd, ts) * dayW;
     },
     [timelineStart, dayW]
   );
 
   const xToDate = useCallback(
     (x) => {
+      const ts = layoutFreezeRef.current?.timelineStart ?? timelineStart;
+      const len = layoutFreezeRef.current?.days?.length ?? days.length;
       const idx = Math.round(x / dayW);
-      return addDays(timelineStart, Math.max(0, Math.min(idx, days.length - 1)));
+      return addDays(ts, Math.max(0, Math.min(idx, len - 1)));
     },
     [timelineStart, days.length, dayW]
   );
@@ -434,23 +504,159 @@ export default function ProjectMilestoneTimeline({
     const parts = [];
     let i = 0;
     let monthIdx = 0;
-    while (i < days.length) {
-      const key = format(days[i], 'yyyy-MM');
+    while (i < layoutDays.length) {
+      const key = format(layoutDays[i], 'yyyy-MM');
       let j = i + 1;
-      while (j < days.length && format(days[j], 'yyyy-MM') === key) j++;
+      while (j < layoutDays.length && format(layoutDays[j], 'yyyy-MM') === key) j++;
       parts.push({
         startIdx: i,
         span: j - i,
-        label: format(days[i], 'yyyy年M月'),
+        label: format(layoutDays[i], 'yyyy年M月'),
         alt: monthIdx % 2,
       });
       i = j;
       monthIdx += 1;
     }
     return parts;
-  }, [days]);
+  }, [layoutDays]);
 
-  const monthBands = useMemo(() => buildMonthBands(days), [days]);
+  const monthBands = useMemo(() => buildMonthBands(layoutDays), [layoutDays]);
+
+  const [enabledHolidayCountries, setEnabledHolidayCountries] = useState(() =>
+    loadEnabledHolidayCountries(projectId)
+  );
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  const countryPickerRef = useRef(null);
+  const [holidayYmdSet, setHolidayYmdSet] = useState(() => new Set());
+  const [holidayByDate, setHolidayByDate] = useState(() => new Map());
+  const [holidaysLoading, setHolidaysLoading] = useState(false);
+
+  const extraHolidayCountries = useMemo(
+    () => enabledHolidayCountries.filter((c) => !BASE_HOLIDAY_COUNTRIES.includes(c)),
+    [enabledHolidayCountries]
+  );
+
+  const holidayCountries = enabledHolidayCountries;
+
+  const holidayRangeKey = useMemo(() => {
+    if (!layoutDays.length) return '';
+    return `${fmtYmd(layoutDays[0])}|${fmtYmd(layoutDays[layoutDays.length - 1])}`;
+  }, [layoutDays]);
+
+  const holidayCountriesKey = holidayCountries.join(',');
+
+  useEffect(() => {
+    setEnabledHolidayCountries(loadEnabledHolidayCountries(projectId));
+    setCountryPickerOpen(false);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!countryPickerOpen) return undefined;
+    const onDoc = (e) => {
+      if (countryPickerRef.current?.contains(e.target)) return;
+      setCountryPickerOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setCountryPickerOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [countryPickerOpen]);
+
+  useEffect(() => {
+    if (!holidayRangeKey) return undefined;
+    const [startYmd, endYmd] = holidayRangeKey.split('|');
+    const rangeStart = parseISO(startYmd);
+    const rangeEnd = parseISO(endYmd);
+    if (!isValid(rangeStart) || !isValid(rangeEnd)) return undefined;
+
+    let cancelled = false;
+    setHolidaysLoading(true);
+    loadHolidayIndex(rangeStart, rangeEnd, holidayCountries)
+      .then(({ dateSet, byDate }) => {
+        if (!cancelled) {
+          setHolidayYmdSet(dateSet);
+          setHolidayByDate(byDate);
+        }
+      })
+      .catch((err) => {
+        console.warn('load public holidays', err);
+        if (!cancelled) {
+          setHolidayYmdSet(new Set());
+          setHolidayByDate(new Map());
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHolidaysLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [holidayRangeKey, holidayCountriesKey]);
+
+  const toggleHolidayCountry = useCallback(
+    (code) => {
+      setEnabledHolidayCountries((prev) => {
+        const has = prev.includes(code);
+        const next = has ? prev.filter((c) => c !== code) : [...prev, code];
+        saveEnabledHolidayCountries(projectId, next);
+        return next;
+      });
+    },
+    [projectId]
+  );
+
+  const addExtraHolidayCountry = useCallback(
+    (code) => {
+      setEnabledHolidayCountries((prev) => {
+        if (prev.includes(code)) return prev;
+        const next = [...prev, code];
+        saveEnabledHolidayCountries(projectId, next);
+        return next;
+      });
+      setCountryPickerOpen(false);
+    },
+    [projectId]
+  );
+
+  const removeExtraHolidayCountry = useCallback(
+    (code) => {
+      setEnabledHolidayCountries((prev) => {
+        const next = prev.filter((c) => c !== code);
+        saveEnabledHolidayCountries(projectId, next);
+        return next;
+      });
+    },
+    [projectId]
+  );
+
+  const holidayChipCls = (on) =>
+    `px-1.5 py-0.5 rounded border font-medium shrink-0 transition-colors ${
+      on
+        ? 'border-amber-400 bg-amber-50 text-amber-950'
+        : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+    }`;
+
+  useEffect(() => {
+    return () => {
+      draggingRef.current = null;
+      setDragActive(false);
+      layoutFreezeRef.current = null;
+    };
+  }, [projectId]);
+
+  const workingDaysBySegId = useMemo(() => {
+    const m = new Map();
+    for (const s of displaySegs) {
+      m.set(s.id, countWorkingDaysInclusive(s.start, s.end, holidayYmdSet));
+    }
+    return m;
+  }, [displaySegs, holidayYmdSet]);
+
   const msRowsH = displaySegs.length * ROW_MS_ROW_H;
   const chartBodyH = ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H + msRowsH;
 
@@ -485,6 +691,10 @@ export default function ProjectMilestoneTimeline({
       }));
       const segId = snap[index]?.id;
       if (segId) setActiveSegId(segId);
+      layoutFreezeRef.current = {
+        days: displayDays,
+        timelineStart: displayDays[0] ?? rangeStart,
+      };
       draggingRef.current = {
         kind: 'milestone',
         index,
@@ -496,7 +706,7 @@ export default function ProjectMilestoneTimeline({
       };
       setDragActive(true);
     },
-    [canonical.length, initDraftFromCanonical]
+    [canonical.length, initDraftFromCanonical, displayDays, rangeStart]
   );
 
   const onProjectBarMouseDown = useCallback(
@@ -514,6 +724,10 @@ export default function ProjectMilestoneTimeline({
           ? s.detailNodes.map((n) => ({ ...n }))
           : [],
       }));
+      layoutFreezeRef.current = {
+        days: displayDays,
+        timelineStart: displayDays[0] ?? rangeStart,
+      };
       draggingRef.current = {
         kind: 'project',
         mode,
@@ -528,7 +742,7 @@ export default function ProjectMilestoneTimeline({
       };
       setDragActive(true);
     },
-    [pStart, pEnd, initDraftFromCanonical]
+    [pStart, pEnd, initDraftFromCanonical, displayDays, rangeStart]
   );
 
   const toggleMilestoneCompleted = useCallback(
@@ -540,39 +754,39 @@ export default function ProjectMilestoneTimeline({
         notifyMilestoneDataChanged();
         await mutate();
       } catch (err) {
-        alert(err?.message || '更新里程碑狀態失敗');
+        alert(err?.message || '更新項目狀態失敗');
       }
     },
     [mutate]
   );
 
-  const addTimelineDetailNode = useCallback(
-    async (milestoneId, dateYmd) => {
-      const row = milestonesRef.current.find((m) => m.id === milestoneId);
-      if (!row) return;
-      if (typeof window === 'undefined') return;
-      const kindPick = window.prompt(
-        '節點類型：1=交付  2=客戶反饋  3=內部備註  4=其他',
-        '1'
-      );
-      if (kindPick == null) return;
-      const kindMap = { '1': 'delivery', '2': 'feedback', '3': 'internal', '4': 'other' };
-      const kind = kindMap[kindPick.trim()] || 'other';
-      const label = window.prompt('節點說明', '');
-      if (label == null || !String(label).trim()) return;
+  const openNodeCreateModal = useCallback((milestoneId, dateYmd) => {
+    setActiveSegId(milestoneId);
+    setNodeCreateModal({ milestoneId, dateYmd, kind: 'delivery', label: '' });
+  }, []);
+
+  const submitNodeCreate = useCallback(async () => {
+    if (!nodeCreateModal) return;
+    const { milestoneId, dateYmd, kind, label } = nodeCreateModal;
+    const trimmed = String(label || '').trim();
+    if (!trimmed) return;
+    const row = milestonesRef.current.find((m) => m.id === milestoneId);
+    if (!row) return;
+    setNodeCreateSaving(true);
+    try {
       const existing = parseTimelineDetailNodes(row.timeline_detail_nodes);
       const id = `dn-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      const next = [...existing, { id, date: dateYmd, label: String(label).trim(), kind }];
-      try {
-        await api.updateProjectMilestone(milestoneId, { timeline_detail_nodes: next });
-        notifyMilestoneDataChanged();
-        await mutate();
-      } catch (err) {
-        alert(err?.message || '儲存細節節點失敗');
-      }
-    },
-    [mutate]
-  );
+      const next = [...existing, { id, date: dateYmd, label: trimmed, kind }];
+      await api.updateProjectMilestone(milestoneId, { timeline_detail_nodes: next });
+      notifyMilestoneDataChanged();
+      await mutate();
+      setNodeCreateModal(null);
+    } catch (err) {
+      alert(err?.message || '儲存細節節點失敗');
+    } finally {
+      setNodeCreateSaving(false);
+    }
+  }, [nodeCreateModal, mutate]);
 
   const removeTimelineDetailNode = useCallback(
     async (milestoneId, nodeId) => {
@@ -632,7 +846,9 @@ export default function ProjectMilestoneTimeline({
           d.dxPx = 0;
         } else if (d.mode === 'resize-right') {
           let ne = xToDate(dateToX(d.origEnd) + snappedPx);
-          ne = clampDate(ne, addDays(d.origStart, 1), addDays(timelineStart, days.length - 1));
+          const ts = layoutFreezeRef.current?.timelineStart ?? timelineStart;
+          const len = layoutFreezeRef.current?.days?.length ?? days.length;
+          ne = clampDate(ne, addDays(d.origStart, 1), addDays(ts, len - 1));
           d.previewStart = new Date(d.origStart);
           d.previewEnd = ne;
           draftRef.current = remapSegmentsProportional(
@@ -737,13 +953,21 @@ export default function ProjectMilestoneTimeline({
         if (sid) setActiveSegId(sid);
         draftRef.current = null;
         setDraft(null);
+        clearLayoutFreeze();
         return;
       }
+
+      captureScrollBeforeSave();
 
       if (d.kind === 'project' && pStart && pEnd) {
         const ns = d.previewStart || addDays(d.origStart, Math.round((d.dxPx || 0) / dayW));
         const ne = d.previewEnd || addDays(d.origEnd, Math.round((d.dxPx || 0) / dayW));
-        if (differenceInCalendarDays(ne, ns) < 0) return;
+        if (differenceInCalendarDays(ne, ns) < 0) {
+          clearLayoutFreeze();
+          draftRef.current = null;
+          setDraft(null);
+          return;
+        }
         const list = draftRef.current;
         try {
           await api.updateProject(projectId, {
@@ -777,20 +1001,28 @@ export default function ProjectMilestoneTimeline({
             }
           }
           notifyMilestoneDataChanged();
+          if (list?.length) {
+            const nextCache = applyListToMilestoneCache(list);
+            await mutate(nextCache, { revalidate: false });
+          }
           onProjectDatesSaved?.();
-          await mutate();
+          scheduleScrollRestore();
           draftRef.current = null;
           setDraft(null);
         } catch (err) {
           console.error(err);
-          alert(err?.message || '專案／里程碑時程更新失敗');
+          clearLayoutFreeze();
+          alert(err?.message || '專案／項目時程更新失敗');
         }
         return;
       }
 
       if (d.kind === 'milestone') {
         const list = draftRef.current;
-        if (!list?.length) return;
+        if (!list?.length) {
+          clearLayoutFreeze();
+          return;
+        }
         try {
           let saved = 0;
           for (const s of list) {
@@ -814,12 +1046,17 @@ export default function ProjectMilestoneTimeline({
           }
           if (saved > 0) {
             notifyMilestoneDataChanged();
-            await mutate();
+            const nextCache = applyListToMilestoneCache(list);
+            await mutate(nextCache, { revalidate: false });
+            scheduleScrollRestore();
+          } else {
+            clearLayoutFreeze();
           }
           draftRef.current = null;
           setDraft(null);
         } catch (err) {
           console.error(err);
+          clearLayoutFreeze();
           const msg = String(err?.message || '');
           const hint404 =
             err?.status === 404
@@ -829,16 +1066,32 @@ export default function ProjectMilestoneTimeline({
             msg.includes('timeline') || err?.status === 500
               ? '（若為資料庫欄位錯誤，請在 Postgres 執行 migrations/20260514_milestone_timeline.sql）'
               : '';
-          alert(`${msg || '里程碑時程儲存失敗'}${hint404}${hintDb}`);
+          alert(`${msg || '項目時程儲存失敗'}${hint404}${hintDb}`);
         }
       }
     };
 
+    const cancelDrag = () => {
+      draggingRef.current = null;
+      setDragActive(false);
+      draftRef.current = null;
+      setDraft(null);
+      clearLayoutFreeze();
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') cancelDrag();
+    };
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('blur', cancelDrag);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('blur', cancelDrag);
       if (moveRaf != null) cancelAnimationFrame(moveRaf);
     };
   }, [
@@ -855,19 +1108,33 @@ export default function ProjectMilestoneTimeline({
     mutate,
     onProjectDatesSaved,
     repaint,
+    applyListToMilestoneCache,
+    captureScrollBeforeSave,
+    scheduleScrollRestore,
+    clearLayoutFreeze,
   ]);
 
   const didInitialScroll = useRef(false);
+  const initialScrollProjectIdRef = useRef(projectId);
+  const chartReady = Boolean(
+    project?.start_date && project?.end_date && milestones.length > 0
+  );
+
   useEffect(() => {
-    didInitialScroll.current = false;
-  }, [canonKey]);
+    if (initialScrollProjectIdRef.current !== projectId) {
+      didInitialScroll.current = false;
+      initialScrollProjectIdRef.current = projectId;
+    }
+  }, [projectId]);
 
   useLayoutEffect(() => {
+    if (!chartReady) return;
     const el = containerRef.current;
     if (el) setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
-  }, []);
+  }, [chartReady]);
 
   useEffect(() => {
+    if (!chartReady) return;
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
@@ -876,18 +1143,23 @@ export default function ProjectMilestoneTimeline({
     ro.observe(el);
     setTimelineViewportW(Math.max(0, el.clientWidth - PINNED_LEFT_W));
     return () => ro.disconnect();
-  }, []);
+  }, [chartReady]);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
-    if (didInitialScroll.current || !el || !pStart || !days.length || timelineViewportW <= 0) return;
-    const idx = differenceInCalendarDays(pStart, timelineStart);
+    if (didInitialScroll.current || !el || !pStart || !layoutDays.length || timelineViewportW <= 0)
+      return;
+    const idx = differenceInCalendarDays(pStart, layoutTimelineStart);
     if (idx < 0) return;
-    el.scrollLeft = Math.max(0, idx * dayW - 56);
+    const left = Math.max(0, idx * dayW - 56);
+    el.scrollLeft = left;
+    scrollLeftRef.current = left;
+    setScrollLeft(left);
     didInitialScroll.current = true;
-  }, [canonKey, days.length, timelineViewportW, dayW, pStart, timelineStart]);
+  }, [projectId, layoutDays.length, timelineViewportW, dayW, pStart, layoutTimelineStart]);
 
   useEffect(() => {
+    if (!chartReady) return;
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e) => {
@@ -918,12 +1190,12 @@ export default function ProjectMilestoneTimeline({
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [chartReady]);
 
   if (!project?.start_date || !project?.end_date) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
-        請先在專案資料中設定「開始／結束日期」，里程碑時程才能對齊甘特橫軸。
+        請先在專案資料中設定「開始／結束日期」，項目時程才能對齊甘特橫軸。
       </div>
     );
   }
@@ -931,7 +1203,7 @@ export default function ProjectMilestoneTimeline({
   if (!milestones.length) {
     return (
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        尚未建立里程碑。請至「里程碑」分頁套用公版或新增後，再於此檢視分段時程。
+        尚未建立項目。請至「項目」分頁套用公版或新增後，再於此檢視分段時程。
       </div>
     );
   }
@@ -963,19 +1235,92 @@ export default function ProjectMilestoneTimeline({
     PINNED_LEFT_W
   );
   const showProjDotRight = tw > 0 && (projBarLayout?.rawLeft ?? 0) >= visT1;
+  const projectWorkingDays =
+    projStart && projEnd ? countWorkingDaysInclusive(projStart, projEnd, holidayYmdSet) : null;
 
   return (
-    <div className="surface overflow-hidden select-none rounded-[18px] border border-white/60">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
-        <p className="text-xs text-slate-500 max-w-2xl min-w-0">
-          每個里程碑一列 · 左側點名稱標記完成 · 點日格新增節點 · 拖曳專案條連動全部里程碑
-        </p>
+    <div className="surface overflow-hidden rounded-[18px] border border-white/60">
+      <div className="flex flex-wrap items-center justify-end gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
         <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600">
-            <span className="font-semibold text-slate-500 block mb-1">節點圖例</span>
-            <ul className="flex flex-wrap gap-x-2.5 gap-y-0.5">
+          <div
+            ref={countryPickerRef}
+            className="relative flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600 max-w-full"
+          >
+            <span className="font-semibold text-slate-500 shrink-0">國定假日</span>
+            <span
+              className="inline-block w-3 h-3 rounded-sm border border-amber-200/90 gantt-holiday shrink-0"
+              title="淡琥珀色＝平日國定假日（直欄延伸至下方）"
+            />
+            {BASE_HOLIDAY_COUNTRIES.map((code) => {
+              const on = enabledHolidayCountries.includes(code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => toggleHolidayCountry(code)}
+                  className={holidayChipCls(on)}
+                  title={`${on ? '關閉' : '開啟'}${countryLabel(code)}國定假日標示`}
+                  aria-pressed={on}
+                >
+                  {countryLabel(code)}
+                </button>
+              );
+            })}
+            {extraHolidayCountries.map((code) => (
+              <span
+                key={code}
+                className="inline-flex items-center gap-0.5 pl-1.5 pr-1 py-0.5 rounded border border-slate-300 bg-slate-50 text-slate-800 font-medium shrink-0"
+              >
+                {countryLabel(code)}
+                <button
+                  type="button"
+                  onClick={() => removeExtraHolidayCountry(code)}
+                  className="w-4 h-4 flex items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                  aria-label={`移除${countryLabel(code)}國定假日`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCountryPickerOpen((o) => !o)}
+              className="w-6 h-6 flex items-center justify-center rounded border border-dashed border-slate-300 text-slate-500 hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50/50 shrink-0 font-bold leading-none"
+              title="新增其他國家國定假日"
+              aria-expanded={countryPickerOpen}
+            >
+              +
+            </button>
+            {countryPickerOpen ? (
+              <div className="absolute right-0 top-full mt-1 z-[300] min-w-[9rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                {ADDABLE_HOLIDAY_COUNTRIES.filter((c) => !enabledHolidayCountries.includes(c.code))
+                  .length === 0 ? (
+                  <p className="px-3 py-2 text-slate-400 text-[10px]">已無可新增國家</p>
+                ) : (
+                  ADDABLE_HOLIDAY_COUNTRIES.filter((c) => !enabledHolidayCountries.includes(c.code)).map(
+                    (c) => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        className="block w-full text-left px-3 py-1.5 hover:bg-amber-50 text-slate-700"
+                        onClick={() => addExtraHolidayCountry(c.code)}
+                      >
+                        {c.label}
+                      </button>
+                    )
+                  )
+                )}
+              </div>
+            ) : null}
+            {holidaysLoading ? (
+              <span className="text-slate-400 shrink-0">載入中…</span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2.5 flex-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600">
+            <span className="font-semibold text-slate-500 shrink-0">節點圖例</span>
+            <ul className="flex items-center gap-x-2.5 flex-nowrap">
               {NODE_KINDS.map((k) => (
-                <li key={k.id} className="flex items-center gap-1">
+                <li key={k.id} className="flex items-center gap-1 shrink-0">
                   <span
                     className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
                     style={{ backgroundColor: k.color }}
@@ -988,12 +1333,19 @@ export default function ProjectMilestoneTimeline({
           <button
             type="button"
             onClick={() => {
-              const result = exportClientTimeline(project, canonical);
-              if (result?.ok === false && result.message) alert(result.message);
+              void (async () => {
+                try {
+                  const result = await exportClientTimeline(project, canonical);
+                  if (result && !result.ok && result.message) alert(result.message);
+                } catch (err) {
+                  console.error(err);
+                  alert(err?.message || '匯出失敗，請稍後再試。');
+                }
+              })();
             }}
             disabled={!canonical.length}
             className="rounded-lg border border-indigo-200 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="產生含專案、客戶、時間軸、里程碑、節點與預算的 HTML，可轉 PDF 寄給客戶"
+            title="產生含專案、客戶、時間軸、項目、節點與預算的 HTML，可轉 PDF 寄給客戶"
           >
             匯出客戶時間軸
           </button>
@@ -1001,7 +1353,7 @@ export default function ProjectMilestoneTimeline({
       </div>
 
       <div className="px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] font-semibold text-slate-500 shrink-0">選取里程碑</span>
+        <span className="text-[10px] font-semibold text-slate-500 shrink-0">選取項目</span>
         {displaySegs.map((seg, i) => (
           <button
             key={seg.id}
@@ -1018,14 +1370,21 @@ export default function ProjectMilestoneTimeline({
             }}
           >
             {seg.label}
+            <span className="text-slate-500 font-normal tabular-nums">
+              （{workingDaysBySegId.get(seg.id) ?? '—'}工作天）
+            </span>
           </button>
         ))}
       </div>
 
       <div
         ref={containerRef}
-        className="gantt-scroll overflow-x-auto overflow-y-auto max-h-[min(70vh,720px)]"
-        onScroll={(e) => setScrollLeft(e.target.scrollLeft)}
+        className="gantt-scroll overflow-x-auto overflow-y-auto max-h-[min(70vh,720px)] select-none"
+        onScroll={(e) => {
+          const left = e.target.scrollLeft;
+          scrollLeftRef.current = left;
+          setScrollLeft(left);
+        }}
       >
         <div
           style={{
@@ -1050,7 +1409,12 @@ export default function ProjectMilestoneTimeline({
                   日期
                 </div>
                 <div className={rowLabelCls} style={{ height: ROW_PROJECT_H }}>
-                  專案
+                  <span>專案</span>
+                  {projectWorkingDays != null ? (
+                    <span className="text-[9px] text-slate-500 font-normal tabular-nums whitespace-nowrap">
+                      · {projectWorkingDays}工作天
+                    </span>
+                  ) : null}
                 </div>
                 {displaySegs.map((seg, i) => (
                   <button
@@ -1063,8 +1427,8 @@ export default function ProjectMilestoneTimeline({
                     style={{ height: ROW_MS_ROW_H }}
                     title={
                       seg.completed
-                        ? `${seg.label}（已完成，點擊取消）`
-                        : `${seg.label}（點擊標記完成）`
+                        ? `${seg.label} · ${workingDaysBySegId.get(seg.id) ?? '—'}工作天（已完成，點擊取消）`
+                        : `${seg.label} · ${workingDaysBySegId.get(seg.id) ?? '—'}工作天（點擊標記完成）`
                     }
                   >
                     <span
@@ -1077,6 +1441,10 @@ export default function ProjectMilestoneTimeline({
                     />
                     <span className="leading-tight line-clamp-2 break-words min-w-0 flex-1">
                       {seg.label}
+                      <span className="text-[9px] text-slate-500 font-normal tabular-nums whitespace-nowrap">
+                        {' '}
+                        · {workingDaysBySegId.get(seg.id) ?? '—'}工作天
+                      </span>
                     </span>
                   </button>
                 ))}
@@ -1131,6 +1499,35 @@ export default function ProjectMilestoneTimeline({
                 className="pointer-events-none absolute inset-0"
                 style={timelineBodyGridStyle(dayW, chartMinW)}
               />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute left-0 right-0 z-[1]"
+                style={{ top: ROW_MONTH_H, height: chartBodyH - ROW_MONTH_H }}
+              >
+                {layoutDays.map((d, i) => {
+                  const wknd = isWeekend(d);
+                  const ymdCell = fmtYmd(d);
+                  if (wknd) {
+                    return (
+                      <div
+                        key={`wk-col-${i}`}
+                        className="gantt-weekend absolute top-0"
+                        style={{ left: i * dayW, width: dayW, height: '100%' }}
+                      />
+                    );
+                  }
+                  if (holidayYmdSet.has(ymdCell)) {
+                    return (
+                      <div
+                        key={`hol-col-${i}`}
+                        className="gantt-holiday absolute top-0"
+                        style={{ left: i * dayW, width: dayW, height: '100%' }}
+                      />
+                    );
+                  }
+                  return null;
+                })}
+              </div>
               {/* 月份列 */}
               <div
                 className="absolute left-0 right-0 top-0 border-b border-slate-300"
@@ -1157,17 +1554,27 @@ export default function ProjectMilestoneTimeline({
                 className="absolute left-0 right-0 flex border-b border-slate-300 pointer-events-none select-none"
                 style={{ top: ROW_MONTH_H, height: ROW_DATE_H }}
               >
-                {days.map((d, i) => {
+                {layoutDays.map((d, i) => {
                   const wknd = isWeekend(d);
                   const band = monthBands[i];
                   const isToday_ = isToday(d);
+                  const ymdCell = fmtYmd(d);
+                  const hol = !wknd && holidayYmdSet.has(ymdCell);
+                  const holTitle = hol ? holidayTooltip(ymdCell, holidayByDate) : '';
                   return (
                     <div
                       key={`hd-${i}`}
                       style={{ width: dayW, minWidth: dayW }}
+                      title={holTitle || undefined}
                       className={`flex flex-col items-center justify-center shrink-0 border-r border-slate-200 ${
-                        band === 'month-band-b' ? 'bg-slate-100/90' : 'bg-slate-50'
-                      } ${wknd ? 'bg-red-50/90' : ''}`}
+                        hol
+                          ? 'gantt-holiday'
+                          : wknd
+                            ? 'bg-red-50/90'
+                            : band === 'month-band-b'
+                              ? 'bg-slate-100/90'
+                              : 'bg-slate-50'
+                      }`}
                     >
                       <span
                         className={`text-[10px] font-bold leading-none ${
@@ -1189,28 +1596,32 @@ export default function ProjectMilestoneTimeline({
                 style={{ top: ROW_MONTH_H + ROW_DATE_H, height: ROW_PROJECT_H }}
               >
                 <div className="absolute inset-0 flex z-[1]">
-                  {days.map((d, i) => {
-                    const band = monthBands[i];
-                    const wknd = isWeekend(d);
+                  {layoutDays.map((d, i) => {
                     const ymdCell = fmtYmd(d);
+                    const holTitle =
+                      !isWeekend(d) && holidayYmdSet.has(ymdCell)
+                        ? holidayTooltip(ymdCell, holidayByDate)
+                        : '';
                     return (
                       <button
                         key={`proj-cell-${i}`}
                         type="button"
-                        title={`${ymdCell} 新增節點（歸於目前選取的里程碑）`}
-                        className={`shrink-0 border-r border-slate-200/50 hover:bg-white/30 ${
-                          band === 'month-band-b' ? 'bg-slate-100/40' : 'bg-transparent'
-                        } ${wknd ? 'bg-red-50/40' : ''}`}
+                        title={
+                          holTitle
+                            ? `${ymdCell} ${holTitle}`
+                            : `${ymdCell} 新增節點（歸於目前選取的項目）`
+                        }
+                        className="shrink-0 border-r border-slate-200/50 hover:bg-white/20 bg-transparent"
                         style={{ width: dayW, minWidth: dayW, height: '100%' }}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           const sid = activeSegId || displaySegs[0]?.id;
                           if (!sid) {
-                            alert('請先點選里程碑列或上方標籤');
+                            alert('請先點選項目列或上方標籤');
                             return;
                           }
-                          addTimelineDetailNode(sid, ymdCell);
+                          openNodeCreateModal(sid, ymdCell);
                         }}
                       />
                     );
@@ -1226,7 +1637,7 @@ export default function ProjectMilestoneTimeline({
                     borderRadius: projBarRadius,
                     background: `linear-gradient(90deg, ${projectColor}, ${projectColor}dd)`,
                   }}
-                  title="專案整體區間（拖曳平移；左右緣調整起訖，里程碑連動）"
+                  title="專案整體區間（拖曳平移；左右緣調整起訖，項目連動）"
                 >
                   <span className="pointer-events-none text-[10px] font-bold text-white truncate px-2 max-w-full">
                     {project?.name || '專案'}
@@ -1314,7 +1725,7 @@ export default function ProjectMilestoneTimeline({
                     </div>
                     <button
                       type="button"
-                      aria-label="平移里程碑"
+                      aria-label="平移項目"
                       title="拖曳色條頂端細線以平移"
                       className="absolute z-[25] cursor-grab active:cursor-grabbing opacity-0 hover:opacity-100 bg-white/50"
                       style={{ left, width, top: 0, height: 5 }}
@@ -1324,9 +1735,11 @@ export default function ProjectMilestoneTimeline({
                       }}
                     />
                     <div className="absolute inset-0 flex z-[50]">
-                      {days.map((d, i) => {
+                      {layoutDays.map((d, i) => {
                         const ymdCell = fmtYmd(d);
                         const wknd = isWeekend(d);
+                        const hol = !wknd && holidayYmdSet.has(ymdCell);
+                        const holTitle = hol ? holidayTooltip(ymdCell, holidayByDate) : '';
                         const nodesOnDay = detailNodes.filter((n) => n.date === ymdCell);
                         const hasNode = nodesOnDay.length > 0;
                         const nodeMeta = hasNode ? nodeKindMeta(nodesOnDay[0].kind) : null;
@@ -1337,13 +1750,15 @@ export default function ProjectMilestoneTimeline({
                             title={
                               hasNode
                                 ? `${ymdCell} ${nodeMeta.label}：${nodesOnDay[0].label}（點擊移除）`
-                                : `${ymdCell} 新增節點`
+                                : holTitle
+                                  ? `${ymdCell} ${holTitle}`
+                                  : `${ymdCell} 新增節點`
                             }
                             className={`relative shrink-0 border-r border-slate-300/80 p-0 min-h-0 ${
                               hasNode
                                 ? 'hover:brightness-95 ring-1 ring-inset ring-white/40'
                                 : 'bg-transparent hover:bg-indigo-100/50'
-                            } ${!hasNode && wknd ? 'bg-red-50/25' : ''}`}
+                            }`}
                             style={{
                               width: dayW,
                               minWidth: dayW,
@@ -1363,7 +1778,7 @@ export default function ProjectMilestoneTimeline({
                                 removeTimelineDetailNode(seg.id, first.id);
                                 return;
                               }
-                              addTimelineDetailNode(seg.id, ymdCell);
+                              openNodeCreateModal(seg.id, ymdCell);
                             }}
                           />
                         );
@@ -1441,23 +1856,6 @@ export default function ProjectMilestoneTimeline({
         </div>
       </div>
 
-      <div className="px-4 py-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-        <span>滾輪左右平移 · Ctrl + 滾輪縮放欄寬（與工作時程甘特相同）</span>
-        <div className="flex gap-1 items-center">
-          <span className="text-slate-400 mr-1">欄寬</span>
-          {[12, 16, 20, 24].map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setDayW(w)}
-              className={`text-[10px] px-2 py-1 rounded-md border ${dayW === w ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 text-slate-600'}`}
-            >
-              {w}px
-            </button>
-          ))}
-        </div>
-      </div>
-
       {allDetailNodesFlat.length > 0 && (
         <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/80">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
@@ -1473,7 +1871,7 @@ export default function ProjectMilestoneTimeline({
                       ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
                       : 'border-indigo-200 bg-white text-slate-700 hover:bg-indigo-50'
                   }`}
-                  title={`${n.milestoneLabel} — 點選後在專案／里程碑列新增節點`}
+                  title={`${n.milestoneLabel} — 點選後在專案／項目列新增節點`}
                   onClick={() => setActiveSegId(n.segId)}
                 >
                   <span
@@ -1488,6 +1886,127 @@ export default function ProjectMilestoneTimeline({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {nodeCreateModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]"
+          onClick={(e) => e.target === e.currentTarget && !nodeCreateSaving && setNodeCreateModal(null)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/70 bg-white shadow-xl animate-slide-up"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="node-create-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-slate-100">
+              <div>
+                <h3 id="node-create-title" className="text-base font-semibold text-slate-900">
+                  新增時程節點
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  {(() => {
+                    const row = milestones.find((m) => m.id === nodeCreateModal.milestoneId);
+                    const d = parseISO(nodeCreateModal.dateYmd);
+                    const dateLabel = isValid(d)
+                      ? `${format(d, 'yyyy年M月d日')}（${WEEKDAYS_ZH[getDay(d)]}）`
+                      : nodeCreateModal.dateYmd;
+                    return (
+                      <>
+                        <span className="font-medium text-slate-700">{row?.label || '項目'}</span>
+                        <span className="text-slate-400 mx-1">·</span>
+                        <span className="tabular-nums">{dateLabel}</span>
+                      </>
+                    );
+                  })()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !nodeCreateSaving && setNodeCreateModal(null)}
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="關閉"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-slate-600 mb-2">節點類型</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {NODE_KINDS.map((k) => {
+                    const selected = nodeCreateModal.kind === k.id;
+                    return (
+                      <button
+                        key={k.id}
+                        type="button"
+                        onClick={() => setNodeCreateModal((m) => (m ? { ...m, kind: k.id } : m))}
+                        className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-all ${
+                          selected
+                            ? 'border-indigo-500 bg-indigo-50/80 shadow-sm ring-1 ring-indigo-200'
+                            : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
+                        }`}
+                      >
+                        <span
+                          className="w-3 h-3 rounded-sm shrink-0 border border-black/10"
+                          style={{ backgroundColor: k.color }}
+                        />
+                        <span className={`font-medium ${selected ? 'text-indigo-900' : 'text-slate-700'}`}>
+                          {k.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="node-create-label" className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  節點說明 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="node-create-label"
+                  type="text"
+                  autoFocus
+                  value={nodeCreateModal.label}
+                  onChange={(e) =>
+                    setNodeCreateModal((m) => (m ? { ...m, label: e.target.value } : m))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !nodeCreateSaving && nodeCreateModal.label.trim()) {
+                      e.preventDefault();
+                      void submitNodeCreate();
+                    }
+                  }}
+                  placeholder="例如：客戶確認版、內部審查通過…"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 px-5 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
+              <button
+                type="button"
+                disabled={nodeCreateSaving || !nodeCreateModal.label.trim()}
+                onClick={() => void submitNodeCreate()}
+                className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {nodeCreateSaving ? '儲存中…' : '建立節點'}
+              </button>
+              <button
+                type="button"
+                disabled={nodeCreateSaving}
+                onClick={() => setNodeCreateModal(null)}
+                className="px-4 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

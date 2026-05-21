@@ -36,7 +36,9 @@
   --nav-pill-shadow-color: rgba(15, 23, 42, 0.527);
 
   /* Gantt timeline: weekend column tint (translucent overlay on row base bg). */
-  --gantt-weekend-tint: rgba(255, 187, 187, 0.315); /* slate-400 @ ~22% */
+  --gantt-weekend-tint: rgba(255, 187, 187, 0.315);
+  /* Gantt timeline: public holiday column tint (low opacity) */
+  --gantt-holiday-tint: rgba(251, 191, 36, 0.16);
 }
 
 * {
@@ -170,6 +172,11 @@ body {
 /* Gantt weekend column overlay. */
 .gantt-weekend {
   background: var(--gantt-weekend-tint);
+}
+
+/* Gantt public holiday column overlay (國定假日，優先於週末底色). */
+.gantt-holiday {
+  background: var(--gantt-holiday-tint) !important;
 }
 
 /* Smooth transitions */

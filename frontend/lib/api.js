@@ -177,6 +177,16 @@ export const api = {
   deleteInvoice: (id) => request(`/invoices/${id}`, { method: 'DELETE' }),
   downloadInvoicePDF: (id) => `${getApiBase()}/invoices/${id}/pdf`,
 
+  /** 國定假日（經後端代理 Nager.Date） */
+  getPublicHolidays: ({ year, countries }) =>
+    request(
+      '/holidays/public' +
+        toQS({
+          year,
+          countries: Array.isArray(countries) ? countries.join(',') : countries,
+        })
+    ),
+
   // Clients
   getClients: () => request('/clients'),
   createClient: (data) => request('/clients', { method: 'POST', body: data }),

@@ -91,7 +91,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
     } catch (e) {
       const msg =
         e.status === 409
-          ? '此專案已有里程碑紀錄，無法再次套用公版。若要重來請先刪除既有里程碑。'
+          ? '此專案已有項目紀錄，無法再次套用公版。若要重來請先刪除既有項目。'
           : e.message || String(e);
       alert(msg);
     }
@@ -131,7 +131,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
   };
 
   const onDeleteMilestone = async (mid) => {
-    if (!confirm('刪除此里程碑？')) return;
+    if (!confirm('刪除此項目？')) return;
     try {
       await api.deleteProjectMilestone(mid);
       await refresh();
@@ -149,7 +149,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
     <div className="space-y-4 relative pointer-events-auto">
       {fetchErr && (
         <p className="text-sm text-rose-600 rounded-lg bg-rose-50 border border-rose-100 px-3 py-2">
-          無法載入里程碑（請確認 API 網址與後端已啟動）：{fetchErr}
+          無法載入項目（請確認 API 網址與後端已啟動）：{fetchErr}
         </p>
       )}
 
@@ -267,7 +267,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
 
       {sortedMilestones.length === 0 && !fetchErr && (
         <p className="text-sm text-gray-400 py-2">
-          尚無里程碑 · 可選公版後按「套用」，或下方手動新增。
+          尚無項目 · 可選公版後按「套用」，或下方手動新增。
         </p>
       )}
 
@@ -275,7 +275,7 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
         <input
           value={newMilestoneLabel}
           onChange={(e) => setNewMilestoneLabel(e.target.value)}
-          placeholder="新增里程碑…"
+          placeholder="新增項目…"
           className="flex-1 min-w-[200px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button

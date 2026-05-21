@@ -27,6 +27,7 @@ app.use(express.json());
 app.use(morgan('combined'));
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(__dirname, '../uploads')));
 
+app.use('/api/holidays', require('./routes/holidays'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));
