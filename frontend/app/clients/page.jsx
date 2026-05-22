@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { summarizeClientAlerts } from '../../lib/client-financial';
+import { matchSearchHaystack } from '../../lib/search-match';
 import BackToDashboard from '../../components/BackToDashboard';
 import {
   pageFrameClass,
@@ -87,14 +88,13 @@ export default function ClientsPage() {
     if (alertFilter === 'pending') {
       rows = rows.filter(({ alerts }) => alerts.pendingCount > 0);
     }
-    const q = filter.trim().toLowerCase();
+    const q = filter.trim();
     if (!q) return rows;
     return rows.filter(({ client }) => {
       const hay = [client.name, client.contact_email, client.contact_phone, client.address]
         .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
+        .join(' ');
+      return matchSearchHaystack(hay, q);
     });
   }, [enriched, filter, alertFilter]);
 
@@ -143,14 +143,14 @@ export default function ClientsPage() {
         </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3 md:mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 mb-2 md:mb-6">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="搜尋客戶名稱、Email、電話…"
-          className="w-full max-w-md bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm shadow-apple-sm"
+          className="w-full sm:max-w-md h-8 min-h-8 py-0 px-2.5 text-xs sm:text-sm bg-white border border-gray-200 rounded-lg shadow-apple-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        <div className="flex gap-1 p-0.5 bg-slate-100 rounded-lg shrink-0">
+        <div className="flex gap-1 p-0.5 bg-slate-100 rounded-lg shrink-0 w-fit">
           {[
             ['all', '全部'],
             ['pending', '待處理'],
@@ -159,7 +159,7 @@ export default function ClientsPage() {
               key={k}
               type="button"
               onClick={() => setAlertFilter(k)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
                 alertFilter === k ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'
               }`}
             >

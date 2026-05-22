@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import QuickTaskModal from './QuickTaskModal';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { api } from '../lib/api';
-import { MILESTONE_DATA_CHANGED_EVENT } from '../lib/dashboard-sync';
+import { MILESTONE_DATA_CHANGED_EVENT, notifyScheduleDataChanged } from '../lib/dashboard-sync';
 
 function fmtEndShort(d) {
   if (!d) return '—';
@@ -52,6 +53,7 @@ export default function DashboardProjectWidget({
   /** 桌面 Dashboard：區塊填滿中間捲動區，僅任務列表內捲動 */
   inFrame = false,
 }) {
+  const [taskModalProject, setTaskModalProject] = useState(null);
   const projectIds = useMemo(() => projects.map((p) => p.id).filter(Boolean), [projects]);
 
   const todayByProject = useMemo(() => {
@@ -292,12 +294,13 @@ export default function DashboardProjectWidget({
                   >
                     時程
                   </Link>
-                  <Link
-                    href={`/projects/${p.id}#tasks`}
+                  <button
+                    type="button"
+                    onClick={() => setTaskModalProject(p)}
                     className="flex-1 py-2.5 text-center text-xs font-semibold text-slate-600 active:bg-slate-50"
                   >
                     ＋ 任務
-                  </Link>
+                  </button>
                 </div>
               </article>
             );
@@ -418,18 +421,27 @@ export default function DashboardProjectWidget({
                       </div>
                     ))}
                   </div>
-                  <Link
-                    href={`/projects/${p.id}#tasks`}
+                  <button
+                    type="button"
+                    onClick={() => setTaskModalProject(p)}
                     className="shrink-0 self-center text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
                   >
                     ＋ 新增任務
-                  </Link>
+                  </button>
                 </div>
               ) : null}
             </div>
           );
         })}
       </div>
+
+      {taskModalProject ? (
+        <QuickTaskModal
+          project={taskModalProject}
+          onClose={() => setTaskModalProject(null)}
+          onCreated={() => notifyScheduleDataChanged()}
+        />
+      ) : null}
     </section>
   );
 }

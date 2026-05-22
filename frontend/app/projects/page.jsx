@@ -5,7 +5,6 @@ import useSWR from 'swr';
 import { api } from '../../lib/api';
 import { fmtCurrency, statusStyle, fmt } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
-import { MILESTONE_TEMPLATE_OPTIONS } from '../../lib/milestone-templates';
 import {
   MILESTONE_DATA_CHANGED_EVENT,
   notifyMilestoneDataChanged,
@@ -17,18 +16,20 @@ import {
   pageFrameHeaderClass,
   pageFrameScrollInsetClass,
 } from '../../lib/page-layout';
+import {
+  filterAndSortProjects,
+  PROJECT_SORT_OPTIONS,
+  PROJECT_STATUS_FILTER_OPTS,
+} from '../../lib/project-list-sort';
+import { matchSearchHaystack } from '../../lib/search-match';
 
-const STATUS_OPTS = ['planning', 'active', 'completed', 'paused', 'cancelled'];
-const COLORS = [
-  '#6366f1',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#10b981',
-  '#3b82f6',
-  '#ef4444',
-  '#14b8a6',
-];
+const listCtlClass =
+  'h-8 min-h-8 py-0 px-2.5 text-xs sm:text-sm leading-8 bg-white border border-gray-200 rounded-lg shadow-apple-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+import ProjectFormModal, {
+  defaultProjectForm,
+  projectFormToPayload,
+  projectToForm,
+} from '../../components/ProjectFormModal';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -36,23 +37,12 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'create' | {project}
   const [filter, setFilter] = useState('');
-  const [form, setForm] = useState(defaultForm());
+  const [sortBy, setSortBy] = useState('end_date');
+  const [sortDir, setSortDir] = useState('desc');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [form, setForm] = useState(defaultProjectForm());
   const [loadError, setLoadError] = useState(null);
   const [saveBusy, setSaveBusy] = useState(false);
-
-  function defaultForm() {
-    return {
-      name: '',
-      client_id: '',
-      description: '',
-      budget: '',
-      status: 'planning',
-      start_date: '',
-      end_date: '',
-      color: '#6366f1',
-      milestone_template: '',
-    };
-  }
 
   const projectIds = useMemo(() => projects.map((p) => p.id).filter(Boolean), [projects]);
   const idsSortedKey = projectIds.length ? [...projectIds].sort().join('|') : null;
@@ -120,17 +110,17 @@ export default function ProjectsPage() {
   }, [load]);
 
   const openCreate = () => {
-    setForm(defaultForm());
+    setForm(defaultProjectForm());
     setModal('create');
   };
   const openEdit = (p) => {
-    setForm({ ...p, budget: p.budget || '', client_id: p.client_id || '' });
+    setForm(projectToForm(p));
     setModal(p);
   };
 
   const save = async (e) => {
     e.preventDefault();
-    const data = { ...form, budget: form.budget || null, client_id: form.client_id || null };
+    const data = projectFormToPayload(form);
     try {
       setSaveBusy(true);
       if (modal === 'create') {
@@ -163,12 +153,15 @@ export default function ProjectsPage() {
     load();
   };
 
-  const filtered = projects.filter(
-    (p) =>
-      !filter ||
-      p.name.toLowerCase().includes(filter.toLowerCase()) ||
-      p.client_name?.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const q = filter.trim();
+    const searched = q
+      ? projects.filter((p) =>
+          matchSearchHaystack([p.name, p.client_name].filter(Boolean).join(' '), q)
+        )
+      : projects;
+    return filterAndSortProjects(searched, { sortBy, sortDir, statusFilter });
+  }, [projects, filter, sortBy, sortDir, statusFilter]);
 
   return (
     <div className={pageFrameClass}>
@@ -206,13 +199,54 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      <div className="pb-1">
+      <div className="pb-0.5 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:gap-2 sm:items-center">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="搜尋專案或客戶..."
-          className="w-full max-w-sm bg-white border border-gray-200 rounded-apple px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-apple-sm"
+          placeholder="搜尋專案或客戶…"
+          className={`w-full sm:max-w-xs ${listCtlClass}`}
         />
+        <div className="flex items-center gap-1.5 w-full sm:w-auto min-w-0">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`flex-1 min-w-0 sm:flex-none sm:w-[6.75rem] ${listCtlClass}`}
+            aria-label="狀態篩選"
+          >
+            <option value="">全部狀態</option>
+            {PROJECT_STATUS_FILTER_OPTS.filter(Boolean).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className={`flex-1 min-w-0 sm:flex-none sm:w-[7.5rem] ${listCtlClass}`}
+            aria-label="排序欄位"
+          >
+            {PROJECT_SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+            className={`shrink-0 w-8 flex items-center justify-center font-medium text-gray-600 hover:bg-gray-50 ${listCtlClass}`}
+            title={sortDir === 'desc' ? '由新到舊／Z→A' : '由舊到新／A→Z'}
+            aria-label={sortDir === 'desc' ? '排序：遞減' : '排序：遞增'}
+          >
+            {sortDir === 'desc' ? '↓' : '↑'}
+          </button>
+        </div>
+        {(sortBy === 'end_date' || sortBy === 'start_date') && (
+          <p className="text-[10px] text-gray-400 leading-tight w-full sm:w-auto">
+            已完成／已取消固定在最後
+          </p>
+        )}
       </div>
       </div>
 
@@ -253,138 +287,16 @@ export default function ProjectsPage() {
       </div>
 
       {modal && (
-        <Modal title={modal === 'create' ? '新增專案' : '編輯專案'} onClose={() => setModal(null)}>
-          <form onSubmit={save} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label>專案名稱 *</Label>
-                <Input
-                  value={form.name}
-                  onChange={(v) => setForm((f) => ({ ...f, name: v }))}
-                  required
-                />
-              </div>
-              <div>
-                <Label>客戶</Label>
-                <div className="flex gap-2">
-                  <select
-                    value={form.client_id}
-                    onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))}
-                    className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">無客戶</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Link
-                    href="/clients"
-                    className="shrink-0 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-apple hover:bg-indigo-100 transition-colors whitespace-nowrap inline-flex items-center"
-                  >
-                    客戶管理
-                  </Link>
-                </div>
-              </div>
-              <div>
-                <Label>狀態</Label>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {STATUS_OPTS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label>開始日期</Label>
-                <Input
-                  type="date"
-                  value={form.start_date}
-                  onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
-                />
-              </div>
-              <div>
-                <Label>結束日期</Label>
-                <Input
-                  type="date"
-                  value={form.end_date}
-                  onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}
-                />
-              </div>
-              <div>
-                <Label>預算</Label>
-                <Input
-                  type="number"
-                  value={form.budget}
-                  onChange={(v) => setForm((f) => ({ ...f, budget: v }))}
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <Label>顏色</Label>
-                <div className="flex gap-2 flex-wrap mt-1">
-                  {COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, color: c }))}
-                      className={`w-7 h-7 rounded-full transition-transform ${form.color === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400' : 'hover:scale-110'}`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-              {modal === 'create' && (
-                <div className="col-span-2">
-                  <Label>里程碑公版（選用）</Label>
-                  <select
-                    value={form.milestone_template || ''}
-                    onChange={(e) => setForm((f) => ({ ...f, milestone_template: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">建立後自行設定</option>
-                    {MILESTONE_TEMPLATE_OPTIONS.map((o) => (
-                      <option key={o.key} value={o.key}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="col-span-2">
-                <Label>描述</Label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  rows={3}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={saveBusy}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-apple transition-colors"
-              >
-                {saveBusy ? '處理中…' : modal === 'create' ? '建立專案' : '儲存變更'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
-              >
-                取消
-              </button>
-            </div>
-          </form>
-        </Modal>
+        <ProjectFormModal
+          title={modal === 'create' ? '新增專案' : '編輯專案'}
+          mode={modal === 'create' ? 'create' : 'edit'}
+          form={form}
+          setForm={setForm}
+          clients={clients}
+          saveBusy={saveBusy}
+          onClose={() => setModal(null)}
+          onSubmit={save}
+        />
       )}
 
     </div>
@@ -426,57 +338,66 @@ function ProjectRow({
   };
 
   return (
-    <div className={`${cardClass} flex flex-col gap-3 md:gap-4 hover:shadow-apple-lg duration-200 group`}>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 min-w-0">
-        <div className="flex items-start gap-2.5 md:gap-4 min-w-0 flex-1">
+    <div className={`${cardClass} flex flex-col gap-2 md:gap-2.5 hover:shadow-apple-lg duration-200 group`}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0 py-0.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div
-            className="w-3 h-12 rounded-full shrink-0 mt-0.5"
+            className="w-2.5 h-9 rounded-full shrink-0"
             style={{ backgroundColor: project.color || '#6366f1' }}
           />
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <Link
               href={`/projects/${project.id}`}
-              className="text-base font-semibold text-gray-900 hover:text-indigo-600"
+              className="text-base font-semibold text-gray-900 hover:text-indigo-600 leading-tight"
             >
               {project.name}
             </Link>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
-              <p className="text-xs text-gray-400">{project.client_name || '無客戶'}</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0 mt-0.5">
+              <p className="text-[11px] text-gray-400">{project.client_name || '無客戶'}</p>
               <Link
                 href={`/projects/${project.id}/schedule`}
                 className="text-[11px] font-medium text-indigo-500 hover:text-indigo-600"
               >
-                專案時程甘特
+                甘特
               </Link>
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-4 sm:gap-6 text-sm shrink-0">
-          <div className="text-right hidden sm:block min-w-[7rem]">
-            <p className="text-xs text-gray-400">時程</p>
-            <p className="text-xs font-medium text-gray-600">
+        <div className="hidden sm:contents">
+          <div className="w-[9rem] shrink-0 text-right">
+            <p className="text-[10px] text-gray-400 leading-none mb-0.5">時程</p>
+            <p
+              className="text-[11px] font-medium text-gray-600 tabular-nums leading-tight truncate"
+              title={
+                project.start_date
+                  ? `${fmt(project.start_date)} — ${fmt(project.end_date)}`
+                  : '未設定'
+              }
+            >
               {project.start_date
                 ? `${fmt(project.start_date)} — ${fmt(project.end_date)}`
                 : '未設定'}
             </p>
           </div>
-          <div className="text-right hidden md:block min-w-[4.5rem]">
-            <p className="text-xs text-gray-400">預算</p>
-            <p className="text-sm font-semibold text-gray-900">
+          <div className="w-[5.25rem] shrink-0 text-right">
+            <p className="text-[10px] text-gray-400 leading-none mb-0.5">預算</p>
+            <p className="text-sm font-semibold text-gray-900 tabular-nums leading-tight">
               {project.budget ? fmtCurrency(project.budget) : '—'}
             </p>
           </div>
-          <div className="text-right min-w-[2.5rem]">
-            <p className="text-xs text-gray-400">任務</p>
-            <p className="text-sm font-semibold text-gray-900">{project.task_count || 0}</p>
+          <div className="w-[2.25rem] shrink-0 text-right">
+            <p className="text-[10px] text-gray-400 leading-none mb-0.5">任務</p>
+            <p className="text-sm font-semibold text-gray-900 tabular-nums">{project.task_count || 0}</p>
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-            {project.status}
-          </span>
-          <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+          <div className="w-[5.25rem] shrink-0 flex justify-end">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${s.bg} ${s.text}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+              {project.status}
+            </span>
+          </div>
+          <div className="flex gap-2 justify-end shrink-0 opacity-0 group-hover:opacity-100 min-w-[4.5rem]">
             <button
               type="button"
               onClick={() => onEdit(project)}
@@ -492,6 +413,20 @@ function ProjectRow({
               刪除
             </button>
           </div>
+        </div>
+        <div className="sm:hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] tabular-nums text-gray-600 pl-5">
+          <span>
+            {project.start_date
+              ? `${fmt(project.start_date)} — ${fmt(project.end_date)}`
+              : '時程未設定'}
+          </span>
+          <span className="font-semibold text-gray-900">
+            {project.budget ? fmtCurrency(project.budget) : '—'}
+          </span>
+          <span>
+            任務 {project.task_count || 0}
+          </span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] ${s.bg} ${s.text}`}>{project.status}</span>
         </div>
       </div>
 
@@ -549,45 +484,3 @@ function ProjectRow({
   );
 }
 
-function Modal({ title, onClose, children, zClass = 'z-50' }) {
-  return (
-    <div
-      className={`fixed inset-0 ${zClass} flex items-center justify-center p-4 modal-backdrop animate-fade-in`}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-      role="presentation"
-    >
-      <div
-        className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="p-6">{children}</div>
-      </div>
-    </div>
-  );
-}
-function Label({ children }) {
-  return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>;
-}
-function Input({ type = 'text', value, onChange, required, placeholder }) {
-  return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      required={required}
-      placeholder={placeholder}
-      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    />
-  );
-}

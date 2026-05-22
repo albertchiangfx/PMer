@@ -11,10 +11,12 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+const { ensureBackfillOnce } = require('../lib/ensure-project-financials');
 
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
+    await ensureBackfillOnce(db);
     const { status, project_id, client_id } = req.query;
     let q = `
       SELECT c.*, p.name AS project_name, cl.name AS client_name

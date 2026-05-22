@@ -13,6 +13,11 @@ import ProjectMilestonesPanel from '../../../components/ProjectMilestonesPanel';
 import ProjectScheduleMobileOverview from '../../../components/ProjectScheduleMobileOverview';
 import ProjectScheduleVerticalTimeline from '../../../components/ProjectScheduleVerticalTimeline';
 import { useIsMobileLayout } from '../../../lib/use-mobile-layout';
+import ProjectFormModal, {
+  defaultProjectForm,
+  projectFormToPayload,
+  projectToForm,
+} from '../../../components/ProjectFormModal';
 
 const TASK_TYPES = [
   'general',
@@ -59,6 +64,10 @@ export default function ProjectDetailPage() {
   const [ganttMode, setGanttMode] = useState('milestones');
   const [projDropdownOpen, setProjDropdownOpen] = useState(false);
   const projDropdownRef = useRef(null);
+  const [clients, setClients] = useState([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState(defaultProjectForm());
+  const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
     setTab(isMobileLayout ? 'schedule' : 'gantt');
@@ -101,19 +110,43 @@ export default function ProjectDetailPage() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [proj, taskList, memberList, allocs, projList] = await Promise.all([
+    const [proj, taskList, memberList, allocs, projList, clientList] = await Promise.all([
       api.getProject(id),
       api.getTasks({ project_id: id }),
       api.getTeamMembers(),
       api.getProjectAllocations(id),
       api.getProjects(),
+      api.getClients(),
     ]);
     setProject(proj);
     setTasks(taskList);
     setMembers(memberList);
     setProjectAllocations(allocs);
     setAllProjects(projList);
+    setClients(Array.isArray(clientList) ? clientList : []);
   }, [id]);
+
+  const openEditProject = () => {
+    if (!project) return;
+    setEditForm(projectToForm(project));
+    setEditOpen(true);
+  };
+
+  const saveProjectEdit = async (e) => {
+    e.preventDefault();
+    if (!id) return;
+    try {
+      setEditBusy(true);
+      await api.updateProject(id, projectFormToPayload(editForm));
+      setEditOpen(false);
+      await load();
+      notifyScheduleDataChanged();
+    } catch (err) {
+      alert(err?.message || String(err));
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) {
@@ -381,7 +414,14 @@ export default function ProjectDetailPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center shrink-0 md:pt-0.5">
+          <div className="flex items-center gap-2 shrink-0 md:pt-0.5">
+            <button
+              type="button"
+              onClick={openEditProject}
+              className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-apple hover:bg-indigo-100 transition-colors"
+            >
+              編輯
+            </button>
             <span
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-xs font-semibold ${s.bg} ${s.text}`}
             >
@@ -786,6 +826,19 @@ export default function ProjectDetailPage() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {editOpen && (
+        <ProjectFormModal
+          title="編輯專案"
+          mode="edit"
+          form={editForm}
+          setForm={setEditForm}
+          clients={clients}
+          saveBusy={editBusy}
+          onClose={() => setEditOpen(false)}
+          onSubmit={saveProjectEdit}
+        />
       )}
     </div>
   );

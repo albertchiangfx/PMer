@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { generateInvoicePDF } = require('../utils/invoice-generator');
+const { ensureBackfillOnce } = require('../lib/ensure-project-financials');
 
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
+    await ensureBackfillOnce(db);
     const { status, project_id, client_id } = req.query;
     let q = `
       SELECT i.*, p.name AS project_name,

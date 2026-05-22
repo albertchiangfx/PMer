@@ -212,7 +212,7 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
         <div className="flex items-center gap-3 flex-wrap justify-start lg:justify-end" />
       </div>
 
-      <div className={`shrink-0 flex flex-wrap items-center justify-between gap-3 ${tabsMb}`}>
+      <div className={`shrink-0 flex flex-wrap items-center justify-between gap-2 ${tabsMb}`}>
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -239,14 +239,20 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
             依成員
           </button>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <p
+            className="text-[10px] text-slate-400 leading-snug text-right hidden sm:block"
+            title="在甘特圖區域內滾動"
+          >
+            滾輪：左右 · Alt+滾輪：上下 · Ctrl+滾輪：縮放
+          </p>
           <label className="flex shrink-0 items-center gap-2 text-[10px] text-slate-500">
             <span className="whitespace-nowrap text-slate-500">時間列</span>
             <select
               value={ganttTimelineMode}
               onChange={(e) => setGanttTimelineMode(e.target.value)}
               className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-              title="時間列顯示方式（甘特內 Ctrl+滾輪仍可依模式縮放）"
+              title="時間列顯示；甘特內：滾輪左右、Alt+滾輪上下、Ctrl+滾輪縮放"
             >
               <option value="auto">自動（縮小後僅月份）</option>
               <option value="dayWeek">日與週</option>
@@ -277,8 +283,11 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
           </label>
         </div>
       </div>
+      <p className="shrink-0 text-[10px] text-slate-400 -mt-1 mb-1 sm:hidden">
+        甘特圖內：滾輪左右 · Alt+滾輪上下 · Ctrl+滾輪縮放
+      </p>
 
-      <div className={embedded ? 'scroll-pane flex-1 min-h-0' : ''}>
+      <div className={embedded ? 'flex-1 min-h-0 overflow-hidden' : ''}>
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />

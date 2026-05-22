@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { fetchProjectBounds, clampProjectDescendantsToBounds } = require('../lib/projectDateBounds');
+const { ensureProjectFinancialPlaceholders } = require('../lib/ensure-project-financials');
 
 /** Postgres DATE rejects ''; JSON often sends "" when inputs are cleared. */
 function dateOrNull(v) {
@@ -53,6 +54,11 @@ router.get('/:id', async (req, res, next) => {
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+    try {
+      await ensureProjectFinancialPlaceholders(db, rows[0]);
+    } catch (e) {
+      console.error('[projects GET :id] ensure financials', e.message);
+    }
     res.json(rows[0]);
   } catch (e) {
     next(e);
@@ -84,6 +90,11 @@ router.post('/', async (req, res, next) => {
       `INSERT INTO audit_logs (entity_type, entity_id, action, changed_by) VALUES ('project',$1,'create','system')`,
       [rows[0].id]
     );
+    try {
+      await ensureProjectFinancialPlaceholders(db, rows[0]);
+    } catch (e) {
+      console.error('[projects POST] ensure financials', e.message);
+    }
     res.status(201).json(rows[0]);
   } catch (e) {
     next(e);
@@ -119,6 +130,11 @@ router.put('/:id', async (req, res, next) => {
     }
     const bounds = await fetchProjectBounds(client, req.params.id);
     if (bounds) await clampProjectDescendantsToBounds(client, req.params.id, bounds);
+    try {
+      await ensureProjectFinancialPlaceholders(client, rows[0]);
+    } catch (e) {
+      console.error('[projects PUT] ensure financials', e.message);
+    }
     await client.query('COMMIT');
     res.json(rows[0]);
   } catch (e) {

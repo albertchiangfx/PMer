@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS clients (
   contact_email VARCHAR(255),
   contact_phone VARCHAR(20),
   address TEXT,
+  archived_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

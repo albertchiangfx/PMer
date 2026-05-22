@@ -80,6 +80,29 @@ export function buildClientFinancialRows(projects, contracts, invoices) {
   return rows;
 }
 
+/** 單一專案：合約未簽／未收款警示（客戶專案列表用） */
+export function projectFinancialWarnings(projectId, projects, contracts, invoices) {
+  const pid = String(projectId);
+  const p = (projects || []).find((x) => String(x.id) === pid);
+  const contractRows = (contracts || []).filter((c) => String(c.project_id) === pid);
+  const invoiceRows = (invoices || []).filter((i) => String(i.project_id) === pid);
+
+  let contractWarn = false;
+  const paymentWarn = invoiceRows.some((inv) => invoiceNeedsAttention(inv.status));
+
+  if (p && ACTIVE_PROJECT.has(String(p.status || '').toLowerCase())) {
+    const hasSigned = contractRows.some((c) => c.status === 'signed');
+    if (contractRows.length === 0 || !hasSigned) contractWarn = true;
+    else if (contractRows.some((c) => contractNeedsAttention(c.status))) contractWarn = true;
+  }
+
+  return {
+    contractWarn,
+    paymentWarn,
+    hasWarning: contractWarn || paymentWarn,
+  };
+}
+
 export function summarizeClientAlerts(projects, contracts, invoices) {
   const rows = buildClientFinancialRows(projects, contracts, invoices);
   const pending = rows.filter((r) => r.pending);

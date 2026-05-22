@@ -206,6 +206,10 @@ export const api = {
   updateClient: (id, data) =>
     request(`/clients/${encodeURIComponent(id)}`, { method: 'PUT', body: data }),
   deleteClient: (id) => request(`/clients/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  archiveClient: (id) =>
+    request(`/clients/${encodeURIComponent(id)}/archive`, { method: 'PATCH' }),
+  unarchiveClient: (id) =>
+    request(`/clients/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' }),
 };
 
 function toQS(params) {

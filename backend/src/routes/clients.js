@@ -3,7 +3,11 @@ const router = express.Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await req.app.locals.db.query('SELECT * FROM clients ORDER BY name');
+    const includeArchived = req.query.include_archived === '1';
+    let q = 'SELECT * FROM clients';
+    if (!includeArchived) q += ' WHERE archived_at IS NULL';
+    q += ' ORDER BY name';
+    const { rows } = await req.app.locals.db.query(q);
     res.json(rows);
   } catch (e) {
     next(e);
@@ -57,6 +61,42 @@ router.put('/:id', async (req, res, next) => {
     res.json(rows[0]);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: '客戶名稱已存在' });
+    next(e);
+  }
+});
+
+router.patch('/:id/archive', async (req, res, next) => {
+  try {
+    const { rows } = await req.app.locals.db.query(
+      `UPDATE clients SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND archived_at IS NULL RETURNING *`,
+      [req.params.id]
+    );
+    if (!rows.length) {
+      const { rows: existing } = await req.app.locals.db.query(
+        'SELECT id, archived_at FROM clients WHERE id = $1',
+        [req.params.id]
+      );
+      if (!existing.length) return res.status(404).json({ error: 'Client not found' });
+      if (existing[0].archived_at) return res.json(existing[0]);
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    res.json(rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/:id/unarchive', async (req, res, next) => {
+  try {
+    const { rows } = await req.app.locals.db.query(
+      `UPDATE clients SET archived_at = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Client not found' });
+    res.json(rows[0]);
+  } catch (e) {
     next(e);
   }
 });

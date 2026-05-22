@@ -133,6 +133,7 @@ async function clampProjectDescendantsToBounds(client, projectId, bounds) {
 }
 
 module.exports = {
+  ymdFromDb,
   fetchProjectBounds,
   assertIntervalWithinBounds,
   clampProjectDescendantsToBounds,

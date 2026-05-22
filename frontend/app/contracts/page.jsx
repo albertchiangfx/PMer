@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { fmt, fmtCurrency, statusStyle } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
+import { matchSearchHaystack } from '../../lib/search-match';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
@@ -60,13 +61,10 @@ export default function ContractsPage() {
     load();
   };
 
-  const filtered = contracts.filter(
-    (c) =>
-      !filter ||
-      c.contract_number?.toLowerCase().includes(filter.toLowerCase()) ||
-      c.project_name?.toLowerCase().includes(filter.toLowerCase()) ||
-      c.client_name?.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filtered = contracts.filter((c) => {
+    const hay = [c.contract_number, c.project_name, c.client_name].filter(Boolean).join(' ');
+    return matchSearchHaystack(hay, filter);
+  });
 
   const summary = {
     total: contracts.reduce((s, c) => s + parseFloat(c.amount || 0), 0),

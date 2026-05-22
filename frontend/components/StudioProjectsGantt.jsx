@@ -377,7 +377,7 @@ export default function StudioProjectsGantt({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Wheel: vertical wheel -> horizontal scroll; Ctrl+wheel -> zoom timeline density.
+  // Wheel: 預設左右；Alt+滾輪上下；Ctrl+滾輪縮放時間密度。
   // React's onWheel is passive in modern react-dom, so we attach a native non-passive
   // listener via useEffect to be able to call preventDefault().
   useEffect(() => {
@@ -410,9 +410,14 @@ export default function StudioProjectsGantt({
         });
         return;
       }
-      if (e.shiftKey) return;
       const dy = e.deltaY;
       if (dy === 0) return;
+      if (e.altKey) {
+        e.preventDefault();
+        el.scrollTop += dy;
+        return;
+      }
+      if (e.shiftKey) return;
       e.preventDefault();
       el.scrollLeft += dy;
       if (hScrollRef.current) hScrollRef.current.scrollLeft = el.scrollLeft;
@@ -547,7 +552,7 @@ export default function StudioProjectsGantt({
       >
         <div
           ref={containerRef}
-          className="gantt-scroll gantt-main-scroll min-h-0 flex-1 overflow-x-auto overflow-y-auto"
+          className="gantt-main-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
           onScroll={() => {
             const el = containerRef.current;
             const sl = el?.scrollLeft || 0;
@@ -918,7 +923,7 @@ export default function StudioProjectsGantt({
 
       <div
         ref={hScrollRef}
-        className="overflow-x-auto gantt-scroll"
+        className="overflow-x-auto gantt-h-scroll"
         style={{ marginLeft: LABEL_W }}
         onScroll={() => {
           const el = containerRef.current;
