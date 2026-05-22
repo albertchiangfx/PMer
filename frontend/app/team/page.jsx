@@ -3,6 +3,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../../lib/api';
 import TeamMemberCard from '../../components/TeamMemberCard';
 import BackToDashboard from '../../components/BackToDashboard';
+import {
+  pageFrameClass,
+  pageFrameHeaderClass,
+  pageFrameScrollClass,
+} from '../../lib/page-layout';
 
 const ROLES = [
   '美術總監',
@@ -100,11 +105,12 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-fade-in">
-      <BackToDashboard className="mb-4" />
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">團隊成員</h1>
+    <div className={pageFrameClass}>
+      <div className={pageFrameHeaderClass}>
+      <BackToDashboard className="mb-2 md:mb-4" />
+      <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">團隊成員</h1>
           <p className="text-gray-400 mt-1 text-sm">
             {members.filter((m) => m.status === 'active').length} 位活躍成員
           </p>
@@ -116,7 +122,9 @@ export default function TeamPage() {
           + 新增成員
         </button>
       </div>
+      </div>
 
+      <div className={pageFrameScrollClass}>
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
@@ -146,6 +154,7 @@ export default function TeamPage() {
           />
         </div>
       )}
+      </div>
 
       {modal && (
         <div

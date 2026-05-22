@@ -10,6 +10,9 @@ import TaskCard from '../../../components/TaskCard';
 import Gantt from '../../../components/Gantt';
 import ProjectMilestoneTimeline from '../../../components/ProjectMilestoneTimeline';
 import ProjectMilestonesPanel from '../../../components/ProjectMilestonesPanel';
+import ProjectScheduleMobileOverview from '../../../components/ProjectScheduleMobileOverview';
+import ProjectScheduleVerticalTimeline from '../../../components/ProjectScheduleVerticalTimeline';
+import { useIsMobileLayout } from '../../../lib/use-mobile-layout';
 
 const TASK_TYPES = [
   'general',
@@ -51,10 +54,19 @@ export default function ProjectDetailPage() {
   const [allocModalOpen, setAllocModalOpen] = useState(false);
   const [taskForm, setTaskForm] = useState(defaultTaskForm());
   const [allocForm, setAllocForm] = useState(defaultAllocForm());
+  const isMobileLayout = useIsMobileLayout();
   const [tab, setTab] = useState('gantt');
   const [ganttMode, setGanttMode] = useState('milestones');
   const [projDropdownOpen, setProjDropdownOpen] = useState(false);
   const projDropdownRef = useRef(null);
+
+  useEffect(() => {
+    setTab(isMobileLayout ? 'schedule' : 'gantt');
+  }, [id, isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileLayout && tab === 'schedule') setTab('gantt');
+  }, [isMobileLayout, tab]);
 
   function defaultTaskForm() {
     return {
@@ -262,10 +274,10 @@ export default function ProjectDetailPage() {
   const s = statusStyle(project.status);
 
   return (
-    <div className="p-8 w-full max-w-full mx-auto animate-fade-in">
+    <div className="px-1 py-2 md:p-8 w-full max-w-full mx-auto animate-fade-in">
       {/* Breadcrumb — current project name is a dropdown that lets you switch
           to another project without going back to the projects list. */}
-      <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
+      <div className="flex items-center gap-2 text-sm text-gray-400 mb-3 md:mb-6">
         <Link href="/projects" className="hover:text-gray-600">
           專案
         </Link>
@@ -347,27 +359,31 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Header（較緊湊約 90%） */}
-      <div className="bg-white rounded-apple-xl shadow-apple p-5 mb-5">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3">
+      <div className="bg-white rounded-2xl md:rounded-apple-xl shadow-apple p-3.5 md:p-5 mb-3 md:mb-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-2.5 md:gap-3 min-w-0 flex-1">
             <div
-              className="w-2.5 h-14 rounded-full"
+              className="w-1.5 md:w-2.5 h-12 md:h-14 rounded-full shrink-0"
               style={{ backgroundColor: project.color || '#6366f1' }}
             />
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
-              <p className="text-gray-400 text-[13px] mt-0.5">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg md:text-xl font-bold text-gray-900 leading-snug break-words">
+                {project.name}
+              </h1>
+              <p className="text-gray-400 text-[12px] md:text-[13px] mt-0.5 break-words">
                 {project.client_name || '無客戶'}{' '}
                 {project.client_email && `· ${project.client_email}`}
               </p>
               {project.description && (
-                <p className="text-gray-600 text-[13px] mt-1.5 max-w-xl">{project.description}</p>
+                <p className="text-gray-600 text-[12px] md:text-[13px] mt-1.5 leading-relaxed break-words">
+                  {project.description}
+                </p>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center shrink-0 md:pt-0.5">
             <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.bg} ${s.text}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-xs font-semibold ${s.bg} ${s.text}`}
             >
               <span className={`w-2 h-2 rounded-full ${s.dot}`} />
               {project.status}
@@ -375,7 +391,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mt-5 pt-5 border-t border-gray-100">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mt-3 pt-3 md:mt-5 md:pt-5 border-t border-gray-100">
           <Stat label="預算" value={project.budget ? fmtCurrency(project.budget) : '—'} />
           <Stat label="任務" value={tasks.length} />
           <Stat label="開始" value={fmt(project.start_date)} />
@@ -383,8 +399,8 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
+      {/* Tabs — 桌機（維持原順序與預設） */}
+      <div className="hidden md:flex gap-1 mb-6 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
         {[
           ['gantt', '甘特圖'],
           ['milestones', '項目'],
@@ -393,6 +409,7 @@ export default function ProjectDetailPage() {
         ].map(([k, label]) => (
           <button
             key={k}
+            type="button"
             onClick={() => setTab(k)}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === k ? 'bg-indigo-600 text-white shadow-apple-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
@@ -401,10 +418,34 @@ export default function ProjectDetailPage() {
         ))}
       </div>
 
+      {/* Tabs — 手機 */}
+      <div className="flex md:hidden gap-0.5 mb-3 bg-white p-0.5 rounded-xl shadow-apple-sm w-full overflow-x-auto">
+        {[
+          ['schedule', '時程總覽'],
+          ['milestones', '項目'],
+          ['team', '成員'],
+          ['tasks', '任務'],
+          ['gantt', '時程預覽'],
+        ].map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap shrink-0 transition-all ${tab === k ? 'bg-indigo-600 text-white' : 'text-gray-500'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'schedule' && isMobileLayout && (
+        <ProjectScheduleMobileOverview projectId={id} project={project} />
+      )}
+
       {tab === 'milestones' && (
         <div
           id="milestones"
-          className="surface rounded-[22px] p-6 shadow-apple-sm scroll-mt-24 relative z-[5] isolate"
+          className="surface rounded-2xl md:rounded-[22px] p-3.5 md:p-6 shadow-apple-sm scroll-mt-24 relative z-[5] isolate"
           style={{ pointerEvents: 'auto' }}
         >
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -488,7 +529,7 @@ export default function ProjectDetailPage() {
             {projectAllocations.map((a) => (
               <div
                 key={a.id}
-                className="surface rounded-[18px] flex flex-wrap items-center gap-4 px-4 py-3"
+                className="surface rounded-xl md:rounded-[18px] flex flex-wrap items-center gap-3 md:gap-4 px-2.5 py-2.5 md:px-4 md:py-3"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div
@@ -530,53 +571,59 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === 'gantt' && (
-        <div className="space-y-4">
-          <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setGanttMode('milestones')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                ganttMode === 'milestones'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              項目時程
-            </button>
-            <button
-              type="button"
-              onClick={() => setGanttMode('members')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                ganttMode === 'members'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              成員分配
-            </button>
+        <>
+          <div className="hidden md:block space-y-4">
+            <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setGanttMode('milestones')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  ganttMode === 'milestones'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                項目時程
+              </button>
+              <button
+                type="button"
+                onClick={() => setGanttMode('members')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  ganttMode === 'members'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                成員分配
+              </button>
+            </div>
+
+            {ganttMode === 'members' ? (
+              <Gantt
+                members={members}
+                allocations={projectAllocations}
+                onUpdate={load}
+                rangeWeeks={12}
+                showRowDelete
+                lockMemberRowOnMove
+                labelColumnTitle="成員"
+                scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
+              />
+            ) : (
+              <ProjectMilestoneTimeline
+                projectId={id}
+                project={project}
+                rangeWeeks={12}
+                pastWeeks={4}
+                onProjectDatesSaved={() => load()}
+              />
+            )}
           </div>
 
-          {ganttMode === 'members' ? (
-            <Gantt
-              members={members}
-              allocations={projectAllocations}
-              onUpdate={load}
-              rangeWeeks={12}
-              showRowDelete
-              lockMemberRowOnMove
-              labelColumnTitle="成員"
-              scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
-            />
-          ) : (
-            <ProjectMilestoneTimeline
-              projectId={id}
-              project={project}
-              rangeWeeks={12}
-              pastWeeks={4}
-              onProjectDatesSaved={() => load()}
-            />
-          )}
-        </div>
+          <div className="md:hidden">
+            <ProjectScheduleVerticalTimeline projectId={id} project={project} />
+          </div>
+        </>
       )}
 
       {/* Task Modal */}

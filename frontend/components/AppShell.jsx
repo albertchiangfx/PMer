@@ -2,14 +2,23 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { shellRowHeightClass } from '../lib/page-layout';
 
 const NAV = [
-  { href: '/', label: 'Dashboard', icon: IconGrid },
+  { href: '/', label: 'Dashboard', mobileLabel: '今日', icon: IconGrid },
   { href: '/projects', label: '專案', icon: IconFolder },
   { href: '/team', label: '成員', icon: IconUsers },
-  { href: '/contracts', label: '合約', icon: IconDoc },
-  { href: '/invoices', label: '發票', icon: IconReceipt },
+  { href: '/clients', label: '客戶', mobileLabel: '客戶', icon: IconBriefcase },
 ];
+
+const MOBILE_NAV = [
+  ...NAV,
+  { href: '/settings', label: '設定', icon: IconGear },
+];
+
+function navItemActive(path, href) {
+  return href === '/' ? path === '/' : path.startsWith(href);
+}
 
 /**
  * Knobs for the floating left nav. All values are Tailwind class strings
@@ -122,12 +131,14 @@ export default function AppShell({ children }) {
   const showRail = navCollapsed && !navHover;
 
   return (
-    <div className="app-bg app-blobs min-h-screen text-slate-900">
-      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-24px))] px-4 py-6 sm:px-6 sm:py-10">
-        <div className="flex min-h-[720px] w-full gap-4 sm:gap-5">
-          {/* Floating two-layer nav (separated from main content). */}
+    <div className="app-bg app-blobs min-h-screen text-slate-900 max-sm:flex max-sm:flex-col max-sm:min-h-[100dvh]">
+      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-8px))] md:max-w-[min(1600px,calc(100vw-24px))] px-1.5 py-3 sm:px-6 sm:py-10 pb-[calc(5.625rem+env(safe-area-inset-bottom,0px))] sm:pb-0 max-sm:flex-1 max-sm:flex max-sm:flex-col max-sm:min-h-0">
+        <div
+          className={`flex w-full gap-4 sm:gap-5 items-stretch max-sm:flex-1 max-sm:min-h-0 ${shellRowHeightClass}`}
+        >
+          {/* 左側 nav：與 shell 同列、同高（app-shell-row） */}
           <div
-            className="hidden sm:flex shrink-0 flex-col self-stretch relative z-30"
+            className="hidden sm:flex shrink-0 flex-col h-full min-h-0 self-stretch relative z-30"
             onMouseEnter={() => setNavHover(true)}
             onMouseLeave={() => setNavHover(false)}
           >
@@ -144,15 +155,61 @@ export default function AppShell({ children }) {
             )}
           </div>
 
-          {/* Content shell — flex min-h-0 讓捲動發生在 main，避免子頁面按鈕點擊命中異常 */}
-          <div className="shell relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-[28px]">
-            <main className="relative flex-1 min-h-0 px-5 py-6 sm:px-8 sm:py-8 overflow-y-auto overflow-x-hidden overscroll-contain">
+          {/* Content shell — 桌面固定列高；內容在 main 內捲動 */}
+          <div className="shell relative flex flex-1 min-w-0 h-full min-h-0 self-stretch flex-col overflow-hidden rounded-[20px] md:rounded-[28px] max-sm:h-auto">
+            <main className="relative flex flex-1 flex-col min-h-0 min-w-0 px-2.5 py-3 md:px-8 md:py-8 overflow-hidden overflow-x-hidden overscroll-contain pb-1 sm:pb-0 max-sm:overflow-y-auto">
               {children}
             </main>
           </div>
         </div>
       </div>
+
+      <MobileBottomNav path={path} />
     </div>
+  );
+}
+
+/** 手機版：原左側導覽改為底部橫列 */
+function MobileBottomNav({ path }) {
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 sm:hidden border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-6px_24px_rgba(15,23,42,0.08)]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      aria-label="主要導覽"
+    >
+      <div className="flex items-stretch justify-around max-w-lg mx-auto min-h-[5.625rem]">
+        {MOBILE_NAV.map((n) => {
+          const active = navItemActive(path, n.href);
+          const Icon = n.icon;
+          const label = n.mobileLabel || n.label;
+          return (
+            <Link
+              key={n.href}
+              href={n.href}
+              className={[
+                'relative flex flex-1 flex-col items-center justify-center gap-1 min-w-0 min-h-[5.625rem] py-3 px-1 transition-colors',
+                active ? 'text-indigo-600' : 'text-slate-500 active:text-slate-700',
+              ].join(' ')}
+              aria-current={active ? 'page' : undefined}
+            >
+              {active ? (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-indigo-500" />
+              ) : null}
+              <span className="h-5 w-5 shrink-0 [&_svg]:h-5 [&_svg]:w-5">
+                <Icon />
+              </span>
+              <span
+                className={`text-[10px] font-semibold leading-none truncate max-w-full ${
+                  active ? 'text-indigo-600' : 'text-slate-600'
+                }`}
+              >
+                {label}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
@@ -162,14 +219,14 @@ export default function AppShell({ children }) {
  *  70% if the icon pill needs more room on short pages). */
 function NavRail({ path, onExpand }) {
   return (
-    <div className={`flex flex-1 flex-col ${NAV_STYLE.railWidth} ${NAV_STYLE.cardGap}`}>
+    <div className={`flex h-full min-h-full flex-col ${NAV_STYLE.railWidth} ${NAV_STYLE.cardGap}`}>
       {/* TOP plaster card. Dark pill flush to top edge with extra bottom
           padding (NAV_STYLE.pillTailPad) so it extends past the last icon. */}
       <div
-        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
+        className={`nav-plaster flex flex-col min-h-0 ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
       >
         <div
-          className={`nav-pill flex flex-col items-center gap-1 pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
+          className={`nav-pill flex w-full shrink-0 flex-col items-center gap-1 pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
         >
           <button
             type="button"
@@ -191,18 +248,15 @@ function NavRail({ path, onExpand }) {
           <RailItem active={path.startsWith('/team')} href="/team" label="成員">
             <IconUsersMini />
           </RailItem>
-          <RailItem active={path.startsWith('/contracts')} href="/contracts" label="合約">
-            <IconDocMini />
-          </RailItem>
-          <RailItem active={path.startsWith('/invoices')} href="/invoices" label="發票">
-            <IconReceiptMini />
+          <RailItem active={path.startsWith('/clients')} href="/clients" label="客戶">
+            <IconBriefcase />
           </RailItem>
         </div>
       </div>
 
       {/* BOTTOM plaster card. Dark pod anchored to bottom edge. */}
       <div
-        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}
+        className={`nav-plaster flex flex-col min-h-0 ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}
       >
         <div
           className={`nav-pill grid place-items-center py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}
@@ -219,14 +273,14 @@ function NavRail({ path, onExpand }) {
 /** Expanded sidebar with labels. Same two-card / 7:3 split as NavRail. */
 function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
   return (
-    <div className={`flex flex-1 flex-col ${NAV_STYLE.sidebarWidth} ${NAV_STYLE.cardGap}`}>
+    <div className={`flex h-full min-h-full flex-col ${NAV_STYLE.sidebarWidth} ${NAV_STYLE.cardGap}`}>
       {/* TOP plaster card. Dark pill flush to top edge with extra bottom
           padding (NAV_STYLE.pillTailPad) so it extends past the last nav row. */}
       <div
-        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
+        className={`nav-plaster flex flex-col min-h-0 ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
       >
         <div
-          className={`nav-pill flex flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
+          className={`nav-pill flex w-full shrink-0 flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
         >
           <div className="flex items-center gap-3">
             <div
@@ -258,7 +312,7 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
           </p>
           <div className="mt-2 flex flex-col gap-1">
             {navItems.map((n) => {
-              const active = n.href === '/' ? path === '/' : path.startsWith(n.href);
+              const active = navItemActive(path, n.href);
               const Icon = n.icon;
               return (
                 <SidebarLink
@@ -276,7 +330,7 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
 
       {/* BOTTOM plaster card. Dark pod anchored to bottom edge. */}
       <div
-        className={`nav-plaster flex flex-col min-h-fit ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}
+        className={`nav-plaster flex flex-col min-h-0 ${NAV_STYLE.bottomCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.bottomFlex}`}
       >
         <div className={`nav-pill px-2 py-1.5 mt-auto ${NAV_STYLE.bottomPillRadius}`}>
           <SidebarLink
@@ -483,6 +537,21 @@ function IconUsers() {
     >
       <path d="M16 21c0-2.5-2-4.5-4.5-4.5S7 18.5 7 21" />
       <path d="M12 13.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+    </svg>
+  );
+}
+function IconBriefcase() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M3 7h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+      <path d="M3 12h18" />
     </svg>
   );
 }

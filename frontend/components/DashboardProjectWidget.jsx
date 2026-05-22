@@ -48,6 +48,9 @@ export default function DashboardProjectWidget({
   projects,
   todayAssignments = [],
   personalTasks: personalTasksFromParent,
+  compact = false,
+  /** 桌面 Dashboard：區塊填滿中間捲動區，僅任務列表內捲動 */
+  inFrame = false,
 }) {
   const projectIds = useMemo(() => projects.map((p) => p.id).filter(Boolean), [projects]);
 
@@ -120,9 +123,19 @@ export default function DashboardProjectWidget({
     return { pct: Math.round((s.completed / s.total) * 100), empty: false };
   };
 
+  const sectionMt = inFrame ? '' : compact ? 'mt-3' : 'mt-6';
+  const sectionRound = compact ? 'rounded-xl' : 'rounded-[22px]';
+  const sectionPad = compact ? 'px-2' : 'px-6';
+  const sectionLayout =
+    inFrame && !compact
+      ? 'flex flex-col flex-1 h-full min-h-[var(--dashboard-tasks-min-height,300px)] overflow-hidden'
+      : '';
+
   if (!viewerId) {
     return (
-      <section className="mt-6 surface rounded-[22px] px-6 py-10 text-center text-sm text-stone-400">
+      <section
+        className={`${sectionMt} surface ${sectionRound} ${sectionPad} py-8 md:py-10 text-center text-sm text-stone-400`}
+      >
         選擇成員後可在此檢視里程碑與今日任務
       </section>
     );
@@ -130,35 +143,54 @@ export default function DashboardProjectWidget({
 
   if (!projectsForList.length) {
     return (
-      <section className="mt-6 surface rounded-[22px] px-6 py-10 text-center text-sm text-stone-500">
-        此成員今日尚無被指派的任務或個人任務；若有專案甘特排程請至下方「工作時程」查看。
+      <section
+        className={`${sectionMt} surface ${sectionRound} ${sectionPad} py-8 md:py-10 text-center text-sm text-stone-500`}
+      >
+        {compact
+          ? '此成員今日尚無任務；可從上方進入專案或工作時程。'
+          : '此成員今日尚無被指派的任務或個人任務；若有專案甘特排程請至下方「工作時程」查看。'}
       </section>
     );
   }
 
+  const listScrollClass =
+    inFrame && !compact
+      ? `scroll-pane ${sectionPad} pb-3 md:pb-6 flex-1 min-h-0 divide-y divide-stone-200/75`
+      : `${sectionPad} pb-3 md:pb-6 ${compact ? 'space-y-2.5' : 'divide-y divide-stone-200/75'}`;
+
   return (
-    <section className="mt-6 surface rounded-[22px] overflow-visible">
-      <div className="px-6 pt-6 pb-2 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+    <section className={`${sectionMt} ${sectionLayout} surface ${sectionRound} overflow-hidden`}>
+      <div
+        className={`${sectionPad} pt-3 md:pt-6 pb-2 flex flex-wrap items-start justify-between gap-2 md:gap-3 shrink-0`}
+      >
+        <div className="min-w-0 flex-1">
           <h2
-            className="text-lg font-semibold tracking-tight text-slate-900"
-            style={{ fontFamily: "Georgia, 'Noto Serif TC', serif" }}
+            className={`font-semibold tracking-tight text-slate-900 ${
+              compact ? 'text-sm' : 'text-lg'
+            }`}
+            style={
+              compact
+                ? undefined
+                : { fontFamily: "Georgia, 'Noto Serif TC', serif" }
+            }
           >
-            Tasks overview
+            {compact ? '任務總覽' : 'Tasks overview'}
           </h2>
-          <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
-            依上方「檢視身分」僅顯示該成員今日被指派的任務與個人任務；里程碑請至「專案」或專案內「里程碑」
-          </p>
+          {!compact ? (
+            <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
+              依上方「檢視身分」僅顯示該成員今日被指派的任務與個人任務；里程碑請至「專案」或專案內「里程碑」
+            </p>
+          ) : null}
         </div>
         <Link
           href="/tasks"
-          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0 pt-1"
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0"
         >
           所有任務
         </Link>
       </div>
 
-      <div className="px-6 pb-6 divide-y divide-stone-200/75">
+      <div className={listScrollClass}>
         {projectsForList.map((p) => {
           const idLc = String(p.id).toLowerCase();
           const { pct, empty } = progressFor(p.id);
@@ -169,9 +201,110 @@ export default function DashboardProjectWidget({
           );
           const showActivityStrip = taskRows.length > 0 || personalForProject.length > 0;
           const st = String(p.status || '').toLowerCase();
+          const metaLine = `${st === 'wrapping' ? '收尾 · ' : ''}${fmtEndShort(p.end_date)} · ${statusZh(p.status)}`;
+
+          if (compact) {
+            return (
+              <article
+                key={p.id}
+                className="rounded-xl border border-slate-200/90 bg-white overflow-hidden shadow-sm"
+              >
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="block px-2.5 py-2 border-b border-slate-100 active:bg-slate-50/80"
+                >
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span
+                      className="w-1 h-10 rounded-full shrink-0"
+                      style={{ background: p.color || '#6366f1' }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <h3 className="font-semibold text-slate-900 truncate text-sm">
+                          {p.name}
+                        </h3>
+                        <span className="text-xs font-bold tabular-nums text-slate-600 shrink-0">
+                          {empty ? '—' : `${pct}%`}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">{metaLine}</p>
+                      <div className="mt-2 h-1 rounded-full bg-stone-200/90 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: empty ? '4%' : `${pct}%`,
+                            background: p.color || '#6366f1',
+                          }}
+                        />
+                      </div>
+                      {empty ? (
+                        <p className="mt-1 text-[10px] text-stone-400">
+                          尚未設定里程碑 ·{' '}
+                          <span className="text-indigo-600">至專案設定</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </Link>
+
+                {showActivityStrip ? (
+                  <ul className="px-2.5 py-2 space-y-2 border-b border-slate-100">
+                    {taskRows.map((row) => (
+                      <li key={row.key}>
+                        <Link href={row.href} className="block min-w-0 active:opacity-80">
+                          <p className="text-sm font-semibold text-slate-900 truncate">
+                            {row.title}
+                          </p>
+                          <p className="text-[11px] text-stone-500 mt-0.5">
+                            {row.remainingWord !== '—' && row.remainingAbs != null
+                              ? `${row.remainingWord} ${row.remainingAbs} 工作日 · `
+                              : ''}
+                            {row.badge}
+                          </p>
+                        </Link>
+                      </li>
+                    ))}
+                    {personalForProject.map((t) => (
+                      <li key={`pt-${t.id}`}>
+                        <Link href="/tasks" className="block min-w-0 active:opacity-80">
+                          <p
+                            className={`text-sm truncate ${
+                              t.urgent ? 'font-semibold text-slate-900' : 'font-medium text-stone-700'
+                            }`}
+                          >
+                            {t.title}
+                          </p>
+                          <p className="text-[11px] text-stone-500 mt-0.5">個人任務</p>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-2.5 py-2 text-[11px] text-stone-400 border-b border-slate-100">
+                    今日此專案無任務列
+                  </p>
+                )}
+
+                <div className="flex divide-x divide-slate-100">
+                  <Link
+                    href={`/projects/${p.id}`}
+                    className="flex-1 py-2.5 text-center text-xs font-semibold text-indigo-600 active:bg-indigo-50/50"
+                  >
+                    時程
+                  </Link>
+                  <Link
+                    href={`/projects/${p.id}#tasks`}
+                    className="flex-1 py-2.5 text-center text-xs font-semibold text-slate-600 active:bg-slate-50"
+                  >
+                    ＋ 任務
+                  </Link>
+                </div>
+              </article>
+            );
+          }
 
           return (
-            <div key={p.id} className="py-3 [contain:layout]">
+            <div key={p.id} className="py-3">
               <div className="w-full grid grid-cols-[1fr_auto_auto] gap-3 sm:gap-5 items-start text-left py-2 rounded-lg min-h-[52px] relative z-[1]">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -226,8 +359,7 @@ export default function DashboardProjectWidget({
                 </span>
 
                 <span className="text-[11px] text-stone-400 whitespace-nowrap shrink-0 hidden sm:block pt-1">
-                  {(st === 'wrapping' ? '收尾 · ' : '') + fmtEndShort(p.end_date)}
-                  <span className="ml-1.5 text-[10px] text-stone-400">· {statusZh(p.status)}</span>
+                  {metaLine}
                 </span>
               </div>
 

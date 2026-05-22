@@ -5,13 +5,16 @@ const { generateInvoicePDF } = require('../utils/invoice-generator');
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { status, project_id } = req.query;
+    const { status, project_id, client_id } = req.query;
     let q = `
-      SELECT i.*, p.name AS project_name, c.name AS client_name
+      SELECT i.*, p.name AS project_name,
+        COALESCE(cl_ct.name, cl_p.name) AS client_name,
+        COALESCE(ct.client_id, p.client_id) AS client_id
       FROM invoices i
       LEFT JOIN projects p ON p.id = i.project_id
       LEFT JOIN contracts ct ON ct.id = i.contract_id
-      LEFT JOIN clients c ON c.id = ct.client_id
+      LEFT JOIN clients cl_ct ON cl_ct.id = ct.client_id
+      LEFT JOIN clients cl_p ON cl_p.id = p.client_id
       WHERE 1=1
     `;
     const params = [];
@@ -22,6 +25,10 @@ router.get('/', async (req, res, next) => {
     if (project_id) {
       params.push(project_id);
       q += ` AND i.project_id = $${params.length}`;
+    }
+    if (client_id) {
+      params.push(client_id);
+      q += ` AND COALESCE(ct.client_id, p.client_id) = $${params.length}`;
     }
     q += ' ORDER BY i.issued_date DESC';
     const { rows } = await db.query(q, params);

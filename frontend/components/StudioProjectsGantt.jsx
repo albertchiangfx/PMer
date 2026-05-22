@@ -101,6 +101,7 @@ export default function StudioProjectsGantt({
   milestonesByProjectId = {},
   /** Dashboard 等情境可設為 false，暫停專案條平移／左右縮放 */
   enableProjectBarDrag = true,
+  embedded = false,
 }) {
   const containerRef = useRef(null);
   const hScrollRef = useRef(null);
@@ -499,7 +500,10 @@ export default function StudioProjectsGantt({
   const visT1 = Math.min(totalW, scrollLeft + Math.max(0, tw));
 
   return (
-    <div className="surface overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
+    <div
+      className={`surface overflow-hidden select-none relative ${embedded ? 'h-full min-h-0 flex flex-col' : ''}`}
+      style={{ fontFamily: 'inherit' }}
+    >
       {!timelineControlled && (
         <label className="absolute z-40 top-2 right-3 flex items-center gap-1.5 text-[10px] text-slate-500">
           <span className="sr-only">時間列顯示</span>
@@ -538,8 +542,8 @@ export default function StudioProjectsGantt({
       })()}
 
       <div
-        className="relative flex flex-col overflow-hidden"
-        style={{ maxHeight: 'calc(100vh - 280px)' }}
+        className={`relative flex flex-col overflow-hidden ${embedded ? 'flex-1 min-h-0' : ''}`}
+        style={embedded ? undefined : { maxHeight: 'calc(100vh - 280px)' }}
       >
         <div
           ref={containerRef}

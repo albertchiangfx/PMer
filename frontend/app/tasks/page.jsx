@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import BackToDashboard from '../../components/BackToDashboard';
+import {
+  pageFrameClass,
+  pageFrameHeaderClass,
+  pageFrameScrollClass,
+  surfacePadClass,
+  surfaceSectionClass,
+} from '../../lib/page-layout';
 import { api } from '../../lib/api';
 import { SCHEDULE_DATA_CHANGED_EVENT } from '../../lib/dashboard-sync';
 
@@ -82,12 +89,13 @@ export default function MyTasksPage() {
   );
 
   return (
-    <div className="p-8 animate-fade-in">
-      <BackToDashboard className="mb-4" />
+    <div className={pageFrameClass}>
+      <div className={pageFrameHeaderClass}>
+      <BackToDashboard className="mb-2 md:mb-4" />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-xl md:text-3xl font-semibold tracking-tight text-slate-900">
             所有任務
           </h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -95,8 +103,10 @@ export default function MyTasksPage() {
           </p>
         </div>
       </div>
+      </div>
 
-      <div className="mt-6 surface rounded-[22px] p-6">
+      <div className={`${pageFrameScrollClass} mt-0 md:mt-0`}>
+      <div className={`${surfaceSectionClass} ${surfacePadClass}`}>
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
@@ -134,6 +144,7 @@ export default function MyTasksPage() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

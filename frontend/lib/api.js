@@ -189,6 +189,19 @@ export const api = {
 
   // Clients
   getClients: () => request('/clients'),
+  getClient: async (id) => {
+    try {
+      return await request(`/clients/${encodeURIComponent(id)}`);
+    } catch (e) {
+      if (e?.status !== 404) throw e;
+      const list = await request('/clients');
+      const found = (Array.isArray(list) ? list : []).find(
+        (c) => String(c.id).toLowerCase() === String(id).toLowerCase()
+      );
+      if (found) return found;
+      throw e;
+    }
+  },
   createClient: (data) => request('/clients', { method: 'POST', body: data }),
   updateClient: (id, data) =>
     request(`/clients/${encodeURIComponent(id)}`, { method: 'PUT', body: data }),

@@ -95,6 +95,7 @@ export default function Gantt({
   scheduleBoundaryForAllocation,
   /** 可選：畫面外提示點的底色（例如 #hex）；未傳則用 localStorage 或預設。 */
   offscreenDotColor,
+  embedded = false,
 }) {
   const containerRef = useRef(null);
   const hScrollRef = useRef(null);
@@ -585,7 +586,10 @@ export default function Gantt({
   const visT1 = Math.min(totalW, scrollLeft + Math.max(0, tw));
 
   return (
-    <div className="surface overflow-hidden select-none relative" style={{ fontFamily: 'inherit' }}>
+    <div
+      className={`surface overflow-hidden select-none relative ${embedded ? 'h-full min-h-0 flex flex-col' : ''}`}
+      style={{ fontFamily: 'inherit' }}
+    >
       {!timelineControlled && (
         <label className="absolute z-40 top-2 right-3 flex items-center gap-1.5 text-[10px] text-slate-500">
           <span className="sr-only">時間列顯示</span>
@@ -624,8 +628,8 @@ export default function Gantt({
       })()}
 
       <div
-        className="relative flex flex-col overflow-hidden"
-        style={{ maxHeight: 'calc(100vh - 240px)' }}
+        className={`relative flex flex-col overflow-hidden ${embedded ? 'flex-1 min-h-0' : ''}`}
+        style={embedded ? undefined : { maxHeight: 'calc(100vh - 240px)' }}
       >
         <div
           ref={containerRef}

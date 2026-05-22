@@ -13,6 +13,9 @@ import { api } from '../lib/api';
 import SchedulePanel from '../components/SchedulePanel';
 import DashboardProjectWidget from '../components/DashboardProjectWidget';
 import { SCHEDULE_DATA_CHANGED_EVENT } from '../lib/dashboard-sync';
+import { useIsMobileLayout } from '../lib/use-mobile-layout';
+import StudioVerticalSchedule from '../components/StudioVerticalSchedule';
+import { pageFrameClass, pageFrameHeaderClass } from '../lib/page-layout';
 
 /** 本地曆「今天」YYYY-MM-DD（避免 toISOString() 用 UTC 與台灣等地差一天） */
 function localCalendarYmd() {
@@ -106,6 +109,7 @@ function memberIdEquals(a, b) {
 }
 
 export default function Dashboard() {
+  const isMobileLayout = useIsMobileLayout();
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -436,47 +440,87 @@ export default function Dashboard() {
     return list;
   }, [viewerId, todayTaskRows, personalTasks, projects]);
 
+  const todayTaskCount = todayTaskRows.filter((r) => r.kind === 'task').length;
+  const projectCount = viewerProjectSummaries.length;
+
   if (loading) return <LoadingScreen />;
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-            Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">{nowLabel}</p>
+    <div className={pageFrameClass}>
+      <div className={pageFrameHeaderClass}>
+        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-3xl font-semibold tracking-tight text-slate-900">
+              {isMobileLayout ? '今日' : 'Dashboard'}
+            </h1>
+            <p className="mt-0.5 md:mt-1 text-xs md:text-sm text-slate-500">{nowLabel}</p>
+          </div>
+          {members.length > 0 && (
+            <label className="flex flex-col gap-1 text-xs text-slate-500 w-full md:w-auto md:shrink-0">
+              <span className="font-medium text-slate-600">檢視身分</span>
+              <select
+                value={viewerId ? String(viewerId) : ''}
+                onChange={(e) => setViewerId(String(e.target.value))}
+                className="rounded-xl md:rounded-lg border border-slate-200 bg-white px-3 py-2.5 md:py-2 text-sm text-slate-800 shadow-sm w-full md:min-w-[180px]"
+              >
+                {members.map((m) => (
+                  <option key={m.id} value={String(m.id)}>
+                    {m.name}
+                    {m.role ? ` · ${m.role}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
-        {members.length > 0 && (
-          <label className="flex flex-col gap-1 text-xs text-slate-500 shrink-0">
-            <span className="font-medium text-slate-600">檢視身分</span>
-            <select
-              value={viewerId ? String(viewerId) : ''}
-              onChange={(e) => setViewerId(String(e.target.value))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm min-w-[180px]"
-            >
-              {members.map((m) => (
-                <option key={m.id} value={String(m.id)}>
-                  {m.name}
-                  {m.role ? ` · ${m.role}` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+
+        {isMobileLayout && viewerId ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-900 tabular-nums">
+              今日任務 {todayTaskCount}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
+              相關專案 {projectCount}
+            </span>
+          </div>
+        ) : null}
       </div>
 
-      <DashboardProjectWidget
-        key={viewerId || 'none'}
-        viewerId={viewerId}
-        projects={viewerProjectSummaries}
-        todayAssignments={todayTaskRows.filter((r) => r.kind === 'task')}
-        personalTasks={personalTasks}
-      />
-
-      <section className="mt-6 surface rounded-[22px] px-6 pt-6 pb-6">
-        <SchedulePanel title="工作時程" />
-      </section>
+      {isMobileLayout ? (
+        <>
+          <DashboardProjectWidget
+            key={viewerId || 'none'}
+            viewerId={viewerId}
+            projects={viewerProjectSummaries}
+            todayAssignments={todayTaskRows.filter((r) => r.kind === 'task')}
+            personalTasks={personalTasks}
+            compact
+          />
+          <StudioVerticalSchedule
+            projects={projects}
+            allocations={allocations}
+            members={members}
+          />
+        </>
+      ) : (
+        <>
+          <div className="dashboard-tasks-region pt-3 min-h-0">
+            <DashboardProjectWidget
+              key={viewerId || 'none'}
+              viewerId={viewerId}
+              projects={viewerProjectSummaries}
+              todayAssignments={todayTaskRows.filter((r) => r.kind === 'task')}
+              personalTasks={personalTasks}
+              inFrame
+            />
+          </div>
+          <div className="dashboard-schedule-region pt-3">
+            <section className="surface rounded-[22px] px-4 md:px-6 pt-4 pb-4 flex flex-col h-full min-h-0 overflow-hidden">
+              <SchedulePanel title="工作時程" embedded />
+            </section>
+          </div>
+        </>
+      )}
     </div>
   );
 }

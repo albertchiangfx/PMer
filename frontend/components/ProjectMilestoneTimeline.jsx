@@ -284,6 +284,8 @@ export default function ProjectMilestoneTimeline({
   rangeWeeks = 12,
   pastWeeks = 4,
   onProjectDatesSaved,
+  /** 手機預覽：僅顯示、不可拖曳／改期／新增節點 */
+  readOnly = false,
 }) {
   const { data: milestones = [], mutate } = useSWR(
     projectId ? ['project-milestones', projectId] : null,
@@ -676,7 +678,7 @@ export default function ProjectMilestoneTimeline({
 
   const onSegMouseDown = useCallback(
     (e, index, mode) => {
-      if (!canonical.length) return;
+      if (readOnly || !canonical.length) return;
       e.preventDefault();
       e.stopPropagation();
       miniMoveRef.current = false;
@@ -706,12 +708,12 @@ export default function ProjectMilestoneTimeline({
       };
       setDragActive(true);
     },
-    [canonical.length, initDraftFromCanonical, displayDays, rangeStart]
+    [readOnly, canonical.length, initDraftFromCanonical, displayDays, rangeStart]
   );
 
   const onProjectBarMouseDown = useCallback(
     (e, mode = 'move') => {
-      if (!pStart || !pEnd) return;
+      if (readOnly || !pStart || !pEnd) return;
       e.preventDefault();
       e.stopPropagation();
       miniMoveRef.current = false;
@@ -742,11 +744,12 @@ export default function ProjectMilestoneTimeline({
       };
       setDragActive(true);
     },
-    [pStart, pEnd, initDraftFromCanonical, displayDays, rangeStart]
+    [readOnly, pStart, pEnd, initDraftFromCanonical, displayDays, rangeStart]
   );
 
   const toggleMilestoneCompleted = useCallback(
     async (milestoneId) => {
+      if (readOnly) return;
       const row = milestonesRef.current.find((m) => m.id === milestoneId);
       if (!row) return;
       try {
@@ -761,6 +764,7 @@ export default function ProjectMilestoneTimeline({
   );
 
   const openNodeCreateModal = useCallback((milestoneId, dateYmd) => {
+    if (readOnly) return;
     setActiveSegId(milestoneId);
     setNodeCreateModal({ milestoneId, dateYmd, kind: 'delivery', label: '' });
   }, []);
@@ -1240,6 +1244,11 @@ export default function ProjectMilestoneTimeline({
 
   return (
     <div className="surface overflow-hidden rounded-[18px] border border-white/60">
+      {readOnly ? (
+        <div className="px-4 py-2.5 border-b border-amber-100 bg-amber-50/90 text-[12px] text-amber-950">
+          僅供預覽，無法拖曳或編輯。請使用電腦版調整時程。
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-end gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <div
@@ -1420,8 +1429,9 @@ export default function ProjectMilestoneTimeline({
                   <button
                     key={`lbl-${seg.id}`}
                     type="button"
+                    disabled={readOnly}
                     onClick={() => void toggleMilestoneCompleted(seg.id)}
-                    className={`${rowLabelCls} cursor-pointer hover:bg-slate-100 ${
+                    className={`${rowLabelCls} ${readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-slate-100'} ${
                       seg.completed ? 'text-emerald-800 bg-emerald-50/80' : ''
                     } ${activeSegId === seg.id ? 'ring-1 ring-inset ring-indigo-400' : ''}`}
                     style={{ height: ROW_MS_ROW_H }}
@@ -1606,16 +1616,22 @@ export default function ProjectMilestoneTimeline({
                       <button
                         key={`proj-cell-${i}`}
                         type="button"
+                        disabled={readOnly}
                         title={
                           holTitle
                             ? `${ymdCell} ${holTitle}`
-                            : `${ymdCell} 新增節點（歸於目前選取的項目）`
+                            : readOnly
+                              ? ymdCell
+                              : `${ymdCell} 新增節點（歸於目前選取的項目）`
                         }
-                        className="shrink-0 border-r border-slate-200/50 hover:bg-white/20 bg-transparent"
+                        className={`shrink-0 border-r border-slate-200/50 bg-transparent ${
+                          readOnly ? '' : 'hover:bg-white/20'
+                        }`}
                         style={{ width: dayW, minWidth: dayW, height: '100%' }}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (readOnly) return;
                           const sid = activeSegId || displaySegs[0]?.id;
                           if (!sid) {
                             alert('請先點選項目列或上方標籤');
@@ -1628,7 +1644,7 @@ export default function ProjectMilestoneTimeline({
                   })}
                 </div>
                 <div
-                  className="absolute shadow-sm group overflow-hidden flex items-center justify-center z-[10]"
+                  className={`absolute shadow-sm group overflow-hidden flex items-center justify-center z-[10] ${readOnly ? 'pointer-events-none' : ''}`}
                   style={{
                     left: projBarLeft,
                     width: projBarW,
@@ -1637,7 +1653,11 @@ export default function ProjectMilestoneTimeline({
                     borderRadius: projBarRadius,
                     background: `linear-gradient(90deg, ${projectColor}, ${projectColor}dd)`,
                   }}
-                  title="專案整體區間（拖曳平移；左右緣調整起訖，項目連動）"
+                  title={
+                    readOnly
+                      ? '專案整體區間'
+                      : '專案整體區間（拖曳平移；左右緣調整起訖，項目連動）'
+                  }
                 >
                   <span className="pointer-events-none text-[10px] font-bold text-white truncate px-2 max-w-full">
                     {project?.name || '專案'}
@@ -1734,7 +1754,9 @@ export default function ProjectMilestoneTimeline({
                         onSegMouseDown(e, rowIdx, 'move');
                       }}
                     />
-                    <div className="absolute inset-0 flex z-[50]">
+                    <div
+                      className={`absolute inset-0 flex z-[50] ${readOnly ? 'pointer-events-none' : ''}`}
+                    >
                       {layoutDays.map((d, i) => {
                         const ymdCell = fmtYmd(d);
                         const wknd = isWeekend(d);
@@ -1866,13 +1888,14 @@ export default function ProjectMilestoneTimeline({
               <li key={`${n.segId}-${n.date}-${n.label}`}>
                 <button
                   type="button"
+                  disabled={readOnly}
                   className={`text-[10px] px-2 py-0.5 rounded-md border ${
                     activeSegId === n.segId
                       ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
-                      : 'border-indigo-200 bg-white text-slate-700 hover:bg-indigo-50'
-                  }`}
-                  title={`${n.milestoneLabel} — 點選後在專案／項目列新增節點`}
-                  onClick={() => setActiveSegId(n.segId)}
+                      : 'border-indigo-200 bg-white text-slate-700'
+                  } ${readOnly ? '' : 'hover:bg-indigo-50'}`}
+                  title={readOnly ? `${n.milestoneLabel}` : `${n.milestoneLabel} — 點選後在專案／項目列新增節點`}
+                  onClick={() => !readOnly && setActiveSegId(n.segId)}
                 >
                   <span
                     className="inline-block w-1.5 h-1.5 rounded-sm mr-0.5 align-middle"

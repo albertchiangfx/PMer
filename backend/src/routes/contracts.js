@@ -15,7 +15,7 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { status, project_id } = req.query;
+    const { status, project_id, client_id } = req.query;
     let q = `
       SELECT c.*, p.name AS project_name, cl.name AS client_name
       FROM contracts c
@@ -31,6 +31,10 @@ router.get('/', async (req, res, next) => {
     if (project_id) {
       params.push(project_id);
       q += ` AND c.project_id = $${params.length}`;
+    }
+    if (client_id) {
+      params.push(client_id);
+      q += ` AND c.client_id = $${params.length}`;
     }
     q += ' ORDER BY c.created_at DESC';
     const { rows } = await db.query(q, params);

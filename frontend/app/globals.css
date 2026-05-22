@@ -119,7 +119,51 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
+/* 桌面 shell 固定高度（Dashboard 任務區至少可見約 3 筆） */
+:root {
+  --app-shell-height: min(840px, calc(100dvh - 7rem));
+  --dashboard-tasks-min-height: 300px;
+  --dashboard-schedule-height: 360px;
+}
+
+/* 內層捲動：減少卡頓（避免在捲動子層使用 backdrop-filter） */
+.scroll-pane {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+@media (min-width: 640px) {
+  .app-shell-row {
+    height: var(--app-shell-height);
+    min-height: var(--app-shell-height);
+    max-height: var(--app-shell-height);
+  }
+
+  .dashboard-tasks-region {
+    flex: 1 1 0;
+    min-height: var(--dashboard-tasks-min-height);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dashboard-schedule-region {
+    flex: 0 0 var(--dashboard-schedule-height);
+    height: var(--dashboard-schedule-height);
+    min-height: var(--dashboard-schedule-height);
+    max-height: var(--dashboard-schedule-height);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
 /* New glass tokens (layered look) */
+
 .shell {
   background: rgba(255, 255, 255, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.55);

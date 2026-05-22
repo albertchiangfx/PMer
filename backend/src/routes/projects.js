@@ -12,7 +12,7 @@ function dateOrNull(v) {
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const { status } = req.query;
+    const { status, client_id } = req.query;
     let q = `
       SELECT p.*, c.name AS client_name,
         COUNT(DISTINCT t.id) AS task_count,
@@ -23,10 +23,16 @@ router.get('/', async (req, res, next) => {
       LEFT JOIN allocations na ON na.project_id = p.id
     `;
     const params = [];
+    const where = [];
     if (status) {
-      q += ' WHERE p.status = $1';
       params.push(status);
+      where.push(`p.status = $${params.length}`);
     }
+    if (client_id) {
+      params.push(client_id);
+      where.push(`p.client_id = $${params.length}`);
+    }
+    if (where.length) q += ` WHERE ${where.join(' AND ')}`;
     q += ' GROUP BY p.id, c.name ORDER BY p.created_at DESC';
     const { rows } = await db.query(q, params);
     res.json(rows);

@@ -3,6 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { fmt, fmtCurrency, statusStyle } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
+import {
+  pageFrameClass,
+  pageFrameHeaderClass,
+  pageFrameScrollClass,
+} from '../../lib/page-layout';
 
 const STATUS_OPTS = ['draft', 'sent', 'signed', 'expired', 'cancelled'];
 
@@ -70,9 +75,10 @@ export default function ContractsPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-fade-in">
-      <BackToDashboard className="mb-4" />
-      <div className="flex items-center justify-between mb-8">
+    <div className={pageFrameClass}>
+      <div className={pageFrameHeaderClass}>
+      <BackToDashboard className="mb-2 md:mb-4" />
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">合約管理</h1>
           <p className="text-gray-400 mt-1 text-sm">{contracts.length} 份合約</p>
@@ -104,7 +110,7 @@ export default function ContractsPage() {
         </div>
       </div>
 
-      <div className="mb-5">
+      <div>
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -112,7 +118,9 @@ export default function ContractsPage() {
           className="w-full max-w-sm bg-white border border-gray-200 rounded-apple px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-apple-sm"
         />
       </div>
+      </div>
 
+      <div className={pageFrameScrollClass}>
       {loading ? (
         <Spinner />
       ) : (
@@ -202,6 +210,7 @@ export default function ContractsPage() {
           )}
         </div>
       )}
+      </div>
 
       {modal && (
         <div

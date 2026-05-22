@@ -3,6 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { fmt, fmtCurrency, statusStyle } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
+import {
+  pageFrameClass,
+  pageFrameHeaderClass,
+  pageFrameScrollClass,
+} from '../../lib/page-layout';
 
 const STATUS_OPTS = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
 
@@ -107,9 +112,10 @@ export default function InvoicesPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-fade-in">
-      <BackToDashboard className="mb-4" />
-      <div className="flex items-center justify-between mb-8">
+    <div className={pageFrameClass}>
+      <div className={pageFrameHeaderClass}>
+      <BackToDashboard className="mb-2 md:mb-4" />
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">發票管理</h1>
           <p className="text-gray-400 mt-1 text-sm">{invoices.length} 份發票</p>
@@ -149,7 +155,9 @@ export default function InvoicesPage() {
           <p className="text-2xl font-bold text-orange-500 mt-1">{fmtCurrency(summary.pending)}</p>
         </div>
       </div>
+      </div>
 
+      <div className={pageFrameScrollClass}>
       {loading ? (
         <Spinner />
       ) : (
@@ -236,8 +244,8 @@ export default function InvoicesPage() {
           )}
         </div>
       )}
+      </div>
 
-      {/* Invoice Modal */}
       {modal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"

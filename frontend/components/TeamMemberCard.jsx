@@ -17,7 +17,7 @@ export default function TeamMemberCard({ member, onEdit }) {
           onEdit?.(member);
         }
       }}
-      className="surface rounded-[22px] p-5 surface-hover transition group cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+      className="surface rounded-xl md:rounded-[22px] p-3 md:p-5 surface-hover transition group cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
     >
       <div className="flex items-start gap-4">
         <div

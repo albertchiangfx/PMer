@@ -13,7 +13,7 @@ import {
 } from '../lib/dashboard-sync';
 import { validateIntervalWithinProject } from '../lib/projectScheduleBounds';
 
-export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程' }) {
+export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程', embedded = false }) {
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -200,17 +200,19 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
     return count;
   })();
 
+  const headerMb = embedded ? 'mb-3' : 'mb-6';
+  const tabsMb = embedded ? 'mb-2' : 'mb-4';
+
   return (
-    <div>
-      {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6">
+    <div className={embedded ? 'flex flex-col flex-1 min-h-0 h-full' : ''}>
+      <div className={`shrink-0 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between ${headerMb}`}>
         <div>
           <h2 className="text-lg font-semibold text-slate-900 text-left">{title}</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-start lg:justify-end" />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className={`shrink-0 flex flex-wrap items-center justify-between gap-3 ${tabsMb}`}>
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -276,36 +278,40 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : scheduleTab === 'studio' ? (
-        <StudioProjectsGantt
-          projects={projects}
-          allocations={allocations}
-          milestonesByProjectId={milestonesByProject}
-          onUpdate={refresh}
-          rangeWeeks={rangeWeeks}
-          timelineMode={ganttTimelineMode}
-          onTimelineModeChange={setGanttTimelineMode}
-          offscreenDotColor={offscreenDotHex}
-          enableProjectBarDrag={false}
-        />
-      ) : (
-        <Gantt
-          members={members}
-          allocations={allocations}
-          onUpdate={refresh}
-          rangeWeeks={rangeWeeks}
-          showRowDelete
-          emptyHint="尚無分配列。請按「新增分配」選擇專案與成員，即可新增一列。"
-          timelineMode={ganttTimelineMode}
-          onTimelineModeChange={setGanttTimelineMode}
-          offscreenDotColor={offscreenDotHex}
-          scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
-        />
-      )}
+      <div className={embedded ? 'scroll-pane flex-1 min-h-0' : ''}>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : scheduleTab === 'studio' ? (
+          <StudioProjectsGantt
+            projects={projects}
+            allocations={allocations}
+            milestonesByProjectId={milestonesByProject}
+            onUpdate={refresh}
+            rangeWeeks={rangeWeeks}
+            timelineMode={ganttTimelineMode}
+            onTimelineModeChange={setGanttTimelineMode}
+            offscreenDotColor={offscreenDotHex}
+            enableProjectBarDrag={false}
+            embedded={embedded}
+          />
+        ) : (
+          <Gantt
+            members={members}
+            allocations={allocations}
+            onUpdate={refresh}
+            rangeWeeks={rangeWeeks}
+            showRowDelete
+            emptyHint="尚無分配列。請按「新增分配」選擇專案與成員，即可新增一列。"
+            timelineMode={ganttTimelineMode}
+            onTimelineModeChange={setGanttTimelineMode}
+            offscreenDotColor={offscreenDotHex}
+            scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
+            embedded={embedded}
+          />
+        )}
+      </div>
 
       {allocModalOpen && (
         <Modal title="新增時間分配（全域時程）" onClose={() => setAllocModalOpen(false)}>
