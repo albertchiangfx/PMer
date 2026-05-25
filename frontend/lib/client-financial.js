@@ -1,16 +1,15 @@
 /** 合約／收款紀錄列（客戶詳情用） */
 
-const OPEN_CONTRACT = new Set(['draft', 'sent']);
-const OPEN_INVOICE = new Set(['draft', 'sent', 'overdue']);
+import {
+  normalizeContractStatus,
+  normalizeInvoiceStatus,
+  contractNeedsAttention,
+  invoiceNeedsAttention,
+} from './financial-status';
+
 const ACTIVE_PROJECT = new Set(['planning', 'active', 'wrapping']);
 
-export function contractNeedsAttention(status) {
-  return status !== 'signed' && status !== 'cancelled';
-}
-
-export function invoiceNeedsAttention(status) {
-  return OPEN_INVOICE.has(String(status || '').toLowerCase());
-}
+export { contractNeedsAttention, invoiceNeedsAttention };
 
 /**
  * @param {object[]} projects
@@ -59,17 +58,16 @@ export function buildClientFinancialRows(projects, contracts, invoices) {
   for (const p of projects || []) {
     if (!ACTIVE_PROJECT.has(String(p.status || '').toLowerCase())) continue;
     const list = contractByProject.get(p.id) || [];
-    const hasSigned = list.some((c) => c.status === 'signed');
-    if (list.length === 0 || !hasSigned) {
+    if (list.length === 0) {
       rows.push({
         kind: 'missing_contract',
         id: `missing-${p.id}`,
         project_id: p.id,
         project_name: p.name,
-        label: list.length === 0 ? '尚無合約' : '合約未簽署',
+        label: '尚無合約',
         amount: null,
         currency: null,
-        status: list[0]?.status || '—',
+        status: '—',
         date: p.start_date || p.created_at,
         pending: true,
       });
@@ -91,7 +89,9 @@ export function projectFinancialWarnings(projectId, projects, contracts, invoice
   const paymentWarn = invoiceRows.some((inv) => invoiceNeedsAttention(inv.status));
 
   if (p && ACTIVE_PROJECT.has(String(p.status || '').toLowerCase())) {
-    const hasSigned = contractRows.some((c) => c.status === 'signed');
+    const hasSigned = contractRows.some(
+      (c) => normalizeContractStatus(c.status) === 'signed'
+    );
     if (contractRows.length === 0 || !hasSigned) contractWarn = true;
     else if (contractRows.some((c) => contractNeedsAttention(c.status))) contractWarn = true;
   }
@@ -107,7 +107,9 @@ export function summarizeClientAlerts(projects, contracts, invoices) {
   const rows = buildClientFinancialRows(projects, contracts, invoices);
   const pending = rows.filter((r) => r.pending);
   const unsigned = pending.filter(
-    (r) => r.kind === 'missing_contract' || (r.kind === 'contract' && contractNeedsAttention(r.status))
+    (r) =>
+      r.kind === 'missing_contract' ||
+      (r.kind === 'contract' && contractNeedsAttention(r.status))
   );
   const unpaid = pending.filter((r) => r.kind === 'invoice');
   return { pendingCount: pending.length, unsignedCount: unsigned.length, unpaidCount: unpaid.length };

@@ -167,6 +167,9 @@ export const api = {
   createContract: (data) => request('/contracts', { method: 'POST', body: data }),
   updateContract: (id, data) => request(`/contracts/${id}`, { method: 'PUT', body: data }),
   deleteContract: (id) => request(`/contracts/${id}`, { method: 'DELETE' }),
+  getContractGeneratorOptions: () => request('/contracts/generator/options'),
+  previewContractHtmlUrl: (id) => `${getApiBase()}/contracts/${id}/preview-html`,
+  generateContractPdfUrl: (id) => `${getApiBase()}/contracts/${id}/generate-pdf`,
 
   // Invoices
   getInvoices: (params) => request('/invoices' + toQS(params)),

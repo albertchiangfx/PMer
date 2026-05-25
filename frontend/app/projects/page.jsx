@@ -430,7 +430,7 @@ function ProjectRow({
         </div>
       </div>
 
-      <div className="w-full pt-2.5 md:pt-3 border-t border-gray-100">
+      <div className="hidden md:block w-full pt-3 border-t border-gray-100">
         <div className="relative h-6 w-full flex items-center">
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 rounded-full bg-gray-200 overflow-hidden">
             <div

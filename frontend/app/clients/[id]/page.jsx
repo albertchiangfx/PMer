@@ -4,10 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '../../../lib/api';
-import { buildClientFinancialRows, projectFinancialWarnings } from '../../../lib/client-financial';
+import { buildClientFinancialRows } from '../../../lib/client-financial';
 import { filterAndSortProjects } from '../../../lib/project-list-sort';
 import { fmt, fmtCurrency, statusStyle } from '../../../lib/utils';
+import {
+  contractStatusLabel,
+  invoiceStatusLabel,
+  normalizeContractStatus,
+  normalizeInvoiceStatus,
+} from '../../../lib/financial-status';
 import BackToDashboard from '../../../components/BackToDashboard';
+import ContractFormModal from '../../../components/ContractFormModal';
+import InvoiceFormModal from '../../../components/InvoiceFormModal';
+import ContractGeneratorModal from '../../../components/ContractGeneratorModal';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
@@ -39,31 +48,150 @@ function defaultClientForm(c) {
   };
 }
 
-function ProjectWarnIcon({ contractWarn, paymentWarn, size = 16 }) {
-  const tips = [];
-  if (contractWarn) tips.push('合約未簽署或尚無合約');
-  if (paymentWarn) tips.push('款項未收齊');
-  if (!tips.length) return null;
-  return (
-    <span
-      className="inline-flex shrink-0 text-amber-600"
-      title={tips.join('；')}
-      aria-label={tips.join('；')}
-    >
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-        <path d="M12 2L1 21h22L12 2zm0 4.2 6.9 12H5.1L12 6.2zM11 10h2v5h-2v-5zm0 6h2v2h-2v-2z" />
+function toIsoDay(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.slice(0, 10);
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+function addDaysToDateLike(value, days) {
+  const iso = toIsoDay(value);
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 計算單一專案的合約 / 發票狀態，每個值為 'ok' | 'pending' | 'overdue'。 */
+function projectFinancialStates(projectId, projects, contracts, invoices) {
+  const pid = String(projectId);
+  const p = (projects || []).find((x) => String(x.id) === pid);
+  const today = new Date().toISOString().slice(0, 10);
+  const projectEnd = toIsoDay(p?.end_date);
+
+  const contractRows = (contracts || []).filter((c) => String(c.project_id) === pid);
+  const liveContracts = contractRows.filter(
+    (c) => normalizeContractStatus(c.status) !== 'cancelled'
+  );
+  let contract = 'pending';
+  if (liveContracts.some((c) => normalizeContractStatus(c.status) === 'signed')) {
+    contract = 'ok';
+  } else if (projectEnd && projectEnd < today) {
+    contract = 'overdue';
+  }
+
+  const invoiceRows = (invoices || []).filter((i) => String(i.project_id) === pid);
+  const liveInvoices = invoiceRows.filter(
+    (i) => normalizeInvoiceStatus(i.status) !== 'cancelled'
+  );
+  let invoice;
+  if (liveInvoices.length === 0) {
+    invoice = projectEnd && projectEnd < today ? 'overdue' : 'pending';
+  } else if (liveInvoices.every((i) => normalizeInvoiceStatus(i.status) === 'paid')) {
+    invoice = 'ok';
+  } else {
+    const anyDueOverdue = liveInvoices.some((i) => {
+      if (normalizeInvoiceStatus(i.status) === 'paid') return false;
+      const due = toIsoDay(i.due_date);
+      return due && due < today;
+    });
+    if (anyDueOverdue) invoice = 'overdue';
+    else if (projectEnd && projectEnd < today) invoice = 'overdue';
+    else invoice = 'pending';
+  }
+
+  return { contract, invoice };
+}
+
+const ROW_TONE_ICON = {
+  ok: 'text-emerald-600',
+  pending: 'text-amber-600',
+  overdue: 'text-rose-600',
+};
+
+const ROW_STATE_LABEL = {
+  contract: { ok: '合約：已回簽', pending: '合約：待簽署', overdue: '合約：已逾期' },
+  invoice: { ok: '發票：已收齊', pending: '發票：待處理', overdue: '發票：已逾期' },
+};
+
+function RowStatusIcon({ kind, state, size = 16 }) {
+  const color = ROW_TONE_ICON[state] || ROW_TONE_ICON.pending;
+  const title = ROW_STATE_LABEL[kind][state];
+  if (state === 'ok') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        className={`shrink-0 ${color}`}
+        aria-label={title}
+      >
+        <title>{title}</title>
+        <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.18" />
+        <path
+          d="M5.5 10.5 8.5 13.5 14.5 7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
-    </span>
+    );
+  }
+  if (kind === 'invoice') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        className={`shrink-0 ${color}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-label={title}
+      >
+        <title>{title}</title>
+        <path d="M4 3h12v14l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L4 17z" />
+        <line x1="10" y1="6.5" x2="10" y2="10.5" />
+        <circle cx="10" cy="13" r="0.7" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      className={`shrink-0 ${color}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-label={title}
+    >
+      <title>{title}</title>
+      <path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z" />
+      <path d="M12 2.5v3h3" />
+      <line x1="10" y1="9" x2="10" y2="12.5" />
+      <circle cx="10" cy="14.5" r="0.7" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 
-/** 固定寬度欄，讓各列警告圖垂直對齊 */
-function ProjectWarnSlot({ warn }) {
+/** 固定寬度欄，永遠顯示「合約 / 發票」兩個狀態圖示。 */
+function ProjectStatusPair({ states }) {
   return (
-    <div className="w-5 shrink-0 flex items-center justify-center" aria-hidden={!warn?.hasWarning}>
-      {warn?.hasWarning ? (
-        <ProjectWarnIcon contractWarn={warn.contractWarn} paymentWarn={warn.paymentWarn} />
-      ) : null}
+    <div className="flex items-center justify-center gap-0.5 shrink-0">
+      <RowStatusIcon kind="contract" state={states.contract} />
+      <RowStatusIcon kind="invoice" state={states.invoice} />
     </div>
   );
 }
@@ -75,16 +203,115 @@ function projectScheduleBudgetLines(p) {
   return { start, end, budget };
 }
 
-function finStatusZh(kind, status) {
-  if (kind === 'missing_contract') return '待簽約';
-  if (kind === 'contract') {
-    if (status === 'signed') return '已簽署';
-    if (status === 'draft') return '草稿';
-    if (status === 'sent') return '已送出';
-    return status || '—';
+function finStatusInfo(kind, status) {
+  if (kind === 'missing_contract') {
+    return { label: '待簽約', tone: 'pending', iconKind: 'contract' };
   }
-  const map = { draft: '草稿', sent: '已寄出', paid: '已收款', overdue: '逾期', cancelled: '取消' };
-  return map[status] || status || '—';
+  if (kind === 'contract') {
+    const v = normalizeContractStatus(status);
+    const tone = v === 'signed' ? 'done' : v === 'cancelled' ? 'muted' : 'pending';
+    return { label: contractStatusLabel(status), tone, iconKind: 'contract' };
+  }
+  const v = normalizeInvoiceStatus(status);
+  const tone = v === 'paid' ? 'done' : v === 'cancelled' ? 'muted' : 'pending';
+  return { label: invoiceStatusLabel(status), tone, iconKind: 'invoice' };
+}
+
+const TONE_TEXT = {
+  pending: 'text-amber-700',
+  done: 'text-emerald-600',
+  muted: 'text-slate-400',
+};
+
+const TONE_ICON = {
+  pending: 'text-amber-600',
+  done: 'text-emerald-600',
+  muted: 'text-slate-400',
+};
+
+function StatusIcon({ iconKind, tone, size = 16 }) {
+  const color = TONE_ICON[tone] || TONE_ICON.pending;
+  if (tone === 'done') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        className={`shrink-0 ${color}`}
+        aria-hidden
+      >
+        <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.15" />
+        <path
+          d="M5.5 10.5 8.5 13.5 14.5 7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (tone === 'muted') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        className={`shrink-0 ${color}`}
+        aria-hidden
+      >
+        <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.12" />
+        <path
+          d="M7 7l6 6M13 7l-6 6"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+  if (iconKind === 'invoice') {
+    // 收款待處理：發票形（凹底）+ 警示驚嘆
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        className={`shrink-0 ${color}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M4 3h12v14l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L4 17z" />
+        <line x1="10" y1="6.5" x2="10" y2="10.5" />
+        <circle cx="10" cy="13" r="0.7" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  // 合約待處理：文件形（折角）+ 警示驚嘆
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      className={`shrink-0 ${color}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z" />
+      <path d="M12 2.5v3h3" />
+      <line x1="10" y1="9" x2="10" y2="12.5" />
+      <circle cx="10" cy="14.5" r="0.7" fill="currentColor" stroke="none" />
+    </svg>
+  );
 }
 
 export default function ClientDetailPage() {
@@ -99,10 +326,13 @@ export default function ClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [projectFilter, setProjectFilter] = useState('all');
-  const [finFilter, setFinFilter] = useState('pending');
+  const [finFilter, setFinFilter] = useState('all');
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [projectModal, setProjectModal] = useState(false);
   const [projectName, setProjectName] = useState('');
+  const [contractModal, setContractModal] = useState(null); // null | 'create' | { contract }
+  const [invoiceModal, setInvoiceModal] = useState(null);
+  const [generatorContract, setGeneratorContract] = useState(null);
 
   const load = useCallback(async () => {
     const [c, p, ct, inv] = await Promise.all([
@@ -420,14 +650,14 @@ export default function ClientDetailPage() {
               {filteredProjects.map((p) => {
                 const st = statusStyle(p.status);
                 const selected = p.id === selectedProjectId;
-                const warn = projectFinancialWarnings(p.id, projects, contracts, invoices);
+                const states = projectFinancialStates(p.id, projects, contracts, invoices);
                 return (
                   <li key={p.id}>
                     <button
                       type="button"
                       onClick={() => setSelectedProjectId(p.id)}
                       onDoubleClick={() => router.push(`/projects/${p.id}`)}
-                      className={`w-full text-left grid grid-cols-[minmax(0,1fr)_1.25rem_5.25rem] gap-x-2 items-center py-2 px-2 rounded-lg transition-colors ${
+                      className={`w-full text-left grid grid-cols-[minmax(0,1fr)_2.5rem_5.25rem] gap-x-2 items-center py-2 px-2 rounded-lg transition-colors ${
                         selected
                           ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-200/80'
                           : 'hover:bg-slate-50/80'
@@ -436,7 +666,7 @@ export default function ClientDetailPage() {
                       <span className="font-semibold text-slate-900 truncate min-w-0">
                         {p.name}
                       </span>
-                      <ProjectWarnSlot warn={warn} />
+                      <ProjectStatusPair states={states} />
                       <span
                         className={`justify-self-end text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${st.bg} ${st.text}`}
                       >
@@ -460,7 +690,7 @@ export default function ClientDetailPage() {
             {selectedProject ? (
               (() => {
                 const meta = projectScheduleBudgetLines(selectedProject);
-                const w = projectFinancialWarnings(
+                const states = projectFinancialStates(
                   selectedProject.id,
                   projects,
                   contracts,
@@ -471,7 +701,7 @@ export default function ClientDetailPage() {
                   <div className="mt-1.5 min-w-0">
                     <p className="text-sm font-semibold text-indigo-800 flex items-center gap-2 flex-wrap">
                       <span className="truncate">{selectedProject.name}</span>
-                      <ProjectWarnSlot warn={w} />
+                      <ProjectStatusPair states={states} />
                       <span
                         className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${stSel.bg} ${stSel.text}`}
                       >
@@ -490,19 +720,39 @@ export default function ClientDetailPage() {
               <p className="text-xs text-slate-400 mt-0.5">請先選取左側專案</p>
             )}
           </div>
-          <div className="flex gap-1 p-0.5 bg-slate-100 rounded-lg shrink-0">
-            {FIN_FILTER.map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setFinFilter(k)}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
-                  finFilter === k ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex gap-1 p-0.5 bg-slate-100 rounded-lg">
+              {FIN_FILTER.map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFinFilter(k)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
+                    finFilter === k ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {selectedProject ? (
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setContractModal('create')}
+                  className="text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-md hover:bg-sky-100"
+                >
+                  ＋ 合約
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceModal('create')}
+                  className="text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 px-2.5 py-1 rounded-md hover:bg-violet-100"
+                >
+                  ＋ 發票
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
         <p className="text-xs text-slate-500 mb-3 shrink-0 max-w-2xl">
@@ -519,57 +769,171 @@ export default function ClientDetailPage() {
             </p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {filteredFinancial.map((row) => (
-                <li
-                  key={`${row.kind}-${row.id}`}
-                  className="py-3.5 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2 sm:gap-6 sm:items-center"
-                >
-                  <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span
-                      className={`shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        row.kind === 'invoice'
-                          ? 'bg-violet-100 text-violet-800'
-                          : row.kind === 'contract'
-                            ? 'bg-sky-100 text-sky-800'
-                            : 'bg-amber-100 text-amber-900'
-                      }`}
-                    >
-                      {row.kind === 'invoice' ? '收款' : row.kind === 'contract' ? '合約' : '待簽'}
-                    </span>
-                    <span className="text-sm font-medium text-slate-900 break-words">{row.label}</span>
-                    <span className="text-xs text-slate-500 tabular-nums w-full sm:w-auto">
-                      {row.date ? String(row.date).slice(0, 10) : '—'}
-                    </span>
-                  </div>
-                  <div className="sm:text-right flex sm:flex-col items-start sm:items-end gap-1 shrink-0">
-                    {row.amount != null ? (
-                      <p className="text-base font-semibold tabular-nums text-slate-900">
-                        {fmtCurrency(row.amount, row.currency || 'USD')}
-                      </p>
-                    ) : null}
-                    <p
-                      className={`text-xs font-semibold ${
-                        row.pending ? 'text-amber-700' : 'text-emerald-600'
-                      }`}
-                    >
-                      {finStatusZh(row.kind, row.status)}
-                    </p>
-                  </div>
-                </li>
-              ))}
+              {filteredFinancial.map((row) => {
+                const info = finStatusInfo(row.kind, row.status);
+                const editable = row.kind === 'contract' || row.kind === 'invoice';
+                const original =
+                  row.kind === 'contract'
+                    ? contracts.find((c) => c.id === row.id)
+                    : row.kind === 'invoice'
+                      ? invoices.find((i) => i.id === row.id)
+                      : null;
+                return (
+                  <li
+                    key={`${row.kind}-${row.id}`}
+                    className="group py-3.5 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2 sm:gap-6 sm:items-center"
+                  >
+                    <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span
+                        className={`shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                          row.kind === 'invoice'
+                            ? 'bg-violet-100 text-violet-800'
+                            : row.kind === 'contract'
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-amber-100 text-amber-900'
+                        }`}
+                      >
+                        {row.kind === 'invoice' ? '收款' : row.kind === 'contract' ? '合約' : '待簽'}
+                      </span>
+                      <span className="text-sm font-medium text-slate-900 break-words">
+                        {row.label}
+                      </span>
+                      <span className="text-xs text-slate-500 tabular-nums w-full sm:w-auto">
+                        {row.date ? String(row.date).slice(0, 10) : '—'}
+                      </span>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      {row.amount != null ? (
+                        <p className="text-base font-semibold tabular-nums text-slate-900">
+                          {fmtCurrency(row.amount, row.currency || 'USD')}
+                        </p>
+                      ) : null}
+                      <div className="flex items-center justify-end gap-3">
+                        <div className="flex items-center gap-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                          {row.kind === 'missing_contract' ? (
+                            <button
+                              type="button"
+                              onClick={() => setContractModal('create')}
+                              className="text-sky-700 hover:text-sky-900 font-semibold"
+                            >
+                              建立合約
+                            </button>
+                          ) : null}
+                          {editable && original ? (
+                            <>
+                              {row.kind === 'contract' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setGeneratorContract(original)}
+                                  className="text-emerald-600 hover:text-emerald-800 font-semibold"
+                                >
+                                  PDF
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  row.kind === 'contract'
+                                    ? setContractModal(original)
+                                    : setInvoiceModal(original)
+                                }
+                                className="text-indigo-600 hover:text-indigo-800 font-semibold"
+                              >
+                                編輯
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const label = row.kind === 'contract' ? '合約' : '發票';
+                                  if (!confirm(`刪除${label}「${row.label}」？`)) return;
+                                  try {
+                                    if (row.kind === 'contract')
+                                      await api.deleteContract(row.id);
+                                    else await api.deleteInvoice(row.id);
+                                    await load();
+                                  } catch (e) {
+                                    alert(e.message || String(e));
+                                  }
+                                }}
+                                className="text-rose-600 hover:text-rose-800 font-semibold"
+                              >
+                                刪除
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-[5.5rem] justify-end">
+                          <StatusIcon iconKind={info.iconKind} tone={info.tone} />
+                          <span
+                            className={`text-xs font-semibold whitespace-nowrap ${
+                              TONE_TEXT[info.tone] || TONE_TEXT.pending
+                            }`}
+                          >
+                            {info.label}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
         <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-sm shrink-0">
           <Link href="/contracts" className="text-indigo-600 font-semibold hover:text-indigo-800">
-            合約管理 →
+            全部合約 →
           </Link>
           <Link href="/invoices" className="text-indigo-600 font-semibold hover:text-indigo-800">
-            發票管理 →
+            全部發票 →
           </Link>
         </div>
       </section>
       </div>
+
+      <ContractFormModal
+        open={!!contractModal}
+        mode={contractModal === 'create' ? 'create' : 'edit'}
+        initial={contractModal && contractModal !== 'create' ? contractModal : null}
+        defaults={{
+          project_id: selectedProjectId,
+          client_id: id,
+          currency: 'TWD',
+          effective_date: selectedProject?.start_date || '',
+          expiry_date: addDaysToDateLike(selectedProject?.end_date, 30),
+        }}
+        projects={projects}
+        clients={client ? [client] : []}
+        lockClient
+        onClose={() => setContractModal(null)}
+        onSubmit={async (payload) => {
+          if (contractModal === 'create') await api.createContract(payload);
+          else await api.updateContract(contractModal.id, payload);
+          await load();
+        }}
+      />
+
+      <InvoiceFormModal
+        open={!!invoiceModal}
+        mode={invoiceModal === 'create' ? 'create' : 'edit'}
+        initial={invoiceModal && invoiceModal !== 'create' ? invoiceModal : null}
+        defaults={{ project_id: selectedProjectId, currency: 'TWD' }}
+        projects={projects}
+        contracts={contracts}
+        onClose={() => setInvoiceModal(null)}
+        onSubmit={async (payload) => {
+          if (invoiceModal === 'create') await api.createInvoice(payload);
+          else await api.updateInvoice(invoiceModal.id, payload);
+          await load();
+        }}
+      />
+
+      <ContractGeneratorModal
+        open={!!generatorContract}
+        contract={generatorContract}
+        onClose={() => setGeneratorContract(null)}
+        onGenerated={load}
+      />
 
       {projectModal ? (
         <div

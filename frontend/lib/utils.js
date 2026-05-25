@@ -12,9 +12,10 @@ export function fmtRelative(date) {
   return isValid(d) ? formatDistance(d, new Date(), { addSuffix: true }) : '—';
 }
 
-export function fmtCurrency(amount, currency = 'USD') {
+export function fmtCurrency(amount, currency = 'TWD') {
   if (amount == null) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+  const locale = currency === 'TWD' ? 'zh-TW' : 'en-US';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount);
 }
 
 export function daysBetween(start, end) {

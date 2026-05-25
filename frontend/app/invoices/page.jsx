@@ -1,67 +1,70 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { api } from '../../lib/api';
-import { fmt, fmtCurrency, statusStyle } from '../../lib/utils';
+import { fmt, fmtCurrency } from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
+import { matchSearchHaystack } from '../../lib/search-match';
+import InvoiceFormModal from '../../components/InvoiceFormModal';
+import {
+  INVOICE_STATUSES,
+  INVOICE_STATUS_LABEL,
+  invoiceBadgeStyle,
+  invoiceStatusLabel,
+  normalizeInvoiceStatus,
+} from '../../lib/financial-status';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
   pageFrameScrollClass,
 } from '../../lib/page-layout';
 
-const STATUS_OPTS = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
+const listCtlClass =
+  'h-9 min-h-9 py-0 px-3 text-xs sm:text-sm leading-9 bg-white border border-gray-200 rounded-lg shadow-apple-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
+const SORT_OPTS = [
+  ['issued_date', '開立日'],
+  ['amount', '金額'],
+  ['status', '狀態'],
+  ['invoice_number', '發票號碼'],
+];
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [projects, setProjects] = useState([]);
   const [contracts, setContracts] = useState([]);
-  const [members, setMembers] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState(defaultForm());
-  const [items, setItems] = useState([]);
-  const [genModal, setGenModal] = useState(false);
-  const [genProjectId, setGenProjectId] = useState('');
-  const [preview, setPreview] = useState(null);
 
-  function defaultForm() {
-    return {
-      project_id: '',
-      contract_id: '',
-      invoice_number: `INV-${Date.now()}`,
-      amount: '',
-      currency: 'USD',
-      issued_date: new Date().toISOString().split('T')[0],
-      due_date: '',
-      status: 'draft',
-      notes: '',
-    };
-  }
+  const [filter, setFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [sortBy, setSortBy] = useState('issued_date');
+  const [sortDir, setSortDir] = useState('desc');
 
   const load = useCallback(async () => {
-    const [i, p, c, m] = await Promise.all([
+    const [i, p, c, cl] = await Promise.all([
       api.getInvoices(),
       api.getProjects(),
       api.getContracts(),
-      api.getTeamMembers(),
+      api.getClients(),
     ]);
     setInvoices(i);
     setProjects(p);
     setContracts(c);
-    setMembers(m);
+    setClients(cl);
   }, []);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  const save = async (e) => {
-    e.preventDefault();
-    const data = { ...form, amount: parseFloat(form.amount), items };
-    if (modal === 'create') await api.createInvoice(data);
-    else await api.updateInvoice(modal.id, data);
-    setModal(null);
-    load();
+  const save = async (payload) => {
+    if (modal === 'create') await api.createInvoice(payload);
+    else await api.updateInvoice(modal.id, payload);
+    await load();
   };
 
   const del = async (inv) => {
@@ -70,475 +73,270 @@ export default function InvoicesPage() {
     load();
   };
 
-  const generatePreview = async () => {
-    if (!genProjectId) return;
-    const result = await api.generateInvoicePreview({ project_id: genProjectId });
-    setPreview(result.preview);
-  };
-
-  const confirmGenerate = async () => {
-    if (!preview) return;
-    await api.createInvoice({ ...preview, status: 'draft' });
-    setGenModal(false);
-    setPreview(null);
-    load();
-  };
-
-  const addItem = () =>
-    setItems((prev) => [
-      ...prev,
-      { team_member_id: '', task_id: '', description: '', hours: 8, rate: 0, amount: 0 },
-    ]);
-  const updateItem = (i, field, val) =>
-    setItems((prev) => {
-      const next = [...prev];
-      next[i] = { ...next[i], [field]: val };
-      if (field === 'hours' || field === 'rate') {
-        const h = field === 'hours' ? parseFloat(val) : parseFloat(next[i].hours);
-        const r = field === 'rate' ? parseFloat(val) : parseFloat(next[i].rate);
-        next[i].amount = h * r;
-      }
-      return next;
+  const filtered = useMemo(() => {
+    let rows = invoices.filter((i) => {
+      const hay = [i.invoice_number, i.project_name, i.client_name].filter(Boolean).join(' ');
+      if (filter && !matchSearchHaystack(hay, filter)) return false;
+      if (statusFilter && normalizeInvoiceStatus(i.status) !== statusFilter) return false;
+      if (clientFilter && String(i.client_id) !== String(clientFilter)) return false;
+      if (projectFilter && String(i.project_id) !== String(projectFilter)) return false;
+      return true;
     });
 
-  const summary = {
-    total: invoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0),
-    paid: invoices
-      .filter((i) => i.status === 'paid')
-      .reduce((s, i) => s + parseFloat(i.amount || 0), 0),
-    pending: invoices
-      .filter((i) => i.status === 'sent' || i.status === 'overdue')
-      .reduce((s, i) => s + parseFloat(i.amount || 0), 0),
-  };
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      let va = a[sortBy];
+      let vb = b[sortBy];
+      if (sortBy === 'amount') {
+        va = parseFloat(va || 0);
+        vb = parseFloat(vb || 0);
+      } else if (sortBy === 'status') {
+        va = normalizeInvoiceStatus(va);
+        vb = normalizeInvoiceStatus(vb);
+      } else {
+        va = String(va || '');
+        vb = String(vb || '');
+      }
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+    return rows;
+  }, [invoices, filter, statusFilter, clientFilter, projectFilter, sortBy, sortDir]);
+
+  const summary = useMemo(
+    () => ({
+      total: invoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0),
+      paid: invoices
+        .filter((i) => normalizeInvoiceStatus(i.status) === 'paid')
+        .reduce((s, i) => s + parseFloat(i.amount || 0), 0),
+      pending: invoices
+        .filter((i) => {
+          const v = normalizeInvoiceStatus(i.status);
+          return v === 'unissued' || v === 'issued';
+        })
+        .reduce((s, i) => s + parseFloat(i.amount || 0), 0),
+    }),
+    [invoices]
+  );
 
   return (
     <div className={pageFrameClass}>
       <div className={pageFrameHeaderClass}>
-      <BackToDashboard className="mb-2 md:mb-4" />
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">發票管理</h1>
-          <p className="text-gray-400 mt-1 text-sm">{invoices.length} 份發票</p>
-        </div>
-        <div className="flex gap-3">
+        <BackToDashboard className="mb-2 md:mb-4" />
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">全部發票</h1>
+            <p className="text-gray-400 mt-1 text-xs md:text-sm">共 {invoices.length} 份</p>
+          </div>
           <button
-            onClick={() => setGenModal(true)}
-            className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
-          >
-            自動計費
-          </button>
-          <button
-            onClick={() => {
-              setForm(defaultForm());
-              setItems([]);
-              setModal('create');
-            }}
+            onClick={() => setModal('create')}
             className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
           >
-            + 新增發票
+            ＋ 新發票
           </button>
         </div>
-      </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-apple-lg shadow-apple p-5">
-          <p className="text-xs text-gray-400">發票總額</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{fmtCurrency(summary.total)}</p>
+        <div className="grid grid-cols-3 gap-3 md:gap-4 mb-4">
+          <Card label="發票總額" value={fmtCurrency(summary.total, 'TWD')} />
+          <Card label="已收款" value={fmtCurrency(summary.paid, 'TWD')} valueClass="text-emerald-600" />
+          <Card label="待收款" value={fmtCurrency(summary.pending, 'TWD')} valueClass="text-amber-600" />
         </div>
-        <div className="bg-white rounded-apple-lg shadow-apple p-5">
-          <p className="text-xs text-gray-400">已付款</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">{fmtCurrency(summary.paid)}</p>
+
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="搜尋發票號碼 / 專案 / 客戶..."
+            className={`flex-1 min-w-[180px] max-w-md ${listCtlClass}`}
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`w-[7rem] ${listCtlClass}`}
+            aria-label="狀態篩選"
+          >
+            <option value="">全部狀態</option>
+            {INVOICE_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {INVOICE_STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+          <select
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            className={`w-[8.5rem] ${listCtlClass}`}
+            aria-label="客戶篩選"
+          >
+            <option value="">全部客戶</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            className={`w-[9rem] ${listCtlClass}`}
+            aria-label="專案篩選"
+          >
+            <option value="">全部專案</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className={`w-[7.5rem] ${listCtlClass}`}
+            aria-label="排序欄位"
+          >
+            {SORT_OPTS.map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+            className={`w-9 flex items-center justify-center text-gray-600 hover:bg-gray-50 ${listCtlClass}`}
+            aria-label="排序方向"
+            title={sortDir === 'asc' ? '升冪' : '降冪'}
+          >
+            {sortDir === 'asc' ? '↑' : '↓'}
+          </button>
         </div>
-        <div className="bg-white rounded-apple-lg shadow-apple p-5">
-          <p className="text-xs text-gray-400">待收款</p>
-          <p className="text-2xl font-bold text-orange-500 mt-1">{fmtCurrency(summary.pending)}</p>
-        </div>
-      </div>
       </div>
 
       <div className={pageFrameScrollClass}>
-      {loading ? (
-        <Spinner />
-      ) : (
-        <div className="bg-white rounded-apple-xl shadow-apple overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                {['發票號碼', '專案', '開立日', '到期日', '金額', '狀態', ''].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {invoices.map((inv) => {
-                const s = statusStyle(inv.status);
-                return (
-                  <tr key={inv.id} className="hover:bg-gray-50 transition-colors group">
-                    <td className="px-4 py-3.5 font-mono text-xs text-gray-700 font-medium">
-                      {inv.invoice_number}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-700">{inv.project_name || '—'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-500">{fmt(inv.issued_date)}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-500">{fmt(inv.due_date)}</td>
-                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
-                      {fmtCurrency(inv.amount, inv.currency)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${s.bg} ${s.text}`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            setForm({
-                              project_id: inv.project_id || '',
-                              contract_id: inv.contract_id || '',
-                              invoice_number: inv.invoice_number,
-                              amount: inv.amount,
-                              currency: inv.currency,
-                              issued_date: inv.issued_date?.split('T')[0] || '',
-                              due_date: inv.due_date?.split('T')[0] || '',
-                              status: inv.status,
-                              notes: inv.notes || '',
-                            });
-                            setItems([]);
-                            setModal(inv);
-                          }}
-                          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+        {loading ? (
+          <Spinner />
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-gray-400 text-sm">沒有符合條件的發票</div>
+        ) : (
+          <div className="bg-white rounded-apple-xl shadow-apple overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100 bg-slate-50/50">
+                  {['發票號碼', '專案', '客戶', '金額', '開立日', '到期日', '狀態', ''].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map((inv) => {
+                  const s = invoiceBadgeStyle(inv.status);
+                  return (
+                    <tr key={inv.id} className="hover:bg-gray-50 transition-colors group">
+                      <td className="px-4 py-3.5 font-mono text-xs text-gray-700 font-medium">
+                        {inv.invoice_number}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-gray-700">
+                        {inv.project_id ? (
+                          <Link
+                            href={`/projects/${inv.project_id}`}
+                            className="hover:text-indigo-600"
+                          >
+                            {inv.project_name || '—'}
+                          </Link>
+                        ) : (
+                          inv.project_name || '—'
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-gray-500">
+                        {inv.client_id ? (
+                          <Link
+                            href={`/clients/${inv.client_id}`}
+                            className="hover:text-indigo-600"
+                          >
+                            {inv.client_name || '—'}
+                          </Link>
+                        ) : (
+                          inv.client_name || '—'
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">
+                        {fmtCurrency(inv.amount, inv.currency)}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-gray-500 tabular-nums">
+                        {fmt(inv.issued_date)}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-gray-500 tabular-nums">
+                        {fmt(inv.due_date)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${s.bg} ${s.text}`}
                         >
-                          編輯
-                        </button>
-                        <a
-                          href={api.downloadInvoicePDF(inv.id)}
-                          target="_blank"
-                          className="text-xs text-gray-500 hover:text-gray-700 font-medium"
-                        >
-                          PDF
-                        </a>
-                        <button
-                          onClick={() => del(inv)}
-                          className="text-xs text-red-500 hover:text-red-600 font-medium"
-                        >
-                          刪除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {invoices.length === 0 && (
-            <div className="py-16 text-center text-gray-400 text-sm">尚無發票</div>
-          )}
-        </div>
-      )}
+                          <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                          {invoiceStatusLabel(inv.status)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setModal(inv)}
+                            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                          >
+                            編輯
+                          </button>
+                          <a
+                            href={api.downloadInvoicePDF(inv.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                          >
+                            PDF
+                          </a>
+                          <button
+                            onClick={() => del(inv)}
+                            className="text-xs text-red-500 hover:text-red-600 font-medium"
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {modal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slide-up">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h2 className="text-base font-semibold">
-                {modal === 'create' ? '新增發票' : '編輯發票'}
-              </h2>
-              <button
-                onClick={() => setModal(null)}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
-              >
-                ✕
-              </button>
-            </div>
-            <form onSubmit={save} className="p-6 space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <L>發票號碼 *</L>
-                  <I
-                    value={form.invoice_number}
-                    onChange={(v) => setForm((f) => ({ ...f, invoice_number: v }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <L>狀態</L>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                    className={inp}
-                  >
-                    {STATUS_OPTS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <L>關聯專案</L>
-                  <select
-                    value={form.project_id}
-                    onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}
-                    className={inp}
-                  >
-                    <option value="">請選擇</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <L>關聯合約</L>
-                  <select
-                    value={form.contract_id}
-                    onChange={(e) => setForm((f) => ({ ...f, contract_id: e.target.value }))}
-                    className={inp}
-                  >
-                    <option value="">請選擇</option>
-                    {contracts.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.contract_number}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <L>開立日期 *</L>
-                  <I
-                    type="date"
-                    value={form.issued_date}
-                    onChange={(v) => setForm((f) => ({ ...f, issued_date: v }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <L>到期日</L>
-                  <I
-                    type="date"
-                    value={form.due_date}
-                    onChange={(v) => setForm((f) => ({ ...f, due_date: v }))}
-                  />
-                </div>
-                <div>
-                  <L>金額 *</L>
-                  <I
-                    type="number"
-                    value={form.amount}
-                    onChange={(v) => setForm((f) => ({ ...f, amount: v }))}
-                    required
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <L>幣別</L>
-                  <select
-                    value={form.currency}
-                    onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
-                    className={inp}
-                  >
-                    {['USD', 'TWD', 'EUR', 'JPY'].map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Line items */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">發票明細</h3>
-                  <button
-                    type="button"
-                    onClick={addItem}
-                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                  >
-                    + 新增明細
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {items.map((item, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-2 bg-gray-50 rounded-apple p-3">
-                      <div className="col-span-2">
-                        <select
-                          value={item.team_member_id}
-                          onChange={(e) => updateItem(i, 'team_member_id', e.target.value)}
-                          className={`${inp} text-xs`}
-                        >
-                          <option value="">選擇成員</option>
-                          {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <input
-                        placeholder="描述"
-                        value={item.description}
-                        onChange={(e) => updateItem(i, 'description', e.target.value)}
-                        className={`${inp} col-span-2 text-xs`}
-                      />
-                      <input
-                        type="number"
-                        placeholder="時數"
-                        value={item.hours}
-                        onChange={(e) => updateItem(i, 'hours', e.target.value)}
-                        className={`${inp} text-xs`}
-                      />
-                      <input
-                        type="number"
-                        placeholder="時薪"
-                        value={item.rate}
-                        onChange={(e) => updateItem(i, 'rate', e.target.value)}
-                        className={`${inp} text-xs`}
-                      />
-                    </div>
-                  ))}
-                </div>
-                {items.length > 0 && (
-                  <div className="text-right mt-2 text-sm font-semibold text-gray-900">
-                    明細合計：
-                    {fmtCurrency(items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <L>備註</L>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple"
-                >
-                  {modal === 'create' ? '建立發票' : '儲存'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModal(null)}
-                  className="px-4 text-sm text-gray-500"
-                >
-                  取消
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Auto-generate Modal */}
-      {genModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
-          onClick={(e) => e.target === e.currentTarget && setGenModal(false)}
-        >
-          <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg animate-slide-up">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h2 className="text-base font-semibold">自動計費</h2>
-              <button
-                onClick={() => setGenModal(false)}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-6">
-              <p className="text-sm text-gray-500 mb-4">
-                選擇專案，系統將依據成員分配的工時 × 時薪自動計算發票金額。
-              </p>
-              <L>選擇專案</L>
-              <select
-                value={genProjectId}
-                onChange={(e) => setGenProjectId(e.target.value)}
-                className={inp}
-              >
-                <option value="">請選擇</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={generatePreview}
-                className="w-full mt-4 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2.5 rounded-apple transition-colors"
-              >
-                預覽計費
-              </button>
-              {preview && (
-                <div className="mt-4 bg-indigo-50 rounded-apple p-4">
-                  <p className="text-xs font-semibold text-indigo-700 mb-2">計費預覽</p>
-                  <div className="space-y-1">
-                    {preview.items.map((item, i) => (
-                      <div key={i} className="flex justify-between text-xs text-indigo-800">
-                        <span>{item.description}</span>
-                        <span>
-                          {item.hours}h × ${item.rate} = {fmtCurrency(item.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="border-t border-indigo-200 mt-3 pt-3 flex justify-between text-sm font-bold text-indigo-900">
-                    <span>總計</span>
-                    <span>{fmtCurrency(preview.amount)}</span>
-                  </div>
-                  <button
-                    onClick={confirmGenerate}
-                    className="w-full mt-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-apple transition-colors"
-                  >
-                    建立發票
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <InvoiceFormModal
+        open={!!modal}
+        mode={modal === 'create' ? 'create' : 'edit'}
+        initial={modal && modal !== 'create' ? modal : null}
+        projects={projects}
+        contracts={contracts}
+        onClose={() => setModal(null)}
+        onSubmit={save}
+      />
     </div>
   );
 }
 
-const inp =
-  'w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
-function L({ children }) {
-  return <label className="block text-xs font-medium text-gray-500 mb-1.5">{children}</label>;
-}
-function I({ type = 'text', value, onChange, required, placeholder }) {
+function Card({ label, value, valueClass = 'text-gray-900' }) {
   return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      required={required}
-      placeholder={placeholder}
-      className={inp}
-    />
+    <div className="bg-white rounded-apple-lg shadow-apple p-3 md:p-5">
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className={`text-lg md:text-2xl font-bold mt-1 tabular-nums ${valueClass}`}>{value}</p>
+    </div>
   );
 }
+
 function Spinner() {
   return (
     <div className="flex items-center justify-center py-20">

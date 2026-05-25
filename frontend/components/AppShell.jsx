@@ -1,14 +1,43 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { shellRowHeightClass } from '../lib/page-layout';
+
+function viewerInitials(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '';
+  if (/[\u4e00-\u9fff]/.test(trimmed)) {
+    // 中文：取後兩字（避免只顯示姓氏）
+    return Array.from(trimmed).slice(-2).join('');
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const initials = parts
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+  return initials || trimmed.slice(0, 2).toUpperCase();
+}
+
+function CompanyLogo({ size = 24, className = '' }) {
+  return (
+    <img
+      src="/company-logo.png"
+      alt="Company logo"
+      width={size}
+      height={size}
+      className={`object-contain ${className}`}
+      draggable={false}
+    />
+  );
+}
 
 const NAV = [
   { href: '/', label: 'Dashboard', mobileLabel: '今日', icon: IconGrid },
   { href: '/projects', label: '專案', icon: IconFolder },
-  { href: '/team', label: '成員', icon: IconUsers },
   { href: '/clients', label: '客戶', mobileLabel: '客戶', icon: IconBriefcase },
+  { href: '/team', label: '成員', icon: IconUsers },
 ];
 
 const MOBILE_NAV = [
@@ -114,6 +143,8 @@ export default function AppShell({ children }) {
     }
   }, []);
 
+  const initials = useMemo(() => viewerInitials(viewerTitle), [viewerTitle]);
+
   const toggleCollapsed = () => {
     setNavCollapsed((v) => {
       const next = !v;
@@ -150,6 +181,7 @@ export default function AppShell({ children }) {
                 onCollapse={toggleCollapsed}
                 viewerTitle={viewerTitle}
                 viewerRole={viewerRole}
+                viewerInitials={initials}
                 navItems={NAV}
               />
             )}
@@ -231,25 +263,24 @@ function NavRail({ path, onExpand }) {
           <button
             type="button"
             onClick={onExpand}
-            className={`h-10 w-10 rounded-[12px] grid place-items-center text-white hover:brightness-110 ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
+            className={`h-10 w-10 rounded-[12px] grid place-items-center bg-[var(--nav-pill-bg)] ring-1 ring-white/10 hover:bg-white/[0.05] transition-apple ${NAV_STYLE.brandShadow}`}
             aria-label="展開導覽"
             title="展開導覽"
           >
-            <span className="text-[11px] font-bold tracking-wide">SP</span>
+            <CompanyLogo size={26} />
           </button>
-          <div className="nav-divider w-[44px]" />
+          <div className="nav-divider w-[44px] my-2" />
           <RailItem active={path === '/'} href="/" label="Dashboard">
             <IconGrid />
           </RailItem>
           <RailItem active={path.startsWith('/projects')} href="/projects" label="專案">
             <IconFolder />
           </RailItem>
-          <div className="nav-divider w-[44px]" />
-          <RailItem active={path.startsWith('/team')} href="/team" label="成員">
-            <IconUsersMini />
-          </RailItem>
           <RailItem active={path.startsWith('/clients')} href="/clients" label="客戶">
             <IconBriefcase />
+          </RailItem>
+          <RailItem active={path.startsWith('/team')} href="/team" label="成員">
+            <IconUsersMini />
           </RailItem>
         </div>
       </div>
@@ -271,7 +302,7 @@ function NavRail({ path, onExpand }) {
 }
 
 /** Expanded sidebar with labels. Same two-card / 7:3 split as NavRail. */
-function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
+function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, viewerInitials, navItems }) {
   return (
     <div className={`flex h-full min-h-full flex-col ${NAV_STYLE.sidebarWidth} ${NAV_STYLE.cardGap}`}>
       {/* TOP plaster card. Dark pill flush to top edge with extra bottom
@@ -284,9 +315,11 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, navItems }) {
         >
           <div className="flex items-center gap-3">
             <div
-              className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[11px] font-bold tracking-wide ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
+              className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[12px] font-bold tracking-wide ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
+              aria-label="使用者頭像"
+              title={viewerTitle || ''}
             >
-              SP
+              {viewerInitials || 'SP'}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-white/95">
@@ -374,7 +407,7 @@ function SidebarLink({ href, label, icon, active }) {
     <Link
       href={href}
       className={[
-        'relative flex items-center gap-2.5 rounded-[12px] px-3 py-2 text-[13px] transition-apple',
+        'relative flex items-center gap-2.5 min-h-10 rounded-[12px] px-3 py-2 text-[13px] transition-apple',
         active
           ? `${NAV_STYLE.activeBg} ${NAV_STYLE.itemTextActive} shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]`
           : `${NAV_STYLE.itemTextDim} ${NAV_STYLE.itemBgHover} ${NAV_STYLE.itemTextHover}`,

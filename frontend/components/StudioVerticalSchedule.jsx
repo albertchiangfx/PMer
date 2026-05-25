@@ -151,45 +151,106 @@ export default function StudioVerticalSchedule({
       .sort((a, b) => String(a.label).localeCompare(String(b.label)));
   }, [projects, allocsByProject]);
 
-  const memberColumns = useMemo(() => {
-    const cols = [];
+  const projectMetaById = useMemo(() => {
+    const m = new Map();
+    for (const p of projects) {
+      const idLc = String(p.id).toLowerCase();
+      const status = String(p.status || '').toLowerCase();
+      m.set(idLc, {
+        id: p.id,
+        name: p.name,
+        color: p.color || '#6366f1',
+        status,
+        active: status !== 'completed' && status !== 'cancelled',
+      });
+    }
+    return m;
+  }, [projects]);
+
+  const memberGroups = useMemo(() => {
+    const groups = [];
     for (const m of members) {
       const idLc = String(m.id).toLowerCase();
-      const list = allocsByMember.get(idLc) || [];
-      if (!list.length) continue;
-      let minS = null;
-      let maxE = null;
-      for (const a of list) {
-        const s = parseYmd(a.start_date);
-        const e = parseYmd(a.end_date);
-        if (s && (!minS || s < minS)) minS = s;
-        if (e && (!maxE || e > maxE)) maxE = e;
+      const all = allocsByMember.get(idLc) || [];
+      const byProject = new Map();
+      for (const a of all) {
+        const pid = String(a.project_id || '').toLowerCase();
+        const meta = projectMetaById.get(pid);
+        if (!meta?.active) continue;
+        if (!byProject.has(pid)) byProject.set(pid, { meta, allocs: [] });
+        byProject.get(pid).allocs.push(a);
       }
-      if (!minS || !maxE) continue;
-      cols.push({
+      if (!byProject.size) continue;
+      const subColumns = Array.from(byProject.values())
+        .map(({ meta, allocs }) => ({
+          key: `${m.id}-${meta.id}`,
+          memberId: m.id,
+          memberLabel: m.name,
+          memberColor: m.avatar_color || '#6366f1',
+          projectId: meta.id,
+          projectName: meta.name,
+          projectColor: meta.color,
+          href: `/projects/${meta.id}`,
+          allocs,
+        }))
+        .sort((a, b) => String(a.projectName).localeCompare(String(b.projectName)));
+      groups.push({
         id: m.id,
         label: m.name,
         color: m.avatar_color || '#6366f1',
-        span: { start: minS, end: maxE },
-        allocs: list,
         href: '/team',
+        subColumns,
       });
     }
-    return cols.sort((a, b) => String(a.label).localeCompare(String(b.label)));
-  }, [members, allocsByMember]);
+    return groups.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+  }, [members, allocsByMember, projectMetaById]);
 
-  const columns = mode === 'projects' ? projectColumns : memberColumns;
+  const flatColumns = useMemo(() => {
+    if (mode === 'projects') {
+      return projectColumns.map((p) => ({
+        key: p.id,
+        kind: 'project',
+        id: p.id,
+        label: p.label,
+        color: p.color,
+        span: p.span,
+        href: p.href,
+      }));
+    }
+    return memberGroups.flatMap((g) =>
+      g.subColumns.map((sc) => ({
+        ...sc,
+        kind: 'subcol',
+        label: sc.projectName,
+        color: sc.projectColor,
+      })),
+    );
+  }, [mode, projectColumns, memberGroups]);
 
   const range = useMemo(() => {
-    if (!columns.length) return null;
-    let min = columns[0].span.start;
-    let max = columns[0].span.end;
-    for (const c of columns) {
-      if (c.span.start < min) min = c.span.start;
-      if (c.span.end > max) max = c.span.end;
+    if (!flatColumns.length) return null;
+    if (mode === 'projects') {
+      let min = flatColumns[0].span.start;
+      let max = flatColumns[0].span.end;
+      for (const c of flatColumns) {
+        if (c.span.start < min) min = c.span.start;
+        if (c.span.end > max) max = c.span.end;
+      }
+      return { start: min, end: max };
     }
+    let min = null;
+    let max = null;
+    for (const c of flatColumns) {
+      for (const a of c.allocs) {
+        const s = parseYmd(a.start_date);
+        const e = parseYmd(a.end_date);
+        if (s && (!min || s < min)) min = s;
+        if (e && (!max || e > max)) max = e;
+      }
+    }
+    if (!min || !max) return null;
     return { start: min, end: max };
-  }, [columns]);
+  }, [mode, flatColumns]);
 
   useEffect(() => {
     if (!range) {
@@ -246,10 +307,11 @@ export default function StudioVerticalSchedule({
     return base;
   }, [range, useWeekRows]);
 
-  const laneCount = columns.length;
+  const laneCount = flatColumns.length;
+  const laneW = mode === 'members' ? 22 : LANE_W;
   const gridCols =
     laneCount > 0
-      ? `${DATE_COL_W}px repeat(${laneCount}, minmax(${LANE_W}px, 1fr))`
+      ? `${DATE_COL_W}px repeat(${laneCount}, minmax(${laneW}px, 1fr))`
       : `${DATE_COL_W}px`;
   const rowH = useWeekRows ? WEEK_ROW_H : DAY_ROW_H;
   const periodLabel = range
@@ -266,16 +328,17 @@ export default function StudioVerticalSchedule({
     return () => window.clearTimeout(t);
   }, [timeRows.length, mode]);
 
-  const isActive = (col, row) => {
-    if (mode === 'projects') {
-      return rangesOverlap(row.start, row.end, col.span.start, col.span.end);
+  const cellFill = (col, row) => {
+    if (col.kind === 'project') {
+      return rangesOverlap(row.start, row.end, col.span.start, col.span.end) ? col.color : null;
     }
-    return col.allocs.some((a) => {
+    for (const a of col.allocs) {
       const s = parseYmd(a.start_date);
       const e = parseYmd(a.end_date);
-      if (!s || !e) return false;
-      return rangesOverlap(row.start, row.end, s, e);
-    });
+      if (!s || !e) continue;
+      if (rangesOverlap(row.start, row.end, s, e)) return col.color;
+    }
+    return null;
   };
 
   return (
@@ -317,42 +380,85 @@ export default function StudioVerticalSchedule({
         </p>
       ) : null}
 
-      {!columns.length ? (
+      {!flatColumns.length ? (
         <div className="surface rounded-xl border border-slate-200/80 p-3 text-sm text-slate-500">
           {mode === 'projects'
             ? '尚無可顯示的專案時程（請設定專案起訖或成員分配）。'
-            : '尚無成員時間分配。'}
+            : '尚無成員的進行中專案。'}
         </div>
       ) : (
         <div className="rounded-xl overflow-hidden border border-slate-200/80 bg-white">
           <div
             ref={scrollRef}
-            className="w-full overflow-y-auto overflow-x-hidden overscroll-contain max-h-[min(52vh,480px)]"
+            className="w-full overflow-y-auto overflow-x-auto overscroll-contain max-h-[min(52vh,480px)]"
           >
-            <div className="w-full min-w-0">
-              <div
-                className="sticky top-0 z-20 grid w-full border-b border-slate-200 bg-slate-50"
-                style={{ gridTemplateColumns: gridCols, minHeight: rowH + 4 }}
-              >
-                <div className="border-r border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
-                  日期
-                </div>
-                {columns.map((col) => (
-                  <Link
-                    key={col.id}
-                    href={col.href}
-                    className="flex items-center justify-center min-w-0 px-0.5 border-l border-slate-100 first:border-l-0 active:bg-slate-100/80"
-                    title={col.label}
-                  >
-                    <span
-                      className="text-[10px] font-bold leading-none text-center text-slate-800 truncate w-full"
-                      style={{ maxWidth: '100%' }}
+            <div className="min-w-full" style={{ minWidth: `${DATE_COL_W + laneCount * laneW}px` }}>
+              {mode === 'projects' ? (
+                <div
+                  className="sticky top-0 z-20 grid w-full border-b border-slate-200 bg-slate-50"
+                  style={{ gridTemplateColumns: gridCols, minHeight: rowH + 4 }}
+                >
+                  <div className="border-r border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
+                    日期
+                  </div>
+                  {flatColumns.map((col) => (
+                    <Link
+                      key={col.key}
+                      href={col.href}
+                      className="flex items-center justify-center min-w-0 px-0.5 border-l border-slate-100 first:border-l-0 active:bg-slate-100/80"
+                      title={col.label}
                     >
-                      {shortColumnLabel(col.label, mode === 'members' ? 2 : 3)}
-                    </span>
-                  </Link>
-                ))}
-              </div>
+                      <span
+                        className="text-[10px] font-bold leading-none text-center text-slate-800 truncate w-full"
+                        style={{ maxWidth: '100%' }}
+                      >
+                        {shortColumnLabel(col.label, 3)}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className="sticky top-0 z-20 grid w-full border-b border-slate-200 bg-slate-50"
+                  style={{
+                    gridTemplateColumns: gridCols,
+                    gridTemplateRows: 'auto auto',
+                  }}
+                >
+                  <div className="border-r border-slate-200 bg-slate-100" />
+                  {memberGroups.map((g) => (
+                    <Link
+                      key={`m-${g.id}`}
+                      href={g.href}
+                      className="bg-slate-100 flex items-center justify-center min-w-0 px-1 py-1 border-l border-slate-200 first:border-l-0 active:bg-slate-200/70"
+                      style={{ gridColumn: `span ${g.subColumns.length}` }}
+                      title={g.label}
+                    >
+                      <span className="text-[11px] font-bold leading-none text-slate-800 truncate">
+                        {shortColumnLabel(g.label, 2)}
+                      </span>
+                    </Link>
+                  ))}
+                  <div className="border-r border-slate-200 border-t border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
+                    日期
+                  </div>
+                  {flatColumns.map((sc) => (
+                    <Link
+                      key={`p-${sc.key}`}
+                      href={sc.href}
+                      className="flex items-center justify-center min-w-0 px-0.5 border-l border-slate-100 first:border-l-0 border-t border-slate-200"
+                      title={`${sc.memberLabel} · ${sc.projectName}`}
+                    >
+                      <span
+                        className="text-[10px] font-semibold leading-none truncate w-full text-center"
+                        style={{ color: sc.color }}
+                      >
+                        {shortColumnLabel(sc.projectName, 3)}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              )}
 
               {timeRows.map((row, stripeIdx) => {
                 const isDay = row.kind === 'day';
@@ -396,17 +502,23 @@ export default function StudioVerticalSchedule({
                     <span className="sticky left-0 z-[1] border-r border-slate-100/80 flex items-center justify-end pr-1.5 text-[10px]">
                       {dateLabel}
                     </span>
-                    {columns.map((col) => {
-                      const active = isActive(col, row);
+                    {flatColumns.map((col) => {
+                      const fill = cellFill(col, row);
                       return (
                         <span
-                          key={col.id}
+                          key={col.key}
                           className="border-l border-slate-100/60 first:border-l-0"
                           style={{
-                            backgroundColor: active ? col.color : 'transparent',
-                            opacity: active ? 0.82 : 1,
+                            backgroundColor: fill || 'transparent',
+                            opacity: fill ? 0.82 : 1,
                           }}
-                          title={active ? col.label : undefined}
+                          title={
+                            fill
+                              ? col.kind === 'subcol'
+                                ? `${col.memberLabel} · ${col.projectName}`
+                                : col.label
+                              : undefined
+                          }
                         />
                       );
                     })}
@@ -418,15 +530,18 @@ export default function StudioVerticalSchedule({
         </div>
       )}
 
-      {columns.length > 0 ? (
+      {mode === 'projects' && flatColumns.length > 0 ? (
         <ul className="space-y-1 px-0.5">
-          {columns.map((col) => (
-            <li key={col.id} className="flex items-center gap-2 text-[11px] text-slate-600 min-w-0">
+          {flatColumns.map((col) => (
+            <li key={col.key} className="flex items-center gap-2 text-[11px] text-slate-600 min-w-0">
               <span
                 className="w-2.5 h-2.5 rounded-sm shrink-0 border border-white shadow-sm"
                 style={{ backgroundColor: col.color }}
               />
-              <Link href={col.href} className="truncate font-medium text-slate-800 hover:text-indigo-600">
+              <Link
+                href={col.href}
+                className="truncate font-medium text-slate-800 hover:text-indigo-600"
+              >
                 {col.label}
               </Link>
             </li>
@@ -434,8 +549,47 @@ export default function StudioVerticalSchedule({
         </ul>
       ) : null}
 
+      {mode === 'members' && memberGroups.length > 0 ? (
+        <ul className="space-y-1.5 px-0.5">
+          {memberGroups.map((g) => (
+            <li key={g.id} className="text-[11px] text-slate-600 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0 border border-white shadow-sm"
+                  style={{ backgroundColor: g.color }}
+                />
+                <Link
+                  href={g.href}
+                  className="truncate font-medium text-slate-800 hover:text-indigo-600"
+                >
+                  {g.label}
+                </Link>
+              </div>
+              <div className="flex flex-wrap gap-1 mt-1 pl-[18px]">
+                {g.subColumns.map((sc) => (
+                  <Link
+                    key={sc.key}
+                    href={sc.href}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] text-slate-700 hover:border-indigo-300 hover:text-indigo-700 max-w-full"
+                    title={sc.projectName}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-sm shrink-0"
+                      style={{ backgroundColor: sc.projectColor }}
+                    />
+                    <span className="truncate">{sc.projectName}</span>
+                  </Link>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <p className="text-[10px] text-slate-500 px-0.5 leading-relaxed">
-        週末／國定假日整列著色；點列可標示該日。單一專案細節請進專案頁「時程預覽」。
+        {mode === 'members'
+          ? '每位成員下方一格＝一個進行中的專案；格子顏色＝該專案色；完成／取消的專案不會顯示。'
+          : '週末／國定假日整列著色；點列可標示該日。單一專案細節請進專案頁「時程預覽」。'}
       </p>
     </section>
   );

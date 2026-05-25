@@ -34,7 +34,7 @@ async function ensureProjectFinancialPlaceholders(db, project) {
       const { rows } = await db.query(
         `INSERT INTO contracts (
           project_id, client_id, contract_number, amount, currency, status, notes
-        ) VALUES ($1,$2,$3,0,'USD','draft',$4)
+        ) VALUES ($1,$2,$3,0,'TWD','unsent',$4)
         RETURNING id`,
         [
           project_id,
@@ -63,7 +63,7 @@ async function ensureProjectFinancialPlaceholders(db, project) {
       await db.query(
         `INSERT INTO invoices (
           project_id, contract_id, invoice_number, amount, currency, issued_date, status, notes
-        ) VALUES ($1,$2,$3,0,'USD',$4,'draft',$5)`,
+        ) VALUES ($1,$2,$3,0,'TWD',$4,'unissued',$5)`,
         [
           project_id,
           contractId,
