@@ -450,10 +450,13 @@ export default function Dashboard() {
       <div className={pageFrameHeaderClass}>
         <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-4">
           <div className="min-w-0">
-            <h1 className="text-xl md:text-3xl font-semibold tracking-tight text-slate-900">
+            {!isMobileLayout ? (
+              <span className="v2-eyebrow">Studio PM · Daily Overview</span>
+            ) : null}
+            <h1 className="text-xl md:text-3xl font-semibold tracking-tight">
               {isMobileLayout ? '今日' : 'Dashboard'}
             </h1>
-            <p className="mt-0.5 md:mt-1 text-xs md:text-sm text-slate-500">{nowLabel}</p>
+            <p className="mt-0.5 md:mt-1 text-xs md:text-sm v2-meta">{nowLabel}</p>
           </div>
           {members.length > 0 && (
             <label className="flex flex-col gap-1 text-xs text-slate-500 w-full md:w-auto md:shrink-0">
@@ -461,7 +464,7 @@ export default function Dashboard() {
               <select
                 value={viewerId ? String(viewerId) : ''}
                 onChange={(e) => setViewerId(String(e.target.value))}
-                className="rounded-xl md:rounded-lg border border-slate-200 bg-white px-3 py-2.5 md:py-2 text-sm text-slate-800 shadow-sm w-full md:min-w-[180px]"
+                className="px-3 py-2.5 md:py-2 text-sm text-slate-800 w-full md:min-w-[180px]"
               >
                 {members.map((m) => (
                   <option key={m.id} value={String(m.id)}>
@@ -476,14 +479,18 @@ export default function Dashboard() {
 
         {isMobileLayout && viewerId ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-900 tabular-nums">
+            <span className="v2-chip accent">
+              <span className="v2-chip-dot" aria-hidden />
               今日任務 {todayTaskCount}
             </span>
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
+            <span className="v2-chip">
+              <span className="v2-chip-dot" aria-hidden />
               相關專案 {projectCount}
             </span>
           </div>
         ) : null}
+
+        {!isMobileLayout ? <div className="v2-divider" /> : null}
       </div>
 
       {isMobileLayout ? (

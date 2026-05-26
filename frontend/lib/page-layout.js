@@ -1,6 +1,8 @@
 /** 手機版頁面／字卡邊距，與專案詳情頁、AppShell 一致 */
 
-const pageShellPad = 'px-1 py-2 md:p-8 max-w-7xl mx-auto w-full animate-fade-in';
+/* 注意：AppShell 的 <main> 已經提供 md:px-8 md:py-6 padding，
+   所以這裡不再重複加大內距，避免內容被擠到下方被切掉。 */
+const pageShellPad = 'px-1 py-2 md:p-0 max-w-7xl mx-auto w-full animate-fade-in';
 
 /**
  * 固定高度 shell 內的頁面外框：不整頁捲動。
@@ -38,4 +40,5 @@ export const surfaceSectionClass = 'surface rounded-xl md:rounded-[22px]';
 
 export const surfacePadClass = 'p-3 md:p-6';
 
-export const cardClass = 'bg-white rounded-xl md:rounded-apple-lg shadow-apple p-3 md:p-5';
+/* 統一玻璃語言：所有列表卡片使用 .surface（deboss 玻璃），不再死白 */
+export const cardClass = 'surface rounded-xl md:rounded-apple-lg p-3 md:p-5';

@@ -164,7 +164,7 @@ export default function AppShell({ children }) {
 
   return (
     <div className="app-bg app-blobs min-h-screen text-slate-900 max-sm:flex max-sm:flex-col max-sm:min-h-[100dvh]">
-      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-8px))] md:max-w-[min(1600px,calc(100vw-24px))] px-1.5 py-3 sm:px-6 sm:py-10 pb-[calc(5.625rem+env(safe-area-inset-bottom,0px))] sm:pb-0 max-sm:flex-1 max-sm:flex max-sm:flex-col max-sm:min-h-0">
+      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-8px))] md:max-w-[min(1600px,calc(100vw-24px))] px-1.5 py-3 sm:px-6 sm:py-6 pb-[calc(5.625rem+env(safe-area-inset-bottom,0px))] sm:pb-0 max-sm:flex-1 max-sm:flex max-sm:flex-col max-sm:min-h-0">
         <div
           className={`flex w-full gap-4 sm:gap-5 items-stretch max-sm:flex-1 max-sm:min-h-0 ${shellRowHeightClass}`}
         >
@@ -190,7 +190,7 @@ export default function AppShell({ children }) {
 
           {/* Content shell — 桌面固定列高；內容在 main 內捲動 */}
           <div className="shell relative flex flex-1 min-w-0 h-full min-h-0 self-stretch flex-col overflow-hidden rounded-[20px] md:rounded-[28px] max-sm:h-auto">
-            <main className="relative flex flex-1 flex-col min-h-0 min-w-0 px-2.5 py-3 md:px-8 md:py-8 overflow-hidden overflow-x-hidden overscroll-contain pb-1 sm:pb-0 max-sm:overflow-y-auto">
+            <main className="relative flex flex-1 flex-col min-h-0 min-w-0 px-2.5 py-3 md:px-8 md:py-6 overflow-hidden overflow-x-hidden overscroll-contain pb-1 sm:pb-0 max-sm:overflow-y-auto">
               {children}
             </main>
           </div>

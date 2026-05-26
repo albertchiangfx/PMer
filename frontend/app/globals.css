@@ -51,37 +51,39 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
-  background: #eef0f4;
-  color: #1c1c1e;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Noto Sans TC',
+    'Segoe UI', sans-serif;
+  /* 主 substrate：冷灰玻璃漸層，整頁一致，沒有色差接縫 */
+  background:
+    radial-gradient(140% 90% at 0% 0%, rgba(255, 255, 255, 0.45), transparent 55%),
+    radial-gradient(120% 70% at 100% 100%, rgba(80, 96, 124, 0.2), transparent 60%),
+    linear-gradient(160deg, #cdd3de 0%, #bdc3cf 50%, #b0b6c4 100%);
+  background-attachment: fixed;
+  color: #0f172a;
+  font-feature-settings: 'tnum' 1, 'lnum' 1, 'ss01' 1, 'cv11' 1;
 }
 
-/* Soft app background */
+/* 漸層已搬到 body；.app-bg 維持空殼以保相容 */
 .app-bg {
-  background: #eef0f4;
+  background: transparent;
 }
 
-.app-blobs::before,
-.app-blobs::after {
+/* substrate 細微玻璃斑紋（替代原本的 blob） */
+.app-blobs::before {
   content: '';
   position: fixed;
-  inset: auto;
+  inset: 0;
   pointer-events: none;
   z-index: 0;
-  width: 520px;
-  height: 520px;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.6);
-  filter: blur(60px);
-}
-.app-blobs::before {
-  top: -140px;
-  left: -160px;
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.45) 0%, transparent 18%),
+    radial-gradient(circle at 82% 70%, rgba(255, 255, 255, 0.25) 0%, transparent 26%),
+    radial-gradient(circle at 50% 95%, rgba(15, 23, 42, 0.06) 0%, transparent 35%);
+  mix-blend-mode: overlay;
+  opacity: 0.7;
 }
 .app-blobs::after {
-  bottom: -200px;
-  right: -200px;
-  background: rgba(255, 255, 255, 0.55);
+  display: none;
 }
 
 /* Scrollbar */
@@ -164,9 +166,11 @@ body {
 
 /* 桌面 shell 固定高度（Dashboard 任務區至少可見約 3 筆） */
 :root {
-  --app-shell-height: min(920px, calc(100dvh - 5.5rem));
-  --dashboard-tasks-min-height: 300px;
-  --dashboard-schedule-height: 440px;
+  /* 整體往上移：外殼留更少天地，可用空間更多 */
+  --app-shell-height: min(960px, calc(100dvh - 3rem));
+  --dashboard-tasks-min-height: 240px;
+  /* schedule 高度改成 clamp：小螢幕自動縮、大螢幕也不會超過 420 */
+  --dashboard-schedule-height: clamp(280px, calc(100dvh - 460px), 420px);
 }
 
 /* 內層捲動：減少卡頓（避免在捲動子層使用 backdrop-filter） */
@@ -194,9 +198,9 @@ body {
   }
 
   .dashboard-schedule-region {
-    flex: 0 0 var(--dashboard-schedule-height);
-    height: var(--dashboard-schedule-height);
-    min-height: var(--dashboard-schedule-height);
+    /* 允許 shrink，避免螢幕較矮時被切掉底部時程列 */
+    flex: 0 1 var(--dashboard-schedule-height);
+    min-height: 220px;
     max-height: var(--dashboard-schedule-height);
     min-width: 0;
     display: flex;
@@ -205,27 +209,48 @@ body {
   }
 }
 
-/* New glass tokens (layered look) */
+/* =========================================================================
+   玻璃語言：substrate (body) → .shell (微透玻璃面板) → .surface (deboss 卡片)
+   ========================================================================= */
 
 .shell {
-  background: rgba(255, 255, 255, 0.35);
+  /* 不再有自己的色塊：透明讓 body substrate 透過來、僅靠玻璃 blur + 細邊框
+     把「面板」這個層級從外圍區分出來。 */
+  background: rgba(255, 255, 255, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  box-shadow: 0 25px 70px rgba(15, 23, 42, 0.12);
-}
-.surface {
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 25px 60px rgba(15, 23, 42, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.05),
+    0 30px 70px -28px rgba(15, 23, 42, 0.25);
+}
+
+/* 卡片：玻璃磚嵌入 .shell 裡。亮一階＋上緣強凹陷 inset shadow＋下緣亮邊。 */
+.surface {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    inset 0 3px 6px rgba(15, 23, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -2px 2px rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6),
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    0 6px 14px -10px rgba(15, 23, 42, 0.2);
 }
 .surface-hover:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow:
+    inset 0 3px 6px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.75),
+    0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 6px 14px -10px rgba(15, 23, 42, 0.18);
 }
 .inset-highlight {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* ----- Floating two-layer nav (plaster outer + dark inner pill) -----
@@ -314,3 +339,150 @@ textarea:focus {
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
+
+/* =========================================================================
+   全 App 玻璃語言（不再 dashboard scoped）
+   ========================================================================= */
+
+/* Editorial 眉題（小 caps、寬字距）— 各頁面標題上方都可用 */
+.v2-eyebrow {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
+  color: #0b1220;
+}
+
+.v2-meta {
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+.v2-divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    rgba(15, 23, 42, 0.04) 0%,
+    rgba(15, 23, 42, 0.14) 50%,
+    rgba(15, 23, 42, 0.04) 100%
+  );
+  margin: 10px 0 8px;
+}
+
+/* 細分隔線：統一所有 stone/slate 邊框色，看起來像玻璃 hairline */
+.shell [class*='divide-y'] > * + * {
+  border-top-color: rgba(15, 23, 42, 0.08) !important;
+}
+.shell [class*='divide-x'] > * + * {
+  border-left-color: rgba(15, 23, 42, 0.07) !important;
+}
+.shell [class*='border-stone-100'],
+.shell [class*='border-stone-200'],
+.shell [class*='border-slate-100'],
+.shell [class*='border-slate-200'],
+.shell [class*='border-gray-100'],
+.shell [class*='border-gray-200'] {
+  border-color: rgba(15, 23, 42, 0.09) !important;
+}
+.shell [class*='border-l-'],
+.shell [class*='border-l '] {
+  border-left-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+/* 列表 hover 玻璃高光 */
+.shell .surface li:hover,
+.shell .surface article:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.7) 0%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.04),
+    0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+/* Chip / pill 全 app 統一玻璃質感 */
+.v2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 0 rgba(15, 23, 42, 0.04);
+}
+.v2-chip .v2-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #0f172a;
+}
+.v2-chip.accent .v2-chip-dot {
+  background: #6366f1;
+}
+
+/* select / input / textarea：玻璃霧面 */
+.shell select,
+.shell input[type='text'],
+.shell input[type='search'],
+.shell input[type='email'],
+.shell input[type='tel'],
+.shell input[type='number'],
+.shell input[type='date'],
+.shell input:not([type]),
+.shell textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 1px rgba(15, 23, 42, 0.04),
+    0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+.shell select:hover,
+.shell input:hover,
+.shell textarea:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+/* 個別大塊面板（避免「死白色塊」打破玻璃語言）。
+   只在 .shell 直接結構區塊上柔化，不影響 modal portal、小型 tooltip／popover。 */
+.shell .bg-white.rounded-apple-lg,
+.shell .bg-white.rounded-apple-xl,
+.shell .bg-white.rounded-2xl,
+.shell .bg-white.rounded-\[22px\] {
+  background: rgba(255, 255, 255, 0.62) !important;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    inset 0 3px 6px rgba(15, 23, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -2px 2px rgba(255, 255, 255, 0.7),
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    0 6px 14px -10px rgba(15, 23, 42, 0.2) !important;
+}
+
