@@ -37,6 +37,7 @@ const NAV = [
   { href: '/', label: 'Dashboard', mobileLabel: '今日', icon: IconGrid },
   { href: '/projects', label: '專案', icon: IconFolder },
   { href: '/clients', label: '客戶', mobileLabel: '客戶', icon: IconBriefcase },
+  { href: '/quotations', label: '報價單', icon: IconDoc },
   { href: '/team', label: '成員', icon: IconUsers },
 ];
 

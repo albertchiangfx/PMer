@@ -41,6 +41,8 @@ app.use('/api/project-milestones', require('./routes/project-milestones'));
 app.use('/api/personal-tasks', require('./routes/personal-tasks'));
 app.use('/api/contracts', require('./routes/contracts'));
 app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/quotations', require('./routes/quotations'));
+app.use('/api/quotation-services', require('./routes/quotation-services'));
 
 app.get('/api/health', async (req, res) => {
   try {

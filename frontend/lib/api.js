@@ -180,6 +180,26 @@ export const api = {
   deleteInvoice: (id) => request(`/invoices/${id}`, { method: 'DELETE' }),
   downloadInvoicePDF: (id) => `${getApiBase()}/invoices/${id}/pdf`,
 
+  // Quotation services (服務項目庫)
+  getQuotationServices: (params) => request('/quotation-services' + toQS(params)),
+  createQuotationService: (data) =>
+    request('/quotation-services', { method: 'POST', body: data }),
+  updateQuotationService: (id, data) =>
+    request(`/quotation-services/${id}`, { method: 'PUT', body: data }),
+  deleteQuotationService: (id) =>
+    request(`/quotation-services/${id}`, { method: 'DELETE' }),
+
+  // Quotations
+  getQuotations: (params) => request('/quotations' + toQS(params)),
+  getQuotation: (id) => request(`/quotations/${id}`),
+  createQuotation: (data) => request('/quotations', { method: 'POST', body: data }),
+  updateQuotation: (id, data) => request(`/quotations/${id}`, { method: 'PUT', body: data }),
+  deleteQuotation: (id) => request(`/quotations/${id}`, { method: 'DELETE' }),
+  cloneQuotation: (id, data = {}) =>
+    request(`/quotations/${id}/clone`, { method: 'POST', body: data }),
+  previewQuotationHtmlUrl: (id) => `${getApiBase()}/quotations/${id}/preview-html`,
+  generateQuotationPdfUrl: (id) => `${getApiBase()}/quotations/${id}/generate-pdf`,
+
   /** 國定假日（經後端代理 Nager.Date） */
   getPublicHolidays: ({ year, countries }) =>
     request(

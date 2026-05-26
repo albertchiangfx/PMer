@@ -133,6 +133,54 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 報價單系統
+CREATE TABLE IF NOT EXISTS quotation_services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  section_label VARCHAR(100) NOT NULL DEFAULT '',
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  default_unit_price DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quotations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  quote_number VARCHAR(100) UNIQUE NOT NULL,
+  title VARCHAR(255),
+  status VARCHAR(50) NOT NULL DEFAULT 'draft',
+  currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
+  issued_date DATE,
+  valid_until DATE,
+  subtotal DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  tax_rate DECIMAL(6, 4) NOT NULL DEFAULT 0.05,
+  tax_due DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  total DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  notes TEXT,
+  pdf_path VARCHAR(500),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  quotation_id UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+  service_id UUID REFERENCES quotation_services(id) ON DELETE SET NULL,
+  section_label VARCHAR(100) NOT NULL DEFAULT '',
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  qty DECIMAL(8, 2) NOT NULL DEFAULT 1,
+  unit_price DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  line_total DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   entity_type VARCHAR(50),
@@ -185,6 +233,11 @@ CREATE INDEX IF NOT EXISTS idx_allocations_task ON time_allocations(task_id);
 CREATE INDEX IF NOT EXISTS idx_allocations_dates ON time_allocations(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_project ON invoices(project_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_project ON quotations(project_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_client ON quotations(client_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations(status);
+CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items(quotation_id);
+CREATE INDEX IF NOT EXISTS idx_quotation_services_active ON quotation_services(is_active, sort_order);
 
 -- Auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -195,7 +248,7 @@ $$ LANGUAGE plpgsql;
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks'])
+  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks','quotation_services','quotations'])
   LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_updated_at ON %I', t);
     EXECUTE format('CREATE TRIGGER trg_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t);
