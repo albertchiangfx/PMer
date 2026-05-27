@@ -199,6 +199,21 @@ export const api = {
     request(`/quotations/${id}/clone`, { method: 'POST', body: data }),
   previewQuotationHtmlUrl: (id) => `${getApiBase()}/quotations/${id}/preview-html`,
   generateQuotationPdfUrl: (id) => `${getApiBase()}/quotations/${id}/generate-pdf`,
+  publishQuotation: (id) => request(`/quotations/${id}/publish`, { method: 'POST' }),
+  unpublishQuotation: (id) => request(`/quotations/${id}/unpublish`, { method: 'POST' }),
+
+  // Client hubs（客戶協作一頁）
+  getClientHubsOverview: () => request('/client-hubs/overview'),
+  getClientHubByProject: (projectId) =>
+    request(`/client-hubs?project_id=${encodeURIComponent(projectId)}`),
+  createClientHub: (data) => request('/client-hubs', { method: 'POST', body: data }),
+  updateClientHub: (id, data) => request(`/client-hubs/${id}`, { method: 'PUT', body: data }),
+  regenerateClientHubToken: (id) =>
+    request(`/client-hubs/${id}/regenerate-token`, { method: 'POST' }),
+  addClientHubLink: (hubId, data) =>
+    request(`/client-hubs/${hubId}/links`, { method: 'POST', body: data }),
+  deleteClientHubLink: (linkId) =>
+    request(`/client-hubs/links/${linkId}`, { method: 'DELETE' }),
 
   /** 國定假日（經後端代理 Nager.Date） */
   getPublicHolidays: ({ year, countries }) =>

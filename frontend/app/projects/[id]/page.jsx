@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../../lib/api';
 import { notifyScheduleDataChanged } from '../../../lib/dashboard-sync';
@@ -18,6 +18,7 @@ import ProjectFormModal, {
   projectFormToPayload,
   projectToForm,
 } from '../../../components/ProjectFormModal';
+import ClientHubPanel from '../../../components/ClientHubPanel';
 
 const TASK_TYPES = [
   'general',
@@ -47,6 +48,7 @@ function sliceProjectYmd(d) {
 
 export default function ProjectDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = routeParamId(params?.id);
   const router = useRouter();
   const [project, setProject] = useState(null);
@@ -70,8 +72,13 @@ export default function ProjectDetailPage() {
   const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
+    const qTab = searchParams?.get('tab');
+    if (qTab === 'client') {
+      setTab('client');
+      return;
+    }
     setTab(isMobileLayout ? 'schedule' : 'gantt');
-  }, [id, isMobileLayout]);
+  }, [id, isMobileLayout, searchParams]);
 
   useEffect(() => {
     if (!isMobileLayout && tab === 'schedule') setTab('gantt');
@@ -444,6 +451,7 @@ export default function ProjectDetailPage() {
         {[
           ['gantt', '甘特圖'],
           ['milestones', '項目'],
+          ['client', '客戶協作'],
           ['team', '成員'],
           ['tasks', '任務'],
         ].map(([k, label]) => (
@@ -463,6 +471,7 @@ export default function ProjectDetailPage() {
         {[
           ['schedule', '時程總覽'],
           ['milestones', '項目'],
+          ['client', '客戶協作'],
           ['team', '成員'],
           ['tasks', '任務'],
           ['gantt', '時程預覽'],
@@ -480,6 +489,20 @@ export default function ProjectDetailPage() {
 
       {tab === 'schedule' && isMobileLayout && (
         <ProjectScheduleMobileOverview projectId={id} project={project} />
+      )}
+
+      {tab === 'client' && (
+        <div
+          id="client-hub"
+          className="surface rounded-2xl md:rounded-[22px] p-3.5 md:p-6 shadow-apple-sm scroll-mt-24"
+        >
+          <ClientHubPanel
+            projectId={id}
+            projectName={project.name}
+            projectColor={project.color}
+            clientName={project.client_name}
+          />
+        </div>
       )}
 
       {tab === 'milestones' && (

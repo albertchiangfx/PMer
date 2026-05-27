@@ -17,6 +17,7 @@ const router = express.Router();
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 const { renderQuotation } = require('../quote-generator/render');
 const { htmlToPdf } = require('../contract-generator/pdf');
+const { newPublicToken } = require('../lib/public-token');
 
 function dec(v, fallback = 0) {
   if (v === '' || v == null) return fallback;
@@ -60,33 +61,17 @@ async function nextQuoteNumber(db) {
   return prefix + String(next).padStart(3, '0');
 }
 
-async function loadQuotationWithItems(db, id) {
-  const { rows } = await db.query(
-    `SELECT q.*, p.name AS project_name, c.name AS client_name,
-            c.address AS client_address, c.contact_email AS client_contact_email,
-            c.contact_phone AS client_contact_phone,
-            p.start_date AS project_start_date, p.end_date AS project_end_date
-       FROM quotations q
-       LEFT JOIN projects p ON p.id = q.project_id
-       LEFT JOIN clients c ON c.id = q.client_id
-       WHERE q.id = $1`,
-    [id]
-  );
-  if (!rows.length) return null;
-  const row = rows[0];
-  const { rows: items } = await db.query(
-    `SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY sort_order ASC, created_at ASC`,
-    [id]
-  );
-  return { ...row, items };
-}
+const {
+  loadQuotationWithItems,
+  buildQuotationRenderContext: buildRenderContext,
+} = require('../lib/quotation-db');
 
 router.get('/', async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { status, project_id, client_id } = req.query;
     let q = `
-      SELECT q.*, p.name AS project_name, c.name AS client_name
+      SELECT q.*, p.name AS project_name, p.color AS project_color, c.name AS client_name
         FROM quotations q
         LEFT JOIN projects p ON p.id = q.project_id
         LEFT JOIN clients c ON c.id = q.client_id
@@ -386,39 +371,6 @@ router.post('/:id/clone', async (req, res, next) => {
   }
 });
 
-function buildRenderContext(row) {
-  return {
-    quotation: {
-      id: row.id,
-      quote_number: row.quote_number,
-      title: row.title,
-      status: row.status,
-      currency: row.currency,
-      issued_date: row.issued_date,
-      valid_until: row.valid_until,
-      subtotal: row.subtotal,
-      tax_rate: row.tax_rate,
-      tax_due: row.tax_due,
-      total: row.total,
-      notes: row.notes,
-      items: row.items,
-    },
-    client: {
-      id: row.client_id,
-      name: row.client_name,
-      address: row.client_address,
-      contact_email: row.client_contact_email,
-      contact_phone: row.client_contact_phone,
-    },
-    project: {
-      id: row.project_id,
-      name: row.project_name,
-      start_date: row.project_start_date,
-      end_date: row.project_end_date,
-    },
-  };
-}
-
 router.get('/:id/preview-html', async (req, res, next) => {
   try {
     const data = await loadQuotationWithItems(req.app.locals.db, req.params.id);
@@ -477,6 +429,46 @@ router.post('/:id/generate-pdf', async (req, res, next) => {
     );
     if (filePath) res.setHeader('X-Saved-Path', filePath);
     res.send(pdf);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/:id/publish', async (req, res, next) => {
+  try {
+    const db = req.app.locals.db;
+    const { rows: existing } = await db.query(`SELECT * FROM quotations WHERE id = $1`, [
+      req.params.id,
+    ]);
+    if (!existing.length) return res.status(404).json({ error: 'Quotation not found' });
+    const prev = existing[0];
+    const token = prev.public_token || newPublicToken();
+    const nextStatus = prev.status === 'draft' ? 'sent' : prev.status;
+    await db.query(
+      `UPDATE quotations SET
+         public_token = $1,
+         client_visible = TRUE,
+         status = $2
+       WHERE id = $3`,
+      [token, nextStatus, req.params.id]
+    );
+    const full = await loadQuotationWithItems(db, req.params.id);
+    res.json(full);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/:id/unpublish', async (req, res, next) => {
+  try {
+    const db = req.app.locals.db;
+    const { rowCount } = await db.query(
+      `UPDATE quotations SET client_visible = FALSE WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Quotation not found' });
+    const full = await loadQuotationWithItems(db, req.params.id);
+    res.json(full);
   } catch (e) {
     next(e);
   }

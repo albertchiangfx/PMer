@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Suspense, useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { fmt, fmtCurrency } from '../../lib/utils';
@@ -42,6 +43,25 @@ const SORT_OPTS = [
 ];
 
 export default function QuotationsPage() {
+  return (
+    <Suspense fallback={<QuotationsPageFallback />}>
+      <QuotationsPageContent />
+    </Suspense>
+  );
+}
+
+function QuotationsPageFallback() {
+  return (
+    <div className={pageFrameClass}>
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    </div>
+  );
+}
+
+function QuotationsPageContent() {
+  const searchParams = useSearchParams();
   const [quotations, setQuotations] = useState([]);
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
@@ -71,6 +91,17 @@ export default function QuotationsPage() {
     load().finally(() => setLoading(false));
   }, [load]);
 
+  useEffect(() => {
+    const pid = searchParams.get('project_id');
+    if (pid) setProjectFilter(pid);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!clientFilter || !projectFilter || !projects.length) return;
+    const p = projects.find((x) => String(x.id) === String(projectFilter));
+    if (p && String(p.client_id) !== String(clientFilter)) setProjectFilter('');
+  }, [clientFilter, projectFilter, projects]);
+
   const openEdit = async (q) => {
     try {
       const full = await api.getQuotation(q.id);
@@ -99,6 +130,31 @@ export default function QuotationsPage() {
       alert(`已複製為新報價單 ${created.quote_number}（狀態：草稿），可進入編輯`);
     } catch (e) {
       alert(e.message || String(e));
+    }
+  };
+
+  const projectColorById = useMemo(() => {
+    const m = new Map();
+    for (const p of projects) {
+      if (p?.id) m.set(String(p.id), p.color || '#6366f1');
+    }
+    return m;
+  }, [projects]);
+
+  const projectsForFilter = useMemo(() => {
+    if (!clientFilter) return projects;
+    return projects.filter((p) => String(p.client_id) === String(clientFilter));
+  }, [projects, clientFilter]);
+
+  const activeProjectColor = projectFilter
+    ? projectColorById.get(String(projectFilter))
+    : null;
+
+  const handleClientFilterChange = (nextClientId) => {
+    setClientFilter(nextClientId);
+    if (nextClientId && projectFilter) {
+      const p = projects.find((x) => String(x.id) === String(projectFilter));
+      if (p && String(p.client_id) !== String(nextClientId)) setProjectFilter('');
     }
   };
 
@@ -189,7 +245,7 @@ export default function QuotationsPage() {
           </select>
           <select
             value={clientFilter}
-            onChange={(e) => setClientFilter(e.target.value)}
+            onChange={(e) => handleClientFilterChange(e.target.value)}
             className={`min-w-0 w-full sm:flex-none sm:w-[8rem] ${listCtlClass}`}
             aria-label="客戶篩選"
           >
@@ -205,9 +261,14 @@ export default function QuotationsPage() {
             onChange={(e) => setProjectFilter(e.target.value)}
             className={`min-w-0 w-full sm:flex-none sm:w-[8rem] ${listCtlClass}`}
             aria-label="專案篩選"
+            style={
+              activeProjectColor
+                ? { borderColor: activeProjectColor, boxShadow: `0 0 0 1px ${activeProjectColor}` }
+                : undefined
+            }
           >
             <option value="">全部專案</option>
-            {projects.map((p) => (
+            {projectsForFilter.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -258,6 +319,11 @@ export default function QuotationsPage() {
               <QuotationRow
                 key={q.id}
                 quotation={q}
+                accentColor={
+                  q.project_color ||
+                  projectColorById.get(String(q.project_id)) ||
+                  '#6366f1'
+                }
                 onPreview={() => setPreview(q)}
                 onEdit={() => openEdit(q)}
                 onClone={() => cloneOne(q)}
@@ -305,7 +371,7 @@ function Spinner() {
   );
 }
 
-function QuotationRow({ quotation: q, onPreview, onEdit, onClone, onDelete }) {
+function QuotationRow({ quotation: q, accentColor = '#6366f1', onPreview, onEdit, onClone, onDelete }) {
   const s = QUOTE_BADGE[q.status] || QUOTE_BADGE.draft;
   const label = QUOTE_STATUS_LABEL[q.status] || q.status;
   const titleText = q.title || q.project_name || q.quote_number;
@@ -316,12 +382,16 @@ function QuotationRow({ quotation: q, onPreview, onEdit, onClone, onDelete }) {
     >
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0 py-0.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="w-2.5 h-9 rounded-full shrink-0 bg-indigo-500" />
+          <div
+            className="w-2.5 h-9 rounded-full shrink-0"
+            style={{ backgroundColor: accentColor }}
+          />
           <div className="min-w-0 flex-1">
             <button
               type="button"
               onClick={onPreview}
-              className="text-left text-base font-semibold text-gray-900 hover:text-indigo-600 leading-tight truncate block max-w-full"
+              className="text-left text-base font-semibold text-gray-900 leading-tight truncate block max-w-full hover:opacity-80"
+              style={{ color: 'inherit' }}
               title={titleText}
             >
               {titleText}
@@ -331,7 +401,8 @@ function QuotationRow({ quotation: q, onPreview, onEdit, onClone, onDelete }) {
               {q.project_id ? (
                 <Link
                   href={`/projects/${q.project_id}`}
-                  className="text-[11px] font-medium text-indigo-500 hover:text-indigo-600 truncate max-w-[10rem]"
+                  className="text-[11px] font-medium truncate max-w-[10rem] hover:opacity-80"
+                  style={{ color: accentColor }}
                   title={q.project_name}
                 >
                   {q.project_name}

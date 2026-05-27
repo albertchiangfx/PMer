@@ -43,6 +43,8 @@ app.use('/api/contracts', require('./routes/contracts'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/quotations', require('./routes/quotations'));
 app.use('/api/quotation-services', require('./routes/quotation-services'));
+app.use('/api/client-hubs', require('./routes/client-hubs'));
+app.use('/api/public', require('./routes/public-client'));
 
 app.get('/api/health', async (req, res) => {
   try {

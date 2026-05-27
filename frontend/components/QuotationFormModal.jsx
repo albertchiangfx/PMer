@@ -289,11 +289,14 @@ export default function QuotationFormModal({
         className="min-h-full w-full flex justify-center px-4 py-6"
         onClick={(e) => e.target === e.currentTarget && onClose?.()}
       >
-        <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-4xl animate-slide-up flex flex-col self-start">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white rounded-t-apple-xl">
-          <h2 className="text-base font-semibold">
-            {mode === 'create' ? '新增報價單' : `編輯報價單 ${initial?.quote_number || ''}`}
-          </h2>
+        <div className="surface rounded-apple-xl w-full max-w-5xl animate-slide-up flex flex-col self-start">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-slate-200/80 bg-white/90 backdrop-blur-md rounded-t-apple-xl">
+          <div>
+            <p className="v2-eyebrow mb-1">Quotation</p>
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+              {mode === 'create' ? '新增報價單' : `編輯報價單 ${initial?.quote_number || ''}`}
+            </h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -473,132 +476,121 @@ export default function QuotationFormModal({
           </div>
 
           {/* 已勾選的品項清單（可改 qty / unit_price / desc，可加自訂） */}
-          <div className="border border-gray-200 rounded-apple-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-              <div className="text-sm font-semibold text-gray-700">
-                報價內容 <span className="text-gray-400">({items.length})</span>
+          <div className="border border-slate-200/80 rounded-apple-lg overflow-hidden bg-white/50">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200/80 bg-white/60">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">
+                  報價內容 <span className="text-slate-400 font-normal">({items.length})</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">數量、單價欄位已加寬，金額完整顯示</p>
               </div>
               <button
                 type="button"
                 onClick={addCustomItem}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0"
               >
                 ＋ 加自訂列
               </button>
             </div>
             {items.length === 0 ? (
-              <div className="p-5 text-sm text-gray-500 text-center">
+              <div className="p-5 text-sm text-slate-500 text-center">
                 從上方勾選服務，或按「＋ 加自訂列」開始。
               </div>
             ) : (
-              <>
-                <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2 bg-gray-50/70 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-[0.08em]">
-                  <div className="col-span-4">項目</div>
-                  <div className="col-span-4">說明</div>
-                  <div className="col-span-1 text-right">數量</div>
-                  <div className="col-span-1 text-right">單價</div>
-                  <div className="col-span-1 text-right">小計</div>
-                  <div className="col-span-1" />
+              <div className="overflow-x-auto">
+                <div className="min-w-[820px]">
+                  <div className={`hidden md:grid ${LINE_GRID_MD} gap-x-3 px-4 py-2.5 border-b border-slate-200/70 bg-slate-50/80`}>
+                    <LineHead>項目</LineHead>
+                    <LineHead>說明</LineHead>
+                    <LineHead align="right">數量</LineHead>
+                    <LineHead align="right">單價</LineHead>
+                    <LineHead align="right">小計</LineHead>
+                    <span />
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {items.map((it, idx) => {
+                      const lineTotal = round2(num(it.qty, 0) * num(it.unit_price, 0));
+                      return (
+                        <div
+                          key={idx}
+                          className={`px-4 py-3.5 grid grid-cols-1 gap-x-3 gap-y-2.5 items-start md:items-center hover:bg-white/70 ${LINE_GRID_MD}`}
+                        >
+                          <div className="space-y-1.5 min-w-0">
+                            <input
+                              value={it.section_label}
+                              onChange={(e) => updateItem(idx, { section_label: e.target.value })}
+                              placeholder="分區"
+                              className="w-full max-w-[10rem] bg-slate-100/90 hover:bg-slate-200/60 focus:bg-white focus:ring-1 focus:ring-indigo-300 border-0 rounded-full px-2.5 py-0.5 text-[11px] text-slate-600 focus:outline-none"
+                            />
+                            <input
+                              value={it.name}
+                              onChange={(e) => updateItem(idx, { name: e.target.value })}
+                              placeholder="項目名稱 *"
+                              className={`${inp} h-9 text-[13px] font-medium text-slate-900`}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <textarea
+                              value={it.description}
+                              onChange={(e) => updateItem(idx, { description: e.target.value })}
+                              placeholder="說明"
+                              rows={2}
+                              className={`${inp} text-[12px] leading-relaxed resize-y min-h-[2.5rem]`}
+                            />
+                          </div>
+                          <div className="max-md:grid max-md:grid-cols-[4rem_1fr] max-md:gap-2 max-md:items-center">
+                            <MobileFieldLabel>數量</MobileFieldLabel>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={it.qty}
+                              onChange={(e) => updateItem(idx, { qty: e.target.value })}
+                              className={`${inpNum} w-full`}
+                            />
+                          </div>
+                          <div className="max-md:grid max-md:grid-cols-[4rem_1fr] max-md:gap-2 max-md:items-center">
+                            <MobileFieldLabel>單價</MobileFieldLabel>
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={it.unit_price}
+                              onChange={(e) => updateItem(idx, { unit_price: e.target.value })}
+                              className={`${inpNum} w-full`}
+                            />
+                          </div>
+                          <div className="max-md:grid max-md:grid-cols-[4rem_1fr] max-md:gap-2 max-md:items-center">
+                            <MobileFieldLabel>小計</MobileFieldLabel>
+                            <div className="h-9 flex items-center justify-end px-2.5 rounded-lg bg-slate-50/80 text-[13px] font-semibold tabular-nums text-slate-900">
+                              {fmtCurrency(lineTotal, form.currency)}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-end gap-1 max-md:pt-1">
+                            <LineActionBtn
+                              onClick={() => moveItem(idx, -1)}
+                              disabled={idx === 0}
+                              label="上移"
+                            >
+                              ↑
+                            </LineActionBtn>
+                            <LineActionBtn
+                              onClick={() => moveItem(idx, 1)}
+                              disabled={idx === items.length - 1}
+                              label="下移"
+                            >
+                              ↓
+                            </LineActionBtn>
+                            <LineActionBtn onClick={() => removeItem(idx)} label="刪除" danger>
+                              ✕
+                            </LineActionBtn>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="divide-y divide-gray-100">
-                  {items.map((it, idx) => {
-                    const lineTotal = round2(num(it.qty, 0) * num(it.unit_price, 0));
-                    return (
-                      <div
-                        key={idx}
-                        className="px-4 py-3 grid grid-cols-12 gap-3 items-start md:items-center hover:bg-gray-50/40"
-                      >
-                        <div className="col-span-12 md:col-span-4 space-y-1.5 min-w-0">
-                          <input
-                            value={it.section_label}
-                            onChange={(e) => updateItem(idx, { section_label: e.target.value })}
-                            placeholder="分區（如：動畫 / 音樂）"
-                            className="w-full max-w-[180px] bg-gray-100 hover:bg-gray-200/70 focus:bg-white focus:ring-1 focus:ring-indigo-300 border-0 rounded-full px-2.5 py-0.5 text-[11px] text-gray-600 focus:outline-none transition-colors"
-                          />
-                          <input
-                            value={it.name}
-                            onChange={(e) => updateItem(idx, { name: e.target.value })}
-                            placeholder="項目名稱 *"
-                            className={`${inp} h-9 py-1.5 text-sm font-medium`}
-                          />
-                        </div>
-                        <div className="col-span-12 md:col-span-4">
-                          <textarea
-                            value={it.description}
-                            onChange={(e) => updateItem(idx, { description: e.target.value })}
-                            placeholder="說明（可多行）"
-                            rows={2}
-                            className={`${inp} text-xs py-1.5 leading-relaxed resize-y`}
-                          />
-                        </div>
-                        <div className="col-span-4 md:col-span-1">
-                          <div className="md:hidden text-[10px] font-medium text-gray-500 mb-1">
-                            數量
-                          </div>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={it.qty}
-                            onChange={(e) => updateItem(idx, { qty: e.target.value })}
-                            className={`${inp} h-9 py-1 px-2 text-right text-sm tabular-nums`}
-                          />
-                        </div>
-                        <div className="col-span-4 md:col-span-1">
-                          <div className="md:hidden text-[10px] font-medium text-gray-500 mb-1">
-                            單價
-                          </div>
-                          <input
-                            type="number"
-                            step="1"
-                            value={it.unit_price}
-                            onChange={(e) => updateItem(idx, { unit_price: e.target.value })}
-                            className={`${inp} h-9 py-1 px-2 text-right text-sm tabular-nums`}
-                          />
-                        </div>
-                        <div className="col-span-4 md:col-span-1 text-right">
-                          <div className="md:hidden text-[10px] font-medium text-gray-500 mb-1">
-                            小計
-                          </div>
-                          <div className="h-9 flex items-center justify-end text-sm font-semibold tabular-nums text-gray-900">
-                            {fmtCurrency(lineTotal, form.currency)}
-                          </div>
-                        </div>
-                        <div className="col-span-12 md:col-span-1 flex items-center justify-end gap-1.5 md:gap-1 pt-1 md:pt-0">
-                          <button
-                            type="button"
-                            onClick={() => moveItem(idx, -1)}
-                            disabled={idx === 0}
-                            className="w-7 h-7 grid place-items-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
-                            title="上移"
-                            aria-label="上移"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveItem(idx, 1)}
-                            disabled={idx === items.length - 1}
-                            className="w-7 h-7 grid place-items-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
-                            title="下移"
-                            aria-label="下移"
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(idx)}
-                            className="w-7 h-7 grid place-items-center rounded-md text-red-500 hover:text-red-700 hover:bg-red-50"
-                            title="刪除"
-                            aria-label="刪除"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
+              </div>
             )}
             {items.length > 0 ? (
               <div className="bg-gray-50 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -623,7 +615,7 @@ export default function QuotationFormModal({
           </div>
         </form>
 
-        <div className="sticky bottom-0 z-10 px-6 py-4 border-t border-gray-100 flex items-center gap-3 bg-white/95 backdrop-blur rounded-b-apple-xl">
+        <div className="sticky bottom-0 z-10 px-6 py-4 border-t border-slate-200/80 flex items-center gap-3 bg-white/95 backdrop-blur-md rounded-b-apple-xl">
           <button
             type="button"
             onClick={onClose}
@@ -669,9 +661,57 @@ function SummaryCell({ label, value, highlight = false }) {
   );
 }
 
+/** 桌面報價列：固定數字欄寬，避免單價被擠掉 */
+const LINE_GRID_MD =
+  'md:[grid-template-columns:minmax(9rem,1.05fr)_minmax(10rem,1.35fr)_3.75rem_7.25rem_6.75rem_4.75rem]';
+
 const inp =
-  'w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500';
+  'w-full min-w-0 bg-white/80 border border-slate-200/90 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 disabled:bg-slate-100 disabled:text-slate-500';
+
+const inpNum =
+  'h-9 min-h-9 box-border w-full bg-white/90 border border-slate-200/90 rounded-lg px-2.5 py-1 text-right text-[13px] leading-9 tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400';
 
 function L({ children }) {
-  return <label className="block text-[10px] font-medium text-gray-500 mb-1">{children}</label>;
+  return (
+    <label className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1">
+      {children}
+    </label>
+  );
+}
+
+function LineHead({ children, align = 'left' }) {
+  return (
+    <div
+      className={`text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500 ${
+        align === 'right' ? 'text-right' : ''
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MobileFieldLabel({ children }) {
+  return (
+    <span className="md:hidden text-[11px] font-semibold text-slate-500 tabular-nums">{children}</span>
+  );
+}
+
+function LineActionBtn({ children, onClick, disabled, label, danger = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`w-8 h-8 grid place-items-center rounded-lg text-[13px] transition-colors disabled:opacity-30 ${
+        danger
+          ? 'text-red-500 hover:text-red-700 hover:bg-red-50'
+          : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+      }`}
+    >
+      {children}
+    </button>
+  );
 }

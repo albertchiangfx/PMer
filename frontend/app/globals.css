@@ -8,27 +8,9 @@
   --apple-orange: #ff9500;
   --apple-red: #ff3b30;
 
-  /* ----- Floating left nav theme colors -----
-     Edit these to retheme the sidebar's plaster card, dark pill, and divider.
-     Foreground colors (brand gradient, active accent, item text) live in
-     NAV_STYLE.colors inside frontend/components/AppShell.jsx. */
-  --nav-plaster-from: #c7c7c7; /* outer gypsum/plaster card top color    */
-  --nav-plaster-to: #cfcfcf; /* outer gypsum/plaster card bottom color */
-  --nav-plaster-border: rgba(15, 23, 42, 0.06);
-  --nav-pill-bg: #1b1f26; /* inner dark pill                        */
+  /* ----- Nav：外層 .nav-plaster = 全局 .shell 玻璃；內層 .nav-pill = 深色原版 ----- */
+  --nav-pill-bg: #1b1f26;
   --nav-divider: rgba(255, 255, 255, 0.06);
-
-  /* Dark pill outer drop shadow.
-       offset-x  : horizontal direction. +right / -left.
-       offset-y  : vertical direction.   +down  / -up.   (combined x/y = 角度)
-       blur      : softness. larger = softer/more diffuse.
-       spread    : width. positive grows the shadow, negative shrinks it.
-       color     : RGB + alpha at the end controls opacity.
-     Example presets:
-       crisp lift   : x 0 / y 4 / blur 12 / spread 0 / alpha 0.30
-       soft float   : x 0 / y 10 / blur 30 / spread -2 / alpha 0.18
-       side-lit     : x 8 / y 6 / blur 24 / spread 0 / alpha 0.22
-   */
   --nav-pill-shadow-x: -6px;
   --nav-pill-shadow-y: 20px;
   --nav-pill-shadow-blur: 16px;
@@ -253,22 +235,19 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-/* ----- Floating two-layer nav (plaster outer + dark inner pill) -----
-   Theme colors are CSS variables defined in :root above, so a single edit
-   there changes the whole sidebar palette. Shadows / sizes stay here. */
+/* ----- Nav：外層與 .shell 同款霧玻璃；內層深色 pill 不動 ----- */
 .nav-plaster {
-  background: linear-gradient(180deg, var(--nav-plaster-from) 0%, var(--nav-plaster-to) 100%);
-  border: 1px solid var(--nav-plaster-border);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 18px 38px -16px rgba(15, 23, 42, 0.22),
-    0 2px 6px rgba(15, 23, 42, 0.05);
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.05),
+    0 18px 38px -16px rgba(15, 23, 42, 0.18);
 }
 .nav-pill {
   background: var(--nav-pill-bg);
-  /* First shadow = adjustable outer drop (controls 角度/寬度/softness/opacity
-     via the --nav-pill-shadow-* variables in :root). The two inset shadows
-     stay fixed so the pill keeps its top highlight + concave bottom feel. */
   box-shadow:
     var(--nav-pill-shadow-x) var(--nav-pill-shadow-y) var(--nav-pill-shadow-blur)
       var(--nav-pill-shadow-spread) var(--nav-pill-shadow-color),

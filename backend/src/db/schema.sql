@@ -163,6 +163,11 @@ CREATE TABLE IF NOT EXISTS quotations (
   total DECIMAL(14, 2) NOT NULL DEFAULT 0,
   notes TEXT,
   pdf_path VARCHAR(500),
+  public_token VARCHAR(64) UNIQUE,
+  client_visible BOOLEAN NOT NULL DEFAULT FALSE,
+  viewed_at TIMESTAMP,
+  accepted_at TIMESTAMP,
+  rejected_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -177,6 +182,31 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   qty DECIMAL(8, 2) NOT NULL DEFAULT 1,
   unit_price DECIMAL(12, 2) NOT NULL DEFAULT 0,
   line_total DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 客戶協作一頁式 Hub（公開 token，免登入）
+CREATE TABLE IF NOT EXISTS client_hubs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+  public_token VARCHAR(64) NOT NULL UNIQUE,
+  title VARCHAR(255),
+  welcome_message TEXT,
+  studio_display_name VARCHAR(255),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  first_viewed_at TIMESTAMP,
+  last_viewed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS client_hub_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hub_id UUID NOT NULL REFERENCES client_hubs(id) ON DELETE CASCADE,
+  kind VARCHAR(50) NOT NULL DEFAULT 'other',
+  label VARCHAR(255) NOT NULL,
+  url TEXT NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -234,6 +264,11 @@ CREATE INDEX IF NOT EXISTS idx_allocations_dates ON time_allocations(start_date,
 CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_project ON invoices(project_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_project ON quotations(project_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_public_token ON quotations(public_token);
+CREATE INDEX IF NOT EXISTS idx_quotations_client_visible ON quotations(project_id, client_visible);
+CREATE INDEX IF NOT EXISTS idx_client_hubs_token ON client_hubs(public_token);
+CREATE INDEX IF NOT EXISTS idx_client_hubs_project ON client_hubs(project_id);
+CREATE INDEX IF NOT EXISTS idx_client_hub_links_hub ON client_hub_links(hub_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_quotations_client ON quotations(client_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations(status);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items(quotation_id);
