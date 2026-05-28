@@ -451,7 +451,7 @@ export default function Dashboard() {
         <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-4">
           <div className="min-w-0">
             {!isMobileLayout ? (
-              <span className="v2-eyebrow">Studio PM · Daily Overview</span>
+              <span className="v2-eyebrow">multi.design studio · Daily Overview</span>
             ) : null}
             <h1 className="text-xl md:text-3xl font-semibold tracking-tight">
               {isMobileLayout ? '今日' : 'Dashboard'}

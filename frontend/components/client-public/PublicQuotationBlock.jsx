@@ -19,6 +19,7 @@ export default function PublicQuotationBlock({
   compareLabel,
   defaultExpanded = true,
   columnLayout = false,
+  framed = false,
   onAccept,
   onReject,
 }) {
@@ -60,7 +61,7 @@ export default function PublicQuotationBlock({
 
   return (
     <article
-      className={`client-public__quote-block ${columnLayout ? 'client-public__quote-block--column' : ''}`}
+      className={`client-public__quote-block ${columnLayout ? 'client-public__quote-block--column' : ''} ${framed ? 'client-public__quote-block--framed' : ''}`}
       id={`quote-${summary.public_token}`}
     >
       {compareLabel && (

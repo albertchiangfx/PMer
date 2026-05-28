@@ -20,6 +20,7 @@ export default function PublicQuotationsPanel({
   isMobile = false,
 }) {
   const useScroller = !isMobile && quotations.length >= 2;
+  const isSingleDesktop = !isMobile && quotations.length === 1;
   const scrollerRef = useDragScroll(useScroller);
   const compareBarRef = useRef(null);
 
@@ -171,13 +172,23 @@ export default function PublicQuotationsPanel({
         </div>
       )}
 
-      <div className={useScroller ? 'client-public__quote-scroller-wrap' : undefined}>
+      <div
+        className={
+          useScroller
+            ? 'client-public__quote-scroller-wrap'
+            : isSingleDesktop
+              ? 'client-public__quote-single-wrap'
+              : undefined
+        }
+      >
         <div
           ref={scrollerRef}
           className={
             useScroller
               ? 'client-public__quote-scroller client-public__quote-scroller--draggable'
-              : 'client-public__quote-stack'
+              : isSingleDesktop
+                ? 'client-public__quote-stack client-public__quote-stack--single'
+                : 'client-public__quote-stack'
           }
         >
           {summaries.map((q, i) => (
@@ -187,6 +198,7 @@ export default function PublicQuotationsPanel({
               status={q.status}
               defaultExpanded={!isMobile}
               columnLayout={useScroller}
+              framed={isSingleDesktop}
               compareLabel={
                 quotations.length > 1 ? `方案 ${String.fromCharCode(65 + i)}` : null
               }

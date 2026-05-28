@@ -6,6 +6,8 @@ import { publicApi } from '../../../lib/public-api';
 import PublicQuotationsPanel from '../../../components/client-public/PublicQuotationsPanel';
 import ClientHubProgress from '../../../components/client-public/ClientHubProgress';
 import { useIsMobileLayout } from '../../../lib/use-mobile-layout';
+import CompanyLogo from '../../../components/CompanyLogo';
+import { STUDIO_EMAIL } from '../../../lib/studio-brand';
 import '../../../styles/client-public.css';
 
 export default function ClientHubPage() {
@@ -111,12 +113,14 @@ export default function ClientHubPage() {
     >
       <div className="client-public__inner">
         <header className="client-public__hdr">
-          <div>
-            <h1 className="client-public__brand-name">{studio?.name}</h1>
-            {!isMobile && (studio?.contact_email || studio?.contact_phone) && (
+          <div className="client-public__brand-block">
+            <div className="client-public__brand-mark">
+              <CompanyLogo size={28} />
+              <h1 className="client-public__brand-name">{studio?.name || 'multi.design studio'}</h1>
+            </div>
+            {(studio?.contact_email || STUDIO_EMAIL) && (
               <div className="client-public__brand-meta">
-                {studio.contact_phone && <div>T {studio.contact_phone}</div>}
-                {studio.contact_email && <div>E {studio.contact_email}</div>}
+                <div>E {studio?.contact_email || STUDIO_EMAIL}</div>
               </div>
             )}
           </div>

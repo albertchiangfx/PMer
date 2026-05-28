@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { shellRowHeightClass } from '../lib/page-layout';
+import { STUDIO_NAME } from '../lib/studio-brand';
+import CompanyLogo from './CompanyLogo';
 
 function viewerInitials(name) {
   const trimmed = String(name || '').trim();
@@ -20,57 +22,6 @@ function viewerInitials(name) {
   return initials || trimmed.slice(0, 2).toUpperCase();
 }
 
-/** 原圖 195×67：左側三條線圖案約 0–52px，不含 MULTI 字樣 */
-const LOGO_SRC_W = 195;
-const LOGO_SRC_H = 67;
-const LOGO_MARK_SRC_W = 52;
-
-function LogoMarkFallback({ size, className = '' }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      className={className}
-      aria-hidden
-    >
-      <rect x="3" y="5" width="5" height="14" rx="1" fill="currentColor" transform="skewX(-12)" />
-      <rect x="9.5" y="5" width="5" height="14" rx="1" fill="currentColor" transform="skewX(-12)" />
-      <rect x="16" y="5" width="5" height="14" rx="1" fill="currentColor" transform="skewX(-12)" />
-    </svg>
-  );
-}
-
-function CompanyLogo({ size = 24, className = '' }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <LogoMarkFallback size={size} className={`text-white ${className}`} />
-    );
-  }
-
-  const renderedW = size * (LOGO_SRC_W / LOGO_SRC_H);
-  const clipW = size * (LOGO_MARK_SRC_W / LOGO_SRC_H);
-
-  return (
-    <span
-      className={`inline-flex overflow-hidden shrink-0 items-center justify-start ${className}`}
-      style={{ width: clipW, height: size }}
-      role="img"
-      aria-label="Company logo"
-    >
-      <img
-        src="/company-logo.png"
-        alt=""
-        draggable={false}
-        onError={() => setFailed(true)}
-        className="block h-full w-auto max-w-none select-none"
-        style={{ width: `${renderedW}px` }}
-      />
-    </span>
-  );
-}
-
 const NAV = [
   { href: '/', label: 'Dashboard', mobileLabel: '今日', icon: IconGrid },
   { href: '/projects', label: '專案', icon: IconFolder },
@@ -80,8 +31,9 @@ const NAV = [
   { href: '/team', label: '成員', icon: IconUsers },
 ];
 
+/** 手機底欄：不含報價單／客戶協作（可從專案、客戶等進入） */
 const MOBILE_NAV = [
-  ...NAV,
+  ...NAV.filter((n) => n.href !== '/quotations' && n.href !== '/collaboration'),
   { href: '/settings', label: '設定', icon: IconGear },
 ];
 
@@ -349,19 +301,24 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, viewerInitials,
         <div
           className={`nav-pill flex w-full shrink-0 flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
         >
+          <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-white/10">
+            <CompanyLogo size={22} className="text-white" />
+            <p className="text-[12px] font-semibold text-white/95 leading-snug">{STUDIO_NAME}</p>
+          </div>
+
           <div className="flex items-center gap-3">
             <div
               className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[12px] font-bold tracking-wide shrink-0 ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
               aria-label="使用者頭像"
               title={viewerTitle || ''}
             >
-              {viewerInitials || 'SP'}
+              {viewerInitials || '—'}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-white/95">
-                {viewerTitle || 'Studio PM'}
+                {viewerTitle || '成員'}
               </p>
-              <p className="truncate text-[11px] text-white/55">{viewerRole || '3D Animation'}</p>
+              <p className="truncate text-[11px] text-white/55">{viewerRole || '工作室'}</p>
             </div>
             <button
               type="button"
