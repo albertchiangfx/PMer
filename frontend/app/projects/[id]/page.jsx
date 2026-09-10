@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../../lib/api';
 import { notifyScheduleDataChanged } from '../../../lib/dashboard-sync';
@@ -18,6 +18,11 @@ import ProjectFormModal, {
   projectFormToPayload,
   projectToForm,
 } from '../../../components/ProjectFormModal';
+import ClientHubPanel from '../../../components/ClientHubPanel';
+import {
+  pageFrameHeaderClass,
+  pageFrameScrollClass,
+} from '../../../lib/page-layout';
 
 const TASK_TYPES = [
   'general',
@@ -47,6 +52,7 @@ function sliceProjectYmd(d) {
 
 export default function ProjectDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = routeParamId(params?.id);
   const router = useRouter();
   const [project, setProject] = useState(null);
@@ -70,8 +76,13 @@ export default function ProjectDetailPage() {
   const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
+    const qTab = searchParams?.get('tab');
+    if (qTab === 'client') {
+      setTab('client');
+      return;
+    }
     setTab(isMobileLayout ? 'schedule' : 'gantt');
-  }, [id, isMobileLayout]);
+  }, [id, isMobileLayout, searchParams]);
 
   useEffect(() => {
     if (!isMobileLayout && tab === 'schedule') setTab('gantt');
@@ -307,10 +318,11 @@ export default function ProjectDetailPage() {
   const s = statusStyle(project.status);
 
   return (
-    <div className="px-1 py-2 md:p-8 w-full max-w-full mx-auto animate-fade-in">
+    <div className="px-1 py-2 md:p-0 w-full max-w-full mx-auto animate-fade-in flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden max-sm:overflow-y-auto">
+      <div className={pageFrameHeaderClass}>
       {/* Breadcrumb — current project name is a dropdown that lets you switch
           to another project without going back to the projects list. */}
-      <div className="flex items-center gap-2 text-sm text-gray-400 mb-3 md:mb-6">
+      <div className="flex items-center gap-2 text-sm text-gray-400 mb-3 md:mb-4">
         <Link href="/projects" className="hover:text-gray-600">
           專案
         </Link>
@@ -392,7 +404,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Header（較緊湊約 90%） */}
-      <div className="bg-white rounded-2xl md:rounded-apple-xl shadow-apple p-3.5 md:p-5 mb-3 md:mb-5">
+      <div className="bg-white rounded-2xl md:rounded-apple-xl shadow-apple p-3.5 md:p-5 mb-3 md:mb-4">
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-2.5 md:gap-3 min-w-0 flex-1">
             <div
@@ -440,10 +452,11 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Tabs — 桌機（維持原順序與預設） */}
-      <div className="hidden md:flex gap-1 mb-6 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
+      <div className="hidden md:flex gap-1 mb-3 bg-white p-1.5 rounded-apple shadow-apple-sm w-fit flex-wrap">
         {[
           ['gantt', '甘特圖'],
           ['milestones', '項目'],
+          ['client', '客戶協作'],
           ['team', '成員'],
           ['tasks', '任務'],
         ].map(([k, label]) => (
@@ -463,6 +476,7 @@ export default function ProjectDetailPage() {
         {[
           ['schedule', '時程總覽'],
           ['milestones', '項目'],
+          ['client', '客戶協作'],
           ['team', '成員'],
           ['tasks', '任務'],
           ['gantt', '時程預覽'],
@@ -477,18 +491,38 @@ export default function ProjectDetailPage() {
           </button>
         ))}
       </div>
+      </div>
 
+      <div
+        className={`flex flex-col flex-1 min-h-0 ${
+          tab === 'milestones' || tab === 'gantt' ? 'overflow-hidden' : pageFrameScrollClass
+        }`}
+      >
       {tab === 'schedule' && isMobileLayout && (
         <ProjectScheduleMobileOverview projectId={id} project={project} />
+      )}
+
+      {tab === 'client' && (
+        <div
+          id="client-hub"
+          className="surface rounded-2xl md:rounded-[22px] p-3.5 md:p-6 shadow-apple-sm scroll-mt-24"
+        >
+          <ClientHubPanel
+            projectId={id}
+            projectName={project.name}
+            projectColor={project.color}
+            clientName={project.client_name}
+          />
+        </div>
       )}
 
       {tab === 'milestones' && (
         <div
           id="milestones"
-          className="surface rounded-2xl md:rounded-[22px] p-3.5 md:p-6 shadow-apple-sm scroll-mt-24 relative z-[5] isolate"
+          className="surface rounded-2xl md:rounded-[22px] p-3.5 md:p-6 shadow-apple-sm scroll-mt-24 relative z-[5] isolate flex flex-col flex-1 min-h-0 overflow-hidden"
           style={{ pointerEvents: 'auto' }}
         >
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div className="shrink-0 flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
               <h2 className="text-base font-semibold text-gray-900">專案項目</h2>
               <p className="text-xs text-gray-500 mt-1">
@@ -612,8 +646,8 @@ export default function ProjectDetailPage() {
 
       {tab === 'gantt' && (
         <>
-          <div className="hidden md:block space-y-4">
-            <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
+          <div className="hidden md:flex flex-col flex-1 min-h-0 gap-3 overflow-hidden">
+            <div className="shrink-0 inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm w-fit">
               <button
                 type="button"
                 onClick={() => setGanttMode('milestones')}
@@ -638,26 +672,29 @@ export default function ProjectDetailPage() {
               </button>
             </div>
 
-            {ganttMode === 'members' ? (
-              <Gantt
-                members={members}
-                allocations={projectAllocations}
-                onUpdate={load}
-                rangeWeeks={12}
-                showRowDelete
-                lockMemberRowOnMove
-                labelColumnTitle="成員"
-                scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
-              />
-            ) : (
-              <ProjectMilestoneTimeline
-                projectId={id}
-                project={project}
-                rangeWeeks={12}
-                pastWeeks={4}
-                onProjectDatesSaved={() => load()}
-              />
-            )}
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {ganttMode === 'members' ? (
+                <Gantt
+                  embedded
+                  members={members}
+                  allocations={projectAllocations}
+                  onUpdate={load}
+                  rangeWeeks={12}
+                  showRowDelete
+                  lockMemberRowOnMove
+                  labelColumnTitle="成員"
+                  scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
+                />
+              ) : (
+                <ProjectMilestoneTimeline
+                  projectId={id}
+                  project={project}
+                  rangeWeeks={12}
+                  pastWeeks={4}
+                  onProjectDatesSaved={() => load()}
+                />
+              )}
+            </div>
           </div>
 
           <div className="md:hidden">
@@ -665,6 +702,7 @@ export default function ProjectDetailPage() {
           </div>
         </>
       )}
+      </div>
 
       {/* Task Modal */}
       {taskModal && (

@@ -2,8 +2,8 @@ import './globals.css';
 import AppShell from '../components/AppShell';
 
 export const metadata = {
-  title: 'Studio PM',
-  description: '3D Animation Studio Project Management',
+  title: 'multi.design studio',
+  description: 'multi.design studio — 專案管理',
 };
 
 export default function RootLayout({ children }) {

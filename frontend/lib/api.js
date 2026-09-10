@@ -47,6 +47,7 @@ async function request(path, options = {}) {
       headers: { 'Content-Type': 'application/json', ...optHeaders },
       signal,
       body: rest.body && typeof rest.body !== 'string' ? JSON.stringify(rest.body) : rest.body,
+      credentials: 'include',
       cache: 'no-store',
     });
   } catch (e) {
@@ -88,6 +89,21 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Auth
+  me: () => request('/auth/me'),
+  login: (data) => request('/auth/login', { method: 'POST', body: data }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  activate: (data) => request('/auth/activate', { method: 'POST', body: data }),
+  changePassword: (data) => request('/auth/change-password', { method: 'POST', body: data }),
+  adminCreateUser: (data) => request('/auth/admin/create-user', { method: 'POST', body: data }),
+  adminListUsers: () => request('/auth/admin/users'),
+  adminUpdateUser: (id, data) => request(`/auth/admin/users/${encodeURIComponent(id)}`, { method: 'POST', body: data }),
+  adminRevokeSessions: (id) =>
+    request(`/auth/admin/users/${encodeURIComponent(id)}/revoke-sessions`, { method: 'POST' }),
+  adminNewActivation: (id) =>
+    request(`/auth/admin/users/${encodeURIComponent(id)}/new-activation`, { method: 'POST' }),
+  adminAuthConfig: () => request('/auth/admin/config'),
+
   // Projects
   getProjects: (params) => request('/projects' + toQS(params)),
   getProject: (id) => request(`/projects/${id}`),
@@ -179,6 +195,41 @@ export const api = {
   updateInvoice: (id, data) => request(`/invoices/${id}`, { method: 'PUT', body: data }),
   deleteInvoice: (id) => request(`/invoices/${id}`, { method: 'DELETE' }),
   downloadInvoicePDF: (id) => `${getApiBase()}/invoices/${id}/pdf`,
+
+  // Quotation services (服務項目庫)
+  getQuotationServices: (params) => request('/quotation-services' + toQS(params)),
+  createQuotationService: (data) =>
+    request('/quotation-services', { method: 'POST', body: data }),
+  updateQuotationService: (id, data) =>
+    request(`/quotation-services/${id}`, { method: 'PUT', body: data }),
+  deleteQuotationService: (id) =>
+    request(`/quotation-services/${id}`, { method: 'DELETE' }),
+
+  // Quotations
+  getQuotations: (params) => request('/quotations' + toQS(params)),
+  getQuotation: (id) => request(`/quotations/${id}`),
+  createQuotation: (data) => request('/quotations', { method: 'POST', body: data }),
+  updateQuotation: (id, data) => request(`/quotations/${id}`, { method: 'PUT', body: data }),
+  deleteQuotation: (id) => request(`/quotations/${id}`, { method: 'DELETE' }),
+  cloneQuotation: (id, data = {}) =>
+    request(`/quotations/${id}/clone`, { method: 'POST', body: data }),
+  previewQuotationHtmlUrl: (id) => `${getApiBase()}/quotations/${id}/preview-html`,
+  generateQuotationPdfUrl: (id) => `${getApiBase()}/quotations/${id}/generate-pdf`,
+  publishQuotation: (id) => request(`/quotations/${id}/publish`, { method: 'POST' }),
+  unpublishQuotation: (id) => request(`/quotations/${id}/unpublish`, { method: 'POST' }),
+
+  // Client hubs（客戶協作一頁）
+  getClientHubsOverview: () => request('/client-hubs/overview'),
+  getClientHubByProject: (projectId) =>
+    request(`/client-hubs?project_id=${encodeURIComponent(projectId)}`),
+  createClientHub: (data) => request('/client-hubs', { method: 'POST', body: data }),
+  updateClientHub: (id, data) => request(`/client-hubs/${id}`, { method: 'PUT', body: data }),
+  regenerateClientHubToken: (id) =>
+    request(`/client-hubs/${id}/regenerate-token`, { method: 'POST' }),
+  addClientHubLink: (hubId, data) =>
+    request(`/client-hubs/${hubId}/links`, { method: 'POST', body: data }),
+  deleteClientHubLink: (linkId) =>
+    request(`/client-hubs/links/${linkId}`, { method: 'DELETE' }),
 
   /** 國定假日（經後端代理 Nager.Date） */
   getPublicHolidays: ({ year, countries }) =>

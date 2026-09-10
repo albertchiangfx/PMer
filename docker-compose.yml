@@ -37,6 +37,7 @@ services:
       DB_USER: ${DB_USER:-studio}
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
       UPLOAD_DIR: /app/uploads
+      AUTH_BOOTSTRAP_SECRET: ${AUTH_BOOTSTRAP_SECRET:-}
     volumes:
       - uploads_data:/app/uploads
     ports:
@@ -55,7 +56,7 @@ services:
     container_name: studio-pm-api-dev
     restart: unless-stopped
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 3001
       DB_HOST: postgres
       DB_PORT: 5432
@@ -63,9 +64,16 @@ services:
       DB_USER: ${DB_USER:-studio}
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
       UPLOAD_DIR: /app/uploads
+      AUTH_BOOTSTRAP_SECRET: ${AUTH_BOOTSTRAP_SECRET:-}
+      # Insecure dev helper: allow login with any password (username must exist).
+      # Set to 0/empty to disable.
+      AUTH_DEV_BYPASS_PASSWORDS: ${AUTH_DEV_BYPASS_PASSWORDS:-0}
     volumes:
       # 與正式後端共用 uploads，複製 DB 後附件路徑仍有效；在 dev 刪改檔案會影響正式上傳目錄，請留意
       - uploads_data:/app/uploads
+    # Optional: expose dev API directly (bypasses nginx /api-dev)
+    ports:
+      - "3002:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,7 +107,8 @@ services:
     working_dir: /app
     command: sh -c "npm install && npm run dev -- -p 3000 -H 0.0.0.0"
     environment:
-      NEXT_PUBLIC_API_URL: ${DEV_NEXT_PUBLIC_API_URL:-http://localhost/api-dev}
+      NEXT_PUBLIC_API_URL: ${DEV_NEXT_PUBLIC_API_URL:-/api-dev}
+      API_DEV_PROXY_TARGET: http://backend-dev:3001
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:

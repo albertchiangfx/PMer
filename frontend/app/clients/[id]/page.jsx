@@ -17,6 +17,8 @@ import BackToDashboard from '../../../components/BackToDashboard';
 import ContractFormModal from '../../../components/ContractFormModal';
 import InvoiceFormModal from '../../../components/InvoiceFormModal';
 import ContractGeneratorModal from '../../../components/ContractGeneratorModal';
+import QuotationFormModal from '../../../components/QuotationFormModal';
+import QuotationPreviewModal from '../../../components/QuotationPreviewModal';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
@@ -321,6 +323,7 @@ export default function ClientDetailPage() {
   const [projects, setProjects] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(defaultClientForm());
   const [editing, setEditing] = useState(false);
@@ -333,19 +336,23 @@ export default function ClientDetailPage() {
   const [contractModal, setContractModal] = useState(null); // null | 'create' | { contract }
   const [invoiceModal, setInvoiceModal] = useState(null);
   const [generatorContract, setGeneratorContract] = useState(null);
+  const [quotationModal, setQuotationModal] = useState(null); // null | 'create' | quotation
+  const [quotationPreview, setQuotationPreview] = useState(null);
 
   const load = useCallback(async () => {
-    const [c, p, ct, inv] = await Promise.all([
+    const [c, p, ct, inv, qs] = await Promise.all([
       api.getClient(id),
       api.getProjects({ client_id: id }),
       api.getContracts({ client_id: id }),
       api.getInvoices({ client_id: id }),
+      api.getQuotations({ client_id: id }),
     ]);
     setClient(c);
     setForm(defaultClientForm(c));
     setProjects(Array.isArray(p) ? p : []);
     setContracts(Array.isArray(ct) ? ct : []);
     setInvoices(Array.isArray(inv) ? inv : []);
+    setQuotations(Array.isArray(qs) ? qs : []);
   }, [id]);
 
   useEffect(() => {
@@ -686,7 +693,7 @@ export default function ClientDetailPage() {
       >
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3 shrink-0">
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold text-slate-900">合約與收款</h2>
+            <h2 className="text-sm font-bold text-slate-900">報價・合約・收款</h2>
             {selectedProject ? (
               (() => {
                 const meta = projectScheduleBudgetLines(selectedProject);
@@ -739,6 +746,13 @@ export default function ClientDetailPage() {
               <div className="flex gap-1">
                 <button
                   type="button"
+                  onClick={() => setQuotationModal('create')}
+                  className="text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-md hover:bg-amber-100"
+                >
+                  ＋ 報價單
+                </button>
+                <button
+                  type="button"
                   onClick={() => setContractModal('create')}
                   className="text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-md hover:bg-sky-100"
                 >
@@ -756,9 +770,103 @@ export default function ClientDetailPage() {
           </div>
         </div>
         <p className="text-xs text-slate-500 mb-3 shrink-0 max-w-2xl">
-          顯示所選專案的合約與發票；待處理含未簽約、未收款。
+          顯示所選專案的報價單、合約與發票；待處理含未簽約、未收款。
         </p>
         <div className="scroll-pane flex-1 min-h-0 pr-0.5">
+          {selectedProjectId ? (
+            (() => {
+              const projQuotes = quotations.filter(
+                (q) => String(q.project_id) === String(selectedProjectId)
+              );
+              if (!projQuotes.length) return null;
+              return (
+                <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50/40 p-2">
+                  <div className="flex items-center justify-between mb-1.5 px-1">
+                    <div className="text-[11px] font-semibold text-amber-800">
+                      報價單 <span className="text-amber-500">({projQuotes.length})</span>
+                    </div>
+                  </div>
+                  <ul className="divide-y divide-amber-100">
+                    {projQuotes.map((q) => (
+                      <li
+                        key={q.id}
+                        className="px-1.5 py-1.5 flex items-center gap-2 group hover:bg-white/60 rounded-md"
+                      >
+                        <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
+                          {q.status === 'accepted'
+                            ? '已接受'
+                            : q.status === 'sent'
+                              ? '已寄出'
+                              : q.status === 'rejected'
+                                ? '已拒絕'
+                                : q.status === 'expired'
+                                  ? '已過期'
+                                  : '草稿'}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-slate-800 truncate">
+                            {q.title || q.quote_number}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {q.quote_number} · 開立 {fmt(q.issued_date)}
+                            {q.valid_until ? ` · 有效至 ${fmt(q.valid_until)}` : ''}
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold tabular-nums text-slate-900 shrink-0">
+                          {fmtCurrency(q.total, q.currency)}
+                        </div>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const full = await api.getQuotation(q.id);
+                                setQuotationPreview(full);
+                              } catch (e) {
+                                alert(e.message || String(e));
+                              }
+                            }}
+                            className="text-[11px] text-emerald-600 hover:text-emerald-700 font-semibold"
+                          >
+                            PDF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const full = await api.getQuotation(q.id);
+                                setQuotationModal(full);
+                              } catch (e) {
+                                alert(e.message || String(e));
+                              }
+                            }}
+                            className="text-[11px] text-indigo-600 hover:text-indigo-700"
+                          >
+                            編輯
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`刪除報價單 ${q.quote_number}？`)) return;
+                              try {
+                                await api.deleteQuotation(q.id);
+                                await load();
+                              } catch (e) {
+                                alert(e.message || String(e));
+                              }
+                            }}
+                            className="text-[11px] text-red-500 hover:text-red-600"
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()
+          ) : null}
           {!selectedProjectId ? (
             <p className="text-sm text-slate-400 py-4 text-center">尚無專案可顯示</p>
           ) : filteredFinancial.length === 0 ? (
@@ -881,6 +989,9 @@ export default function ClientDetailPage() {
           )}
         </div>
         <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-sm shrink-0">
+          <Link href="/quotations" className="text-indigo-600 font-semibold hover:text-indigo-800">
+            全部報價單 →
+          </Link>
           <Link href="/contracts" className="text-indigo-600 font-semibold hover:text-indigo-800">
             全部合約 →
           </Link>
@@ -890,6 +1001,34 @@ export default function ClientDetailPage() {
         </div>
       </section>
       </div>
+
+      <QuotationFormModal
+        open={!!quotationModal}
+        mode={quotationModal === 'create' ? 'create' : 'edit'}
+        initial={quotationModal && quotationModal !== 'create' ? quotationModal : null}
+        defaults={{
+          project_id: selectedProjectId,
+          client_id: id,
+          currency: 'TWD',
+          title: selectedProject?.name || '',
+        }}
+        projects={projects}
+        clients={client ? [client] : []}
+        lockClient
+        onClose={() => setQuotationModal(null)}
+        onSubmit={async (payload) => {
+          if (quotationModal === 'create') await api.createQuotation(payload);
+          else await api.updateQuotation(quotationModal.id, payload);
+          await load();
+        }}
+      />
+
+      <QuotationPreviewModal
+        open={!!quotationPreview}
+        quotation={quotationPreview}
+        onClose={() => setQuotationPreview(null)}
+        onGenerated={load}
+      />
 
       <ContractFormModal
         open={!!contractModal}

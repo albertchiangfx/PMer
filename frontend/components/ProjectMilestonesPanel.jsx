@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { api } from '../lib/api';
 import { MILESTONE_TEMPLATE_OPTIONS } from '../lib/milestone-templates';
@@ -21,6 +21,34 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
   const [newMilestoneLabel, setNewMilestoneLabel] = useState('');
   const [reordering, setReordering] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
+  const listScrollRef = useRef(null);
+
+  // 列表內：滾輪上下；Alt+滾輪也強制上下（與甘特圖垂直捲動手勢一致）。
+  // React onWheel 在現代 react-dom 為 passive，改用 native listener 才能 preventDefault。
+  useEffect(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (e.ctrlKey) return;
+      const dy = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      if (dy === 0) return;
+      if (e.altKey) {
+        e.preventDefault();
+        el.scrollTop += dy;
+        return;
+      }
+      // 列表本身可捲時，讓原生 overflow-y 處理；無法再捲時不攔截，避免卡住父層
+      const atTop = el.scrollTop <= 0;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      if ((dy < 0 && atTop) || (dy > 0 && atBottom)) return;
+      if (el.scrollHeight > el.clientHeight) {
+        e.preventDefault();
+        el.scrollTop += dy;
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const {
     data: milestones = [],
@@ -146,14 +174,14 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
     swrError instanceof Error ? swrError.message : swrError ? String(swrError) : null;
 
   return (
-    <div className="space-y-4 relative pointer-events-auto">
+    <div className="flex flex-col flex-1 min-h-0 gap-4 relative pointer-events-auto">
       {fetchErr && (
-        <p className="text-sm text-rose-600 rounded-lg bg-rose-50 border border-rose-100 px-3 py-2">
+        <p className="shrink-0 text-sm text-rose-600 rounded-lg bg-rose-50 border border-rose-100 px-3 py-2">
           無法載入項目（請確認 API 網址與後端已啟動）：{fetchErr}
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="shrink-0 flex flex-wrap items-center gap-2">
         <select
           value={templateChoice}
           onChange={(e) => setTemplateChoice(e.target.value)}
@@ -184,94 +212,102 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
         )}
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="shrink-0 text-xs text-gray-500">
         按住左側「⠿」拖曳排序，或使用「上移／下移」（會同步存進資料庫）
         {projectName ? ` · ${projectName}` : ''}
+        {' · '}
+        列表內滾輪上下 · Alt+滾輪也可捲動
       </p>
 
-      <ul className={`space-y-2 ${reordering ? 'opacity-60' : ''}`}>
-        {sortedMilestones.map((m, idx) => (
-          <li
-            key={m.id}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-            }}
-            onDrop={(e) => onDropOnRow(e, m.id)}
-            className={`flex items-start gap-2 group rounded-lg px-2 py-1.5 transition-colors bg-white/80 ${
-              draggingId === m.id ? 'opacity-50 ring-2 ring-indigo-200' : ''
-            }`}
-          >
-            <div className="flex flex-row shrink-0 gap-1 mt-0.5 items-start" aria-label="排序">
-              <span
-                title="拖曳排序"
-                draggable={!reordering}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('application/x-milestone-id', m.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                  setDraggingId(m.id);
-                }}
-                onDragEnd={() => setDraggingId(null)}
-                className="cursor-grab active:cursor-grabbing leading-none px-1 py-1 text-xs rounded border border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 select-none touch-none"
-              >
-                ⠿
-              </span>
-              <div className="flex flex-col gap-0.5">
-                <button
-                  type="button"
-                  disabled={reordering || idx === 0}
-                  onClick={() => moveMilestone(m.id, -1)}
-                  className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="上移"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  disabled={reordering || idx === sortedMilestones.length - 1}
-                  onClick={() => moveMilestone(m.id, 1)}
-                  className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="下移"
-                >
-                  ↓
-                </button>
-              </div>
-            </div>
-            <div className="flex items-start gap-2 flex-1 min-w-0">
-              <input
-                id={`ms-done-${m.id}`}
-                type="checkbox"
-                checked={!!m.completed}
-                disabled={reordering}
-                onChange={() => onToggleMilestone(m)}
-                className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
-              />
-              <label
-                htmlFor={`ms-done-${m.id}`}
-                className={`text-sm cursor-pointer flex-1 min-w-0 ${m.completed ? 'text-gray-400 line-through' : 'text-gray-900'}`}
-              >
-                {m.label}
-              </label>
-            </div>
-            <button
-              type="button"
-              disabled={reordering}
-              onClick={() => onDeleteMilestone(m.id)}
-              className="text-xs text-rose-600 hover:underline shrink-0 sm:opacity-100 opacity-0 group-hover:opacity-100"
+      <div
+        ref={listScrollRef}
+        className="scroll-pane flex-1 min-h-0 pr-1"
+        title="滾輪上下捲動 · Alt+滾輪也可捲動"
+      >
+        <ul className={`space-y-2 ${reordering ? 'opacity-60' : ''}`}>
+          {sortedMilestones.map((m, idx) => (
+            <li
+              key={m.id}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => onDropOnRow(e, m.id)}
+              className={`flex items-start gap-2 group rounded-lg px-2 py-1.5 transition-colors bg-white/80 ${
+                draggingId === m.id ? 'opacity-50 ring-2 ring-indigo-200' : ''
+              }`}
             >
-              刪除
-            </button>
-          </li>
-        ))}
-      </ul>
+              <div className="flex flex-row shrink-0 gap-1 mt-0.5 items-start" aria-label="排序">
+                <span
+                  title="拖曳排序"
+                  draggable={!reordering}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-milestone-id', m.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingId(m.id);
+                  }}
+                  onDragEnd={() => setDraggingId(null)}
+                  className="cursor-grab active:cursor-grabbing leading-none px-1 py-1 text-xs rounded border border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 select-none touch-none"
+                >
+                  ⠿
+                </span>
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    type="button"
+                    disabled={reordering || idx === 0}
+                    onClick={() => moveMilestone(m.id, -1)}
+                    className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="上移"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reordering || idx === sortedMilestones.length - 1}
+                    onClick={() => moveMilestone(m.id, 1)}
+                    className="leading-none px-1 py-0 text-[10px] rounded border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="下移"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <input
+                  id={`ms-done-${m.id}`}
+                  type="checkbox"
+                  checked={!!m.completed}
+                  disabled={reordering}
+                  onChange={() => onToggleMilestone(m)}
+                  className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                />
+                <label
+                  htmlFor={`ms-done-${m.id}`}
+                  className={`text-sm cursor-pointer flex-1 min-w-0 ${m.completed ? 'text-gray-400 line-through' : 'text-gray-900'}`}
+                >
+                  {m.label}
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={reordering}
+                onClick={() => onDeleteMilestone(m.id)}
+                className="text-xs text-rose-600 hover:underline shrink-0 sm:opacity-100 opacity-0 group-hover:opacity-100"
+              >
+                刪除
+              </button>
+            </li>
+          ))}
+        </ul>
 
-      {sortedMilestones.length === 0 && !fetchErr && (
-        <p className="text-sm text-gray-400 py-2">
-          尚無項目 · 可選公版後按「套用」，或下方手動新增。
-        </p>
-      )}
+        {sortedMilestones.length === 0 && !fetchErr && (
+          <p className="text-sm text-gray-400 py-2">
+            尚無項目 · 可選公版後按「套用」，或下方手動新增。
+          </p>
+        )}
+      </div>
 
-      <form onSubmit={onAddMilestone} className="flex gap-2 flex-wrap pt-1">
+      <form onSubmit={onAddMilestone} className="shrink-0 flex gap-2 flex-wrap pt-1 border-t border-gray-100/80">
         <input
           value={newMilestoneLabel}
           onChange={(e) => setNewMilestoneLabel(e.target.value)}

@@ -5,6 +5,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS team_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Link to auth user (null for legacy/imported members)
+  user_id UUID,
   name VARCHAR(255) NOT NULL,
   role VARCHAR(100) DEFAULT 'Team Member',
   hourly_rate DECIMAL(10, 2) DEFAULT 0,
@@ -133,6 +135,84 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 報價單系統
+CREATE TABLE IF NOT EXISTS quotation_services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  section_label VARCHAR(100) NOT NULL DEFAULT '',
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  default_unit_price DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quotations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  quote_number VARCHAR(100) UNIQUE NOT NULL,
+  title VARCHAR(255),
+  status VARCHAR(50) NOT NULL DEFAULT 'draft',
+  currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
+  issued_date DATE,
+  valid_until DATE,
+  subtotal DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  tax_rate DECIMAL(6, 4) NOT NULL DEFAULT 0.05,
+  tax_due DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  total DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  notes TEXT,
+  pdf_path VARCHAR(500),
+  public_token VARCHAR(64) UNIQUE,
+  client_visible BOOLEAN NOT NULL DEFAULT FALSE,
+  viewed_at TIMESTAMP,
+  accepted_at TIMESTAMP,
+  rejected_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  quotation_id UUID NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+  service_id UUID REFERENCES quotation_services(id) ON DELETE SET NULL,
+  section_label VARCHAR(100) NOT NULL DEFAULT '',
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  qty DECIMAL(8, 2) NOT NULL DEFAULT 1,
+  unit_price DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  line_total DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 客戶協作一頁式 Hub（公開 token，免登入）
+CREATE TABLE IF NOT EXISTS client_hubs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+  public_token VARCHAR(64) NOT NULL UNIQUE,
+  title VARCHAR(255),
+  welcome_message TEXT,
+  studio_display_name VARCHAR(255),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  first_viewed_at TIMESTAMP,
+  last_viewed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS client_hub_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hub_id UUID NOT NULL REFERENCES client_hubs(id) ON DELETE CASCADE,
+  kind VARCHAR(50) NOT NULL DEFAULT 'other',
+  label VARCHAR(255) NOT NULL,
+  url TEXT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   entity_type VARCHAR(50),
@@ -169,6 +249,46 @@ CREATE TABLE IF NOT EXISTS member_personal_tasks (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ── Auth: users + sessions + activation tokens ───────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username VARCHAR(64) NOT NULL UNIQUE,
+  display_name VARCHAR(255),
+  role VARCHAR(50) NOT NULL DEFAULT 'pm',
+  password_hash TEXT,
+  must_change_password BOOLEAN NOT NULL DEFAULT true,
+  disabled_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_activation_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  revoked_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TIMESTAMP
+);
+
+-- Link team members to auth users (added after users table exists)
+ALTER TABLE team_members
+  ADD CONSTRAINT IF NOT EXISTS fk_team_members_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE team_members
+  ADD CONSTRAINT IF NOT EXISTS uq_team_members_user_id UNIQUE (user_id);
+
 CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_member_personal_tasks_member ON member_personal_tasks(team_member_id);
 CREATE INDEX IF NOT EXISTS idx_member_personal_tasks_project ON member_personal_tasks(project_id);
@@ -185,6 +305,21 @@ CREATE INDEX IF NOT EXISTS idx_allocations_task ON time_allocations(task_id);
 CREATE INDEX IF NOT EXISTS idx_allocations_dates ON time_allocations(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_project ON invoices(project_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_project ON quotations(project_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_public_token ON quotations(public_token);
+CREATE INDEX IF NOT EXISTS idx_quotations_client_visible ON quotations(project_id, client_visible);
+CREATE INDEX IF NOT EXISTS idx_client_hubs_token ON client_hubs(public_token);
+CREATE INDEX IF NOT EXISTS idx_client_hubs_project ON client_hubs(project_id);
+CREATE INDEX IF NOT EXISTS idx_client_hub_links_hub ON client_hub_links(hub_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_quotations_client ON quotations(client_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations(status);
+CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items(quotation_id);
+CREATE INDEX IF NOT EXISTS idx_quotation_services_active ON quotation_services(is_active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_user_activation_tokens_user ON user_activation_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_activation_tokens_expires ON user_activation_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
 
 -- Auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -195,7 +330,7 @@ $$ LANGUAGE plpgsql;
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks'])
+  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks','quotation_services','quotations','users'])
   LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_updated_at ON %I', t);
     EXECUTE format('CREATE TRIGGER trg_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t);

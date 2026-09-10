@@ -24,9 +24,13 @@ import {
 const WEEKDAYS_ZH = ['日', '一', '二', '三', '四', '五', '六'];
 const DAY_ROW_H = 18;
 const WEEK_ROW_H = 22;
-const LANE_W = 28;
+// 專案／成員子欄 = minmax(min, 1fr)：少時等比填滿、超出視窗 min 寬度時容器
+// overflow-x-auto 左右滑。日期首欄 sticky-left 永遠看得到。
+const LANE_MIN_PROJECT = 40;
+const LANE_MIN_MEMBER = 30;
 const DATE_COL_W = 56;
-const MAX_DAY_ROWS = 120;
+// 自動切換每列一週的閾值（避免列數爆炸）。一般專案半年內都不會觸發。
+const AUTO_WEEK_DAY_THRESHOLD = 365;
 
 function ymd(d) {
   if (!d) return '';
@@ -114,6 +118,7 @@ export default function StudioVerticalSchedule({
   const scrollRef = useRef(null);
   const todayRowRef = useRef(null);
   const [mode, setMode] = useState('projects');
+  const [granularity, setGranularity] = useState('auto'); // 'auto' | 'day' | 'week'
   const [focusedRowKey, setFocusedRowKey] = useState(null);
   const [holidayYmdSet, setHolidayYmdSet] = useState(() => new Set());
   const [holidayByDate, setHolidayByDate] = useState(() => new Map());
@@ -279,8 +284,11 @@ export default function StudioVerticalSchedule({
 
   const useWeekRows = useMemo(() => {
     if (!range) return false;
-    return differenceInCalendarDays(range.end, range.start) + 1 > MAX_DAY_ROWS;
-  }, [range]);
+    if (granularity === 'day') return false;
+    if (granularity === 'week') return true;
+    // auto：橫跨超過一年才切到每列一週
+    return differenceInCalendarDays(range.end, range.start) + 1 > AUTO_WEEK_DAY_THRESHOLD;
+  }, [range, granularity]);
 
   const timeRows = useMemo(() => {
     if (!range) return [];
@@ -308,10 +316,12 @@ export default function StudioVerticalSchedule({
   }, [range, useWeekRows]);
 
   const laneCount = flatColumns.length;
-  const laneW = mode === 'members' ? 22 : LANE_W;
+  const laneMinW = mode === 'members' ? LANE_MIN_MEMBER : LANE_MIN_PROJECT;
+  // minmax(min, 1fr)：少專案時等比例填滿；專案多到每欄會小於 min 時，
+  // 整體寬度超過 viewport → 容器 overflow-x-auto 左右拖曳。
   const gridCols =
     laneCount > 0
-      ? `${DATE_COL_W}px repeat(${laneCount}, minmax(${laneW}px, 1fr))`
+      ? `${DATE_COL_W}px repeat(${laneCount}, minmax(${laneMinW}px, 1fr))`
       : `${DATE_COL_W}px`;
   const rowH = useWeekRows ? WEEK_ROW_H : DAY_ROW_H;
   const periodLabel = range
@@ -352,25 +362,49 @@ export default function StudioVerticalSchedule({
         ) : null}
       </div>
 
-      <div className="flex gap-0.5 p-0.5 bg-white rounded-xl border border-slate-200/90 shadow-sm w-full max-w-md">
-        {[
-          ['projects', '依專案'],
-          ['members', '依成員'],
-        ].map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => {
-              setMode(k);
-              setFocusedRowKey(null);
-            }}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
-              mode === k ? 'bg-indigo-600 text-white' : 'text-slate-600'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="flex items-center gap-1.5">
+        <div className="flex gap-0.5 p-0.5 bg-white rounded-xl border border-slate-200/90 shadow-sm flex-1 max-w-md">
+          {[
+            ['projects', '依專案'],
+            ['members', '依成員'],
+          ].map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => {
+                setMode(k);
+                setFocusedRowKey(null);
+              }}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                mode === k ? 'bg-indigo-600 text-white' : 'text-slate-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-0.5 p-0.5 bg-white rounded-xl border border-slate-200/90 shadow-sm shrink-0">
+          {[
+            ['day', '日'],
+            ['week', '週'],
+          ].map(([k, label]) => {
+            const active = useWeekRows ? k === 'week' : k === 'day';
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setGranularity(k)}
+                className={`w-9 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  active ? 'bg-slate-900 text-white' : 'text-slate-600'
+                }`}
+                title={k === 'day' ? '每列一日' : '每列一週'}
+                aria-label={k === 'day' ? '每列一日' : '每列一週'}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {periodLabel ? (
@@ -392,13 +426,13 @@ export default function StudioVerticalSchedule({
             ref={scrollRef}
             className="w-full overflow-y-auto overflow-x-auto overscroll-contain max-h-[min(52vh,480px)]"
           >
-            <div className="min-w-full" style={{ minWidth: `${DATE_COL_W + laneCount * laneW}px` }}>
+            <div className="min-w-full" style={{ minWidth: `${DATE_COL_W + laneCount * laneMinW}px` }}>
               {mode === 'projects' ? (
                 <div
                   className="sticky top-0 z-20 grid w-full border-b border-slate-200 bg-slate-50"
                   style={{ gridTemplateColumns: gridCols, minHeight: rowH + 4 }}
                 >
-                  <div className="border-r border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
+                  <div className="sticky left-0 z-30 bg-slate-50 border-r border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
                     日期
                   </div>
                   {flatColumns.map((col) => (
@@ -425,7 +459,7 @@ export default function StudioVerticalSchedule({
                     gridTemplateRows: 'auto auto',
                   }}
                 >
-                  <div className="border-r border-slate-200 bg-slate-100" />
+                  <div className="sticky left-0 z-30 border-r border-slate-200 bg-slate-100" />
                   {memberGroups.map((g) => (
                     <Link
                       key={`m-${g.id}`}
@@ -439,7 +473,7 @@ export default function StudioVerticalSchedule({
                       </span>
                     </Link>
                   ))}
-                  <div className="border-r border-slate-200 border-t border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
+                  <div className="sticky left-0 z-30 bg-slate-50 border-r border-slate-200 border-t border-slate-200 text-[10px] font-semibold text-slate-500 flex items-center justify-end pr-1.5">
                     日期
                   </div>
                   {flatColumns.map((sc) => (
@@ -499,7 +533,7 @@ export default function StudioVerticalSchedule({
                       setFocusedRowKey((k) => (k === row.key ? null : row.key))
                     }
                   >
-                    <span className="sticky left-0 z-[1] border-r border-slate-100/80 flex items-center justify-end pr-1.5 text-[10px]">
+                    <span className="sticky left-0 z-[2] bg-white border-r border-slate-200 flex items-center justify-end pr-1.5 text-[10px]">
                       {dateLabel}
                     </span>
                     {flatColumns.map((col) => {

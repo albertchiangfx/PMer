@@ -25,16 +25,20 @@ const ROLES = [
 ];
 
 export default function TeamPage() {
+  const [me, setMe] = useState(null);
   const [members, setMembers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(defaultForm());
   // Edit-lock: edit modal opens read-only; user must flip the "啟用編輯" toggle
   // before name/role/etc inputs accept input and the delete button appears.
   const [editUnlocked, setEditUnlocked] = useState(false);
+  const isAdmin = me?.role === 'admin';
 
   function defaultForm() {
     return {
+      user_id: '',
       name: '',
       role: '3D 建模師',
       hourly_rate: '',
@@ -47,7 +51,14 @@ export default function TeamPage() {
   }
 
   const load = useCallback(async () => {
-    setMembers(await api.getTeamMembers());
+    const [meRow, m, u] = await Promise.all([
+      api.me().catch(() => null),
+      api.getTeamMembers(),
+      api.adminListUsers().catch(() => []),
+    ]);
+    setMe(meRow);
+    setMembers(Array.isArray(m) ? m : []);
+    setUsers(Array.isArray(u) ? u : []);
   }, []);
 
   useEffect(() => {
@@ -91,6 +102,7 @@ export default function TeamPage() {
 
   const openEdit = (m) => {
     setForm({
+      user_id: m.user_id || '',
       name: m.name,
       role: m.role,
       hourly_rate: m.hourly_rate,
@@ -115,12 +127,14 @@ export default function TeamPage() {
             {members.filter((m) => m.status === 'active').length} 位活躍成員
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
-        >
-          + 新增成員
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={openCreate}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
+          >
+            + 新增成員
+          </button>
+        ) : null}
       </div>
       </div>
 
@@ -132,9 +146,11 @@ export default function TeamPage() {
       ) : members.length === 0 ? (
         <div className="bg-white rounded-apple-xl shadow-apple p-20 text-center">
           <p className="text-gray-400">尚無成員</p>
-          <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm font-medium">
-            + 新增第一位成員
-          </button>
+          {isAdmin ? (
+            <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm font-medium">
+              + 新增第一位成員
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-8">
@@ -142,14 +158,14 @@ export default function TeamPage() {
             title="固定成員"
             subtitle={`${grouped.permanent.length} 位`}
             members={grouped.permanent}
-            onEdit={openEdit}
+            onEdit={isAdmin ? openEdit : null}
             emptyText="尚無固定成員"
           />
           <Section
             title="Freelance"
             subtitle={`${grouped.freelance.length} 位`}
             members={grouped.freelance}
-            onEdit={openEdit}
+            onEdit={isAdmin ? openEdit : null}
             emptyText="尚無 Freelance 成員"
           />
         </div>
@@ -197,6 +213,26 @@ export default function TeamPage() {
 
             <form onSubmit={save} className="p-6 space-y-4">
               <fieldset disabled={!editUnlocked} className="space-y-4 disabled:opacity-60">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    綁定使用者（選填）
+                  </label>
+                  <select
+                    value={form.user_id}
+                    onChange={(e) => setForm((f) => ({ ...f, user_id: e.target.value }))}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                  >
+                    <option value="">— 不綁定 —</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {(u.display_name || u.username) + ` (${u.username})`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    只有綁定到使用者的成員，才會被用於「非 admin 自動只看自己的視角」。
+                  </p>
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">姓名 *</label>
                   <input
@@ -273,6 +309,26 @@ export default function TeamPage() {
                     value={form.phone}
                     onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                     className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                      頭像顏色
+                    </label>
+                    <input
+                      value={form.avatar_color}
+                      onChange={(e) => setForm((f) => ({ ...f, avatar_color: e.target.value }))}
+                      placeholder="#6366f1"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-apple px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <input
+                    type="color"
+                    value={form.avatar_color || '#6366f1'}
+                    onChange={(e) => setForm((f) => ({ ...f, avatar_color: e.target.value }))}
+                    className="h-10 w-12 rounded-xl border border-gray-200 bg-white"
+                    aria-label="選擇顏色"
                   />
                 </div>
               </fieldset>

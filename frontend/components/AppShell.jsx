@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { shellRowHeightClass } from '../lib/page-layout';
+import { STUDIO_NAME } from '../lib/studio-brand';
+import CompanyLogo from './CompanyLogo';
+import { api } from '../lib/api';
 
 function viewerInitials(name) {
   const trimmed = String(name || '').trim();
@@ -20,28 +23,18 @@ function viewerInitials(name) {
   return initials || trimmed.slice(0, 2).toUpperCase();
 }
 
-function CompanyLogo({ size = 24, className = '' }) {
-  return (
-    <img
-      src="/company-logo.png"
-      alt="Company logo"
-      width={size}
-      height={size}
-      className={`object-contain ${className}`}
-      draggable={false}
-    />
-  );
-}
-
 const NAV = [
   { href: '/', label: 'Dashboard', mobileLabel: '今日', icon: IconGrid },
   { href: '/projects', label: '專案', icon: IconFolder },
   { href: '/clients', label: '客戶', mobileLabel: '客戶', icon: IconBriefcase },
+  { href: '/quotations', label: '報價單', icon: IconDoc },
+  { href: '/collaboration', label: '客戶協作', icon: IconCollaboration },
   { href: '/team', label: '成員', icon: IconUsers },
 ];
 
+/** 手機底欄：不含報價單／客戶協作（可從專案、客戶等進入） */
 const MOBILE_NAV = [
-  ...NAV,
+  ...NAV.filter((n) => n.href !== '/quotations' && n.href !== '/collaboration'),
   { href: '/settings', label: '設定', icon: IconGear },
 ];
 
@@ -91,35 +84,32 @@ const NAV_STYLE = {
    *  Same for cardPadding / cardGap / radii / widths above. */
   pillTailPad: 'pb-28',
 
-  // ── Colors ───────────────────────────────────────────────
-  // Deep theme colors (plaster card bg, dark pill bg, divider) live in
-  // frontend/app/globals.css :root as CSS variables (--nav-plaster-from /
-  // --nav-plaster-to / --nav-pill-bg / --nav-divider). Edit those there.
-  // The Tailwind-class colors below cover everything that sits on top.
-
-  /** Brand "SP" button background (Tailwind gradient). */
+  // ── Colors（深色 pill 內：白字 + 選取高光）────────────────
   brandBg: 'bg-gradient-to-br from-indigo-500 to-purple-600',
-  /** Brand "SP" button drop shadow (uses brand color). */
   brandShadow: 'shadow-[0_2px_6px_rgba(79,70,229,0.45)]',
-  /** Left-edge accent bar shown on the active nav item. */
   activeAccent: 'bg-indigo-400/90',
-  /** Active item background + ring inside the dark pill. */
   activeBg: 'bg-white/10 ring-1 ring-white/15',
-  /** Inactive item text color (icon + label). */
   itemTextDim: 'text-white/55',
-  /** Active item text color. */
   itemTextActive: 'text-white',
-  /** Hover background applied to non-active items. */
   itemBgHover: 'hover:bg-white/[0.06]',
-  /** Hover text color applied to non-active items. */
   itemTextHover: 'hover:text-white/90',
 };
+
+/** 客戶公開頁：不顯示內部導覽 */
+function isPublicClientRoute(path) {
+  return path?.startsWith('/c/');
+}
+
+function isAuthRoute(path) {
+  return path === '/login' || path === '/set-password' || path?.startsWith('/activate');
+}
 
 export default function AppShell({ children }) {
   const path = usePathname();
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [viewerTitle, setViewerTitle] = useState('');
   const [viewerRole, setViewerRole] = useState('');
+  const [authChecked, setAuthChecked] = useState(false);
   const [navHover, setNavHover] = useState(false);
 
   useEffect(() => {
@@ -132,16 +122,31 @@ export default function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
-    try {
-      const name = localStorage.getItem('sp.viewerMemberName') || '';
-      const role = localStorage.getItem('sp.viewerMemberRole') || '';
-      const title = name || '';
-      setViewerTitle(title);
-      setViewerRole(role || '');
-    } catch {
-      // ignore
-    }
-  }, []);
+    // Important: avoid fetching /me on auth routes.
+    // If we fetch on /login (before user logs in), we'd cache "not logged in"
+    // and then bounce / -> /login -> / after login completes.
+    if (isPublicClientRoute(path) || isAuthRoute(path)) return;
+
+    let cancelled = false;
+    setAuthChecked(false);
+    api
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        setViewerTitle(me?.display_name || me?.username || '');
+        setViewerRole(me?.role || '');
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setViewerTitle('');
+        setViewerRole('');
+        setAuthChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
 
   const initials = useMemo(() => viewerInitials(viewerTitle), [viewerTitle]);
 
@@ -161,9 +166,29 @@ export default function AppShell({ children }) {
   const showSidebar = !navCollapsed || navHover;
   const showRail = navCollapsed && !navHover;
 
+  if (isPublicClientRoute(path)) {
+    return <>{children}</>;
+  }
+
+  if (isAuthRoute(path)) {
+    return <>{children}</>;
+  }
+
+  // Redirect only after we've actually checked /me, to avoid login->dashboard flicker.
+  if (
+    authChecked &&
+    !viewerTitle &&
+    typeof window !== 'undefined' &&
+    path !== '/login' &&
+    !path.startsWith('/activate')
+  ) {
+    window.location.href = `/login?next=${encodeURIComponent(path)}`;
+    return null;
+  }
+
   return (
     <div className="app-bg app-blobs min-h-screen text-slate-900 max-sm:flex max-sm:flex-col max-sm:min-h-[100dvh]">
-      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-8px))] md:max-w-[min(1600px,calc(100vw-24px))] px-1.5 py-3 sm:px-6 sm:py-10 pb-[calc(5.625rem+env(safe-area-inset-bottom,0px))] sm:pb-0 max-sm:flex-1 max-sm:flex max-sm:flex-col max-sm:min-h-0">
+      <div className="relative z-[1] mx-auto w-full max-w-[min(1600px,calc(100vw-8px))] md:max-w-[min(1600px,calc(100vw-24px))] px-1.5 py-3 sm:px-6 sm:py-6 pb-[calc(5.625rem+env(safe-area-inset-bottom,0px))] sm:pb-0 max-sm:flex-1 max-sm:flex max-sm:flex-col max-sm:min-h-0">
         <div
           className={`flex w-full gap-4 sm:gap-5 items-stretch max-sm:flex-1 max-sm:min-h-0 ${shellRowHeightClass}`}
         >
@@ -189,7 +214,7 @@ export default function AppShell({ children }) {
 
           {/* Content shell — 桌面固定列高；內容在 main 內捲動 */}
           <div className="shell relative flex flex-1 min-w-0 h-full min-h-0 self-stretch flex-col overflow-hidden rounded-[20px] md:rounded-[28px] max-sm:h-auto">
-            <main className="relative flex flex-1 flex-col min-h-0 min-w-0 px-2.5 py-3 md:px-8 md:py-8 overflow-hidden overflow-x-hidden overscroll-contain pb-1 sm:pb-0 max-sm:overflow-y-auto">
+            <main className="relative flex flex-1 flex-col min-h-0 min-w-0 px-2.5 py-3 md:px-8 md:py-6 overflow-hidden overflow-x-hidden overscroll-contain pb-1 sm:pb-0 max-sm:overflow-y-auto">
               {children}
             </main>
           </div>
@@ -205,7 +230,7 @@ export default function AppShell({ children }) {
 function MobileBottomNav({ path }) {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 sm:hidden border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-6px_24px_rgba(15,23,42,0.08)]"
+      className="fixed bottom-0 left-0 right-0 z-50 sm:hidden border-t border-white/60 bg-white/70 backdrop-blur-xl shadow-[0_-6px_24px_rgba(15,23,42,0.08)]"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       aria-label="主要導覽"
     >
@@ -263,7 +288,7 @@ function NavRail({ path, onExpand }) {
           <button
             type="button"
             onClick={onExpand}
-            className={`h-10 w-10 rounded-[12px] grid place-items-center bg-[var(--nav-pill-bg)] ring-1 ring-white/10 hover:bg-white/[0.05] transition-apple ${NAV_STYLE.brandShadow}`}
+            className="h-10 w-10 rounded-[12px] grid place-items-center bg-[var(--nav-pill-bg)] ring-1 ring-white/10 hover:bg-white/[0.05] transition-apple"
             aria-label="展開導覽"
             title="展開導覽"
           >
@@ -313,24 +338,29 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, viewerInitials,
         <div
           className={`nav-pill flex w-full shrink-0 flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
         >
+          <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-white/10">
+            <CompanyLogo size={22} className="text-white" />
+            <p className="text-[12px] font-semibold text-white/95 leading-snug">{STUDIO_NAME}</p>
+          </div>
+
           <div className="flex items-center gap-3">
             <div
-              className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[12px] font-bold tracking-wide ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
+              className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[12px] font-bold tracking-wide shrink-0 ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
               aria-label="使用者頭像"
               title={viewerTitle || ''}
             >
-              {viewerInitials || 'SP'}
+              {viewerInitials || '—'}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-white/95">
-                {viewerTitle || 'Studio PM'}
+                {viewerTitle || '成員'}
               </p>
-              <p className="truncate text-[11px] text-white/55">{viewerRole || '3D Animation'}</p>
+              <p className="truncate text-[11px] text-white/55">{viewerRole || '工作室'}</p>
             </div>
             <button
               type="button"
               onClick={onCollapse}
-              className="h-8 w-8 rounded-[10px] bg-white/[0.08] ring-1 ring-white/10 grid place-items-center text-white/75 hover:bg-white/[0.12] hover:text-white transition-apple"
+              className="h-8 w-8 rounded-[10px] bg-white/[0.08] ring-1 ring-white/10 grid place-items-center text-white/75 hover:bg-white/[0.12] hover:text-white transition-apple shrink-0"
               aria-label="收合導覽"
               title="收合導覽"
             >
@@ -585,6 +615,20 @@ function IconBriefcase() {
       <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <path d="M3 7h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
       <path d="M3 12h18" />
+    </svg>
+  );
+}
+function IconCollaboration() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+    >
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
   );
 }

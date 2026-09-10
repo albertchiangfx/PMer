@@ -23,12 +23,19 @@ function fmtYmd(d) {
 }
 
 export default function MyTasksPage() {
+  const [me, setMe] = useState(null);
   const [viewerId, setViewerId] = useState('');
   const [members, setMembers] = useState([]);
   /** Merged: task-level time_allocations + project-level allocations (same as dashboard / Gantt). */
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncTick, setSyncTick] = useState(0);
+
+  const isAdmin = me?.role === 'admin';
+
+  useEffect(() => {
+    api.me().then(setMe).catch(() => setMe(null));
+  }, []);
 
   useEffect(() => {
     const onScheduleSync = () => setSyncTick((t) => t + 1);
@@ -45,6 +52,11 @@ export default function MyTasksPage() {
 
   useEffect(() => {
     if (!members.length) return;
+    if (!isAdmin) {
+      const selfId = me?.team_member_id ? String(me.team_member_id) : '';
+      if (selfId) setViewerId(selfId);
+      return;
+    }
     try {
       const saved = localStorage.getItem('sp.viewerMemberId');
       if (saved && members.some((m) => String(m.id) === String(saved))) {
@@ -55,7 +67,7 @@ export default function MyTasksPage() {
       // ignore
     }
     setViewerId(String(members[0].id));
-  }, [members]);
+  }, [members, isAdmin, me?.team_member_id]);
 
   useEffect(() => {
     if (!viewerId) return;

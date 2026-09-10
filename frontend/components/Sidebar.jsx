@@ -34,7 +34,7 @@ export default function Sidebar() {
             </svg>
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-gray-900 leading-none">Studio PM</p>
+            <p className="text-[13px] font-semibold text-gray-900 leading-none">multi.design studio</p>
             <p className="text-[10px] text-gray-400 mt-0.5">3D Animation</p>
           </div>
         </div>
