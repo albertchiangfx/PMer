@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { api } from '../../../lib/api';
 import { buildClientFinancialRows } from '../../../lib/client-financial';
 import { filterAndSortProjects } from '../../../lib/project-list-sort';
-import { fmt, fmtCurrency, statusStyle } from '../../../lib/utils';
+import { fmt, fmtCurrency, statusStyle, statusLabel } from '../../../lib/utils';
 import {
   contractStatusLabel,
   invoiceStatusLabel,
@@ -19,6 +19,8 @@ import InvoiceFormModal from '../../../components/InvoiceFormModal';
 import ContractGeneratorModal from '../../../components/ContractGeneratorModal';
 import QuotationFormModal from '../../../components/QuotationFormModal';
 import QuotationPreviewModal from '../../../components/QuotationPreviewModal';
+import ModalPortal from '../../../components/ModalPortal';
+import { useModalEscape } from '../../../lib/use-modal-escape';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
@@ -338,14 +340,20 @@ export default function ClientDetailPage() {
   const [generatorContract, setGeneratorContract] = useState(null);
   const [quotationModal, setQuotationModal] = useState(null); // null | 'create' | quotation
   const [quotationPreview, setQuotationPreview] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useModalEscape(() => setProjectModal(false), {
+    disabled: !projectModal || saving,
+  });
 
   const load = useCallback(async () => {
-    const [c, p, ct, inv, qs] = await Promise.all([
+    const [c, p, ct, inv, qs, me] = await Promise.all([
       api.getClient(id),
       api.getProjects({ client_id: id }),
       api.getContracts({ client_id: id }),
       api.getInvoices({ client_id: id }),
       api.getQuotations({ client_id: id }),
+      api.me().catch(() => null),
     ]);
     setClient(c);
     setForm(defaultClientForm(c));
@@ -353,6 +361,7 @@ export default function ClientDetailPage() {
     setContracts(Array.isArray(ct) ? ct : []);
     setInvoices(Array.isArray(inv) ? inv : []);
     setQuotations(Array.isArray(qs) ? qs : []);
+    setIsAdmin(me?.role === 'admin');
   }, [id]);
 
   useEffect(() => {
@@ -603,13 +612,15 @@ export default function ClientDetailPage() {
                     已封存
                   </span>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  className="text-xs font-semibold text-indigo-600"
-                >
-                  編輯
-                </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="text-xs font-semibold text-indigo-600"
+                  >
+                    編輯
+                  </button>
+                ) : null}
               </div>
             </div>
           </>
@@ -677,7 +688,7 @@ export default function ClientDetailPage() {
                       <span
                         className={`justify-self-end text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${st.bg} ${st.text}`}
                       >
-                        {p.status}
+                        {statusLabel(p.status)}
                       </span>
                     </button>
                   </li>
@@ -712,7 +723,7 @@ export default function ClientDetailPage() {
                       <span
                         className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${stSel.bg} ${stSel.text}`}
                       >
-                        {selectedProject.status}
+                        {statusLabel(selectedProject.status)}
                       </span>
                     </p>
                     <p className="text-sm text-slate-600 tabular-nums mt-1">
@@ -742,7 +753,7 @@ export default function ClientDetailPage() {
                 </button>
               ))}
             </div>
-            {selectedProject ? (
+            {selectedProject && isAdmin ? (
               <div className="flex gap-1">
                 <button
                   type="button"
@@ -830,35 +841,39 @@ export default function ClientDetailPage() {
                           >
                             PDF
                           </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                const full = await api.getQuotation(q.id);
-                                setQuotationModal(full);
-                              } catch (e) {
-                                alert(e.message || String(e));
-                              }
-                            }}
-                            className="text-[11px] text-indigo-600 hover:text-indigo-700"
-                          >
-                            編輯
-                          </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!confirm(`刪除報價單 ${q.quote_number}？`)) return;
-                              try {
-                                await api.deleteQuotation(q.id);
-                                await load();
-                              } catch (e) {
-                                alert(e.message || String(e));
-                              }
-                            }}
-                            className="text-[11px] text-red-500 hover:text-red-600"
-                          >
-                            刪除
-                          </button>
+                          {isAdmin ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const full = await api.getQuotation(q.id);
+                                    setQuotationModal(full);
+                                  } catch (e) {
+                                    alert(e.message || String(e));
+                                  }
+                                }}
+                                className="text-[11px] text-indigo-600 hover:text-indigo-700"
+                              >
+                                編輯
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!confirm(`刪除報價單 ${q.quote_number}？`)) return;
+                                  try {
+                                    await api.deleteQuotation(q.id);
+                                    await load();
+                                  } catch (e) {
+                                    alert(e.message || String(e));
+                                  }
+                                }}
+                                className="text-[11px] text-red-500 hover:text-red-600"
+                              >
+                                刪除
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </li>
                     ))}
@@ -918,7 +933,7 @@ export default function ClientDetailPage() {
                       ) : null}
                       <div className="flex items-center justify-end gap-3">
                         <div className="flex items-center gap-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                          {row.kind === 'missing_contract' ? (
+                          {row.kind === 'missing_contract' && isAdmin ? (
                             <button
                               type="button"
                               onClick={() => setContractModal('create')}
@@ -927,7 +942,7 @@ export default function ClientDetailPage() {
                               建立合約
                             </button>
                           ) : null}
-                          {editable && original ? (
+                          {editable && original && isAdmin ? (
                             <>
                               {row.kind === 'contract' ? (
                                 <button
@@ -1003,7 +1018,7 @@ export default function ClientDetailPage() {
       </div>
 
       <QuotationFormModal
-        open={!!quotationModal}
+        open={!!quotationModal && isAdmin}
         mode={quotationModal === 'create' ? 'create' : 'edit'}
         initial={quotationModal && quotationModal !== 'create' ? quotationModal : null}
         defaults={{
@@ -1031,7 +1046,7 @@ export default function ClientDetailPage() {
       />
 
       <ContractFormModal
-        open={!!contractModal}
+        open={!!contractModal && isAdmin}
         mode={contractModal === 'create' ? 'create' : 'edit'}
         initial={contractModal && contractModal !== 'create' ? contractModal : null}
         defaults={{
@@ -1053,7 +1068,7 @@ export default function ClientDetailPage() {
       />
 
       <InvoiceFormModal
-        open={!!invoiceModal}
+        open={!!invoiceModal && isAdmin}
         mode={invoiceModal === 'create' ? 'create' : 'edit'}
         initial={invoiceModal && invoiceModal !== 'create' ? invoiceModal : null}
         defaults={{ project_id: selectedProjectId, currency: 'TWD' }}
@@ -1068,16 +1083,17 @@ export default function ClientDetailPage() {
       />
 
       <ContractGeneratorModal
-        open={!!generatorContract}
+        open={!!generatorContract && isAdmin}
         contract={generatorContract}
         onClose={() => setGeneratorContract(null)}
         onGenerated={load}
       />
 
       {projectModal ? (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop"
-          onClick={(e) => e.target === e.currentTarget && setProjectModal(false)}
+          onClick={(e) => e.target === e.currentTarget && !saving && setProjectModal(false)}
         >
           <form
             onSubmit={createProject}
@@ -1102,6 +1118,7 @@ export default function ClientDetailPage() {
             </div>
           </form>
         </div>
+        </ModalPortal>
       ) : null}
     </div>
   );

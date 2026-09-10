@@ -88,18 +88,26 @@ export default function ClientHubPage() {
 
   if (loading) {
     return (
-      <div className="client-public client-public__page flex items-center justify-center">
+      <div
+        className="client-public client-public__page flex flex-col items-center justify-center gap-3"
+        style={{ minHeight: '100vh', background: '#e8e4dc' }}
+        aria-busy="true"
+      >
         <div
-          className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"
-          aria-label="載入中"
+          className="w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"
+          aria-hidden
         />
+        <p className="text-sm text-slate-500">載入中…</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="client-public client-public__page flex items-center justify-center px-6">
+      <div
+        className="client-public client-public__page flex items-center justify-center px-6"
+        style={{ minHeight: '100vh', background: '#e8e4dc' }}
+      >
         <p className="text-slate-500 text-sm">{error || '找不到此協作頁'}</p>
       </div>
     );
@@ -125,7 +133,7 @@ export default function ClientHubPage() {
             )}
           </div>
           <div>
-            <p className="client-public__doc-title">CLIENT</p>
+            <p className="client-public__doc-title">客戶</p>
             <p className="client-public__doc-sub">{project.name}</p>
           </div>
         </header>

@@ -12,7 +12,7 @@ export default function BackToDashboard({ className = '' }) {
         <span className="h-5 w-5">
           <IconArrowLeft />
         </span>
-        回到 Dashboard
+        回到總覽
       </Link>
     </div>
   );

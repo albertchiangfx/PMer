@@ -42,7 +42,10 @@ function LoginPageContent() {
         router.replace(next);
       }
     } catch (e2) {
-      setErr(e2?.message || '登入失敗');
+      const raw = e2?.message || '';
+      const msg =
+        /invalid credentials/i.test(raw) ? '帳號或密碼錯誤' : raw || '登入失敗';
+      setErr(msg);
     } finally {
       setBusy(false);
     }

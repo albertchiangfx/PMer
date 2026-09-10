@@ -1,6 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { MILESTONE_TEMPLATE_OPTIONS } from '../lib/milestone-templates';
+import { statusLabel } from '../lib/utils';
+import { useModalEscape } from '../lib/use-modal-escape';
+import ModalPortal from './ModalPortal';
 
 export const PROJECT_STATUS_OPTS = ['planning', 'active', 'completed', 'paused', 'cancelled'];
 export const PROJECT_COLOR_OPTS = [
@@ -58,10 +61,12 @@ export default function ProjectFormModal({
   onClose,
   onSubmit,
 }) {
+  useModalEscape(onClose, { disabled: !!saveBusy });
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !saveBusy && onClose()}
       role="presentation"
     >
       <div
@@ -122,7 +127,7 @@ export default function ProjectFormModal({
               >
                 {PROJECT_STATUS_OPTS.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {statusLabel(s)}
                   </option>
                 ))}
               </select>
@@ -212,6 +217,7 @@ export default function ProjectFormModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('../middleware/auth');
 const { generateInvoicePDF } = require('../utils/invoice-generator');
 const { ensureBackfillOnce } = require('../lib/ensure-project-financials');
+
+const requireAdmin = requireRole('admin');
 
 router.get('/', async (req, res, next) => {
   try {
@@ -72,7 +75,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const {
@@ -145,7 +148,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // Auto-generate invoice from project allocations
-router.post('/generate', async (req, res, next) => {
+router.post('/generate', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { project_id, contract_id, issued_date, due_date } = req.body;
@@ -191,7 +194,7 @@ router.post('/generate', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { amount, currency, issued_date, due_date, status, notes } = req.body;
@@ -209,7 +212,7 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const { rowCount } = await req.app.locals.db.query('DELETE FROM invoices WHERE id=$1', [
       req.params.id,

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { notifyScheduleDataChanged } from '../lib/dashboard-sync';
 import { validateIntervalWithinProject } from '../lib/projectScheduleBounds';
+import { useModalEscape } from '../lib/use-modal-escape';
+import ModalPortal from './ModalPortal';
 
 const TASK_TYPES = [
   'general',
@@ -49,6 +51,8 @@ export default function QuickTaskModal({ project, onClose, onCreated }) {
       .then((m) => setMembers(Array.isArray(m) ? m : []))
       .catch(() => setMembers([]));
   }, [project?.id]);
+
+  useModalEscape(onClose, { disabled: !project?.id || busy });
 
   if (!project?.id) return null;
 
@@ -113,9 +117,10 @@ export default function QuickTaskModal({ project, onClose, onCreated }) {
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
       role="presentation"
     >
       <div
@@ -255,5 +260,6 @@ export default function QuickTaskModal({ project, onClose, onCreated }) {
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

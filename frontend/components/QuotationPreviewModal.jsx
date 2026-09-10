@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { useModalEscape } from '../lib/use-modal-escape';
 import ModalPortal from './ModalPortal';
 
 /**
@@ -69,6 +70,8 @@ export default function QuotationPreviewModal({ open, quotation, onClose, onGene
     };
   }, [open, quotation?.id]);
 
+  useModalEscape(onClose, { disabled: !open || generating || busy });
+
   if (!open) return null;
 
   const generatePdf = async () => {
@@ -105,11 +108,11 @@ export default function QuotationPreviewModal({ open, quotation, onClose, onGene
     <ModalPortal>
     <div
       className="fixed inset-0 z-50 overflow-y-auto modal-backdrop animate-fade-in"
-      onClick={(e) => e.target === e.currentTarget && onClose?.()}
+      onClick={(e) => e.target === e.currentTarget && !generating && !busy && onClose?.()}
     >
       <div
         className="min-h-full w-full flex justify-center px-4 py-6"
-        onClick={(e) => e.target === e.currentTarget && onClose?.()}
+        onClick={(e) => e.target === e.currentTarget && !generating && !busy && onClose?.()}
       >
         <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-5xl animate-slide-up flex flex-col self-start">
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white rounded-t-apple-xl">

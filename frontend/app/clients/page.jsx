@@ -6,6 +6,8 @@ import { api } from '../../lib/api';
 import { summarizeClientAlerts } from '../../lib/client-financial';
 import { matchSearchHaystack } from '../../lib/search-match';
 import BackToDashboard from '../../components/BackToDashboard';
+import ModalPortal from '../../components/ModalPortal';
+import { useModalEscape } from '../../lib/use-modal-escape';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
@@ -24,28 +26,34 @@ export default function ClientsPage() {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(defaultForm());
   const [saving, setSaving] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   function defaultForm() {
     return { name: '', contact_email: '', contact_phone: '', address: '' };
   }
 
-  const load = useCallback(async () => {
-    const [cl, p, ct, inv] = await Promise.all([
-      api.getClients(),
-      api.getProjects(),
-      api.getContracts(),
-      api.getInvoices(),
-    ]);
-    setClients(Array.isArray(cl) ? cl : []);
-    setProjects(Array.isArray(p) ? p : []);
-    setContracts(Array.isArray(ct) ? ct : []);
-    setInvoices(Array.isArray(inv) ? inv : []);
+  const load = useCallback(async ({ soft = false } = {}) => {
+    if (!soft) setLoading(true);
+    try {
+      const [cl, p, ct, inv, me] = await Promise.all([
+        api.getClients(),
+        api.getProjects(),
+        api.getContracts(),
+        api.getInvoices(),
+        api.me().catch(() => null),
+      ]);
+      setClients(Array.isArray(cl) ? cl : []);
+      setProjects(Array.isArray(p) ? p : []);
+      setContracts(Array.isArray(ct) ? ct : []);
+      setInvoices(Array.isArray(inv) ? inv : []);
+      setIsAdmin(me?.role === 'admin');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    load()
-      .catch((e) => alert(e.message || String(e)))
-      .finally(() => setLoading(false));
+    load().catch((e) => alert(e.message || String(e)));
   }, [load]);
 
   const enriched = useMemo(() => {
@@ -109,7 +117,7 @@ export default function ClientsPage() {
       if (modal === 'create') await api.createClient(form);
       else await api.updateClient(modal.id, form);
       setModal(null);
-      await load();
+      await load({ soft: true });
     } catch (err) {
       alert(err.message || String(err));
     } finally {
@@ -131,16 +139,20 @@ export default function ClientsPage() {
         <div>
           <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">客戶</h1>
           <p className="text-gray-400 mt-0.5 text-xs md:text-sm">
-            {clients.length} 位客戶 · 待簽約／待收款一目了然
+            {loading && clients.length === 0
+              ? '載入中…'
+              : `${clients.length} 位客戶 · 待簽約／待收款一目了然`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 md:px-4 md:py-2.5 rounded-xl shadow-apple-sm"
-        >
-          ＋ 新增
-        </button>
+        {isAdmin ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 md:px-4 md:py-2.5 rounded-xl shadow-apple-sm"
+          >
+            ＋ 新增
+          </button>
+        ) : null}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 mb-2 md:mb-6">
@@ -171,20 +183,24 @@ export default function ClientsPage() {
       </div>
 
       <div className={pageFrameScrollInsetClass}>
-      {loading ? (
+      {loading && clients.length === 0 ? (
         <div className="py-16 text-center text-sm text-slate-500">載入中…</div>
       ) : filtered.length === 0 ? (
         <div className={`${cardClass} py-12 text-center text-sm text-slate-500`}>
           {clients.length === 0 ? (
             <>
               <p>尚無客戶</p>
-              <button
-                type="button"
-                onClick={openCreate}
-                className="mt-3 text-indigo-600 font-semibold text-sm"
-              >
-                建立第一位客戶
-              </button>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="mt-3 text-indigo-600 font-semibold text-sm"
+                >
+                  建立第一位客戶
+                </button>
+              ) : (
+                <p className="mt-2 text-xs text-slate-400">僅管理員可新增客戶</p>
+              )}
             </>
           ) : (
             <p>沒有符合的搜尋結果</p>
@@ -247,10 +263,13 @@ export default function ClientsPage() {
 }
 
 function ClientFormModal({ title, form, setForm, saving, onClose, onSubmit }) {
+  useModalEscape(onClose, { disabled: !!saving });
+  const contactEmpty = !String(form.contact_email || '').trim() && !String(form.contact_phone || '').trim();
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !saving && onClose()}
     >
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100">
@@ -286,6 +305,9 @@ function ClientFormModal({ title, form, setForm, saving, onClose, onSubmit }) {
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm"
             />
           </div>
+          {contactEmpty ? (
+            <p className="text-[11px] text-amber-700/90 -mt-1">建議至少填寫 Email 或電話，方便後續聯繫。</p>
+          ) : null}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">地址</label>
             <textarea
@@ -310,5 +332,6 @@ function ClientFormModal({ title, form, setForm, saving, onClose, onSubmit }) {
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -6,6 +6,8 @@ import {
   CONTRACT_STATUS_LABEL,
   normalizeContractStatus,
 } from '../lib/financial-status';
+import { useModalEscape } from '../lib/use-modal-escape';
+import ModalPortal from './ModalPortal';
 
 function isoDay(value) {
   if (!value) return '';
@@ -60,6 +62,8 @@ export default function ContractFormModal({
     defaults.currency,
   ]);
 
+  useModalEscape(onClose, { disabled: !open || busy });
+
   if (!open) return null;
 
   const handleSubmit = async (e) => {
@@ -88,9 +92,10 @@ export default function ContractFormModal({
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
-      onClick={(e) => e.target === e.currentTarget && onClose?.()}
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose?.()}
     >
       <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
@@ -249,6 +254,7 @@ export default function ContractFormModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

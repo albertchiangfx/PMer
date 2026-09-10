@@ -23,20 +23,37 @@ function viewerInitials(name) {
   return initials || trimmed.slice(0, 2).toUpperCase();
 }
 
+/** Desktop primary rail. `adminOnly` items are commercial (admin write / admin nav). */
 const NAV = [
-  { href: '/', label: 'Dashboard', mobileLabel: '今日', icon: IconGrid },
+  { href: '/', label: '總覽', mobileLabel: '今日', icon: IconGrid },
   { href: '/projects', label: '專案', icon: IconFolder },
+  { href: '/schedule', label: '時程', icon: IconCalendar },
+  { href: '/tasks', label: '任務', icon: IconStack },
   { href: '/clients', label: '客戶', mobileLabel: '客戶', icon: IconBriefcase },
-  { href: '/quotations', label: '報價單', icon: IconDoc },
+  { href: '/quotations', label: '報價單', icon: IconDoc, adminOnly: true },
+  { href: '/contracts', label: '合約', icon: IconDocMini, adminOnly: true },
+  { href: '/invoices', label: '發票', icon: IconReceipt, adminOnly: true },
   { href: '/collaboration', label: '客戶協作', icon: IconCollaboration },
   { href: '/team', label: '成員', icon: IconUsers },
 ];
 
-/** 手機底欄：不含報價單／客戶協作（可從專案、客戶等進入） */
-const MOBILE_NAV = [
-  ...NAV.filter((n) => n.href !== '/quotations' && n.href !== '/collaboration'),
-  { href: '/settings', label: '設定', icon: IconGear },
-];
+/**
+ * Mobile bottom nav: keep high-value only (今日／專案／時程／客戶／設定).
+ * 任務／合約／發票／報價／協作 stay desktop-rail to avoid 5+ clutter.
+ */
+const MOBILE_NAV_HREFS = new Set(['/', '/projects', '/schedule', '/clients']);
+
+function navForRole(role) {
+  const isAdmin = role === 'admin';
+  return NAV.filter((n) => !n.adminOnly || isAdmin);
+}
+
+function mobileNavForRole(role) {
+  return [
+    ...navForRole(role).filter((n) => MOBILE_NAV_HREFS.has(n.href)),
+    { href: '/settings', label: '設定', icon: IconGear },
+  ];
+}
 
 function navItemActive(path, href) {
   return href === '/' ? path === '/' : path.startsWith(href);
@@ -149,6 +166,8 @@ export default function AppShell({ children }) {
   }, [path]);
 
   const initials = useMemo(() => viewerInitials(viewerTitle), [viewerTitle]);
+  const desktopNav = useMemo(() => navForRole(viewerRole), [viewerRole]);
+  const mobileNav = useMemo(() => mobileNavForRole(viewerRole), [viewerRole]);
 
   const toggleCollapsed = () => {
     setNavCollapsed((v) => {
@@ -199,7 +218,7 @@ export default function AppShell({ children }) {
             onMouseLeave={() => setNavHover(false)}
           >
             {showRail ? (
-              <NavRail path={path} onExpand={toggleCollapsed} />
+              <NavRail path={path} onExpand={toggleCollapsed} navItems={desktopNav} />
             ) : (
               <NavSidebar
                 path={path}
@@ -207,7 +226,7 @@ export default function AppShell({ children }) {
                 viewerTitle={viewerTitle}
                 viewerRole={viewerRole}
                 viewerInitials={initials}
-                navItems={NAV}
+                navItems={desktopNav}
               />
             )}
           </div>
@@ -221,13 +240,13 @@ export default function AppShell({ children }) {
         </div>
       </div>
 
-      <MobileBottomNav path={path} />
+      <MobileBottomNav path={path} navItems={mobileNav} />
     </div>
   );
 }
 
 /** 手機版：原左側導覽改為底部橫列 */
-function MobileBottomNav({ path }) {
+function MobileBottomNav({ path, navItems }) {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 sm:hidden border-t border-white/60 bg-white/70 backdrop-blur-xl shadow-[0_-6px_24px_rgba(15,23,42,0.08)]"
@@ -235,7 +254,7 @@ function MobileBottomNav({ path }) {
       aria-label="主要導覽"
     >
       <div className="flex items-stretch justify-around max-w-lg mx-auto min-h-[5.625rem]">
-        {MOBILE_NAV.map((n) => {
+        {navItems.map((n) => {
           const active = navItemActive(path, n.href);
           const Icon = n.icon;
           const label = n.mobileLabel || n.label;
@@ -274,39 +293,39 @@ function MobileBottomNav({ path }) {
  *  pill inside. Top plaster card height : Bottom plaster card height ≈ 7:3
  *  (enforced via flex grow ratios; min-h-fit lets the top card grow beyond
  *  70% if the icon pill needs more room on short pages). */
-function NavRail({ path, onExpand }) {
+function NavRail({ path, onExpand, navItems }) {
   return (
     <div className={`flex h-full min-h-full flex-col ${NAV_STYLE.railWidth} ${NAV_STYLE.cardGap}`}>
-      {/* TOP plaster card. Dark pill flush to top edge with extra bottom
-          padding (NAV_STYLE.pillTailPad) so it extends past the last icon. */}
+      {/* TOP plaster: dark pill stays content-sized; overflow clipped so it never spills past the glass card. */}
       <div
-        className={`nav-plaster flex flex-col min-h-0 ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
+        className={`nav-plaster flex flex-col min-h-0 overflow-hidden ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
       >
         <div
-          className={`nav-pill flex w-full shrink-0 flex-col items-center gap-1 pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
+          className={`nav-pill flex w-full max-h-full shrink-0 flex-col items-center gap-1 overflow-y-auto overscroll-contain pt-3 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
         >
           <button
             type="button"
             onClick={onExpand}
-            className="h-10 w-10 rounded-[12px] grid place-items-center bg-[var(--nav-pill-bg)] ring-1 ring-white/10 hover:bg-white/[0.05] transition-apple"
+            className="h-10 w-10 rounded-[12px] grid place-items-center bg-[var(--nav-pill-bg)] ring-1 ring-white/10 hover:bg-white/[0.05] transition-apple shrink-0"
             aria-label="展開導覽"
             title="展開導覽"
           >
             <CompanyLogo size={26} />
           </button>
-          <div className="nav-divider w-[44px] my-2" />
-          <RailItem active={path === '/'} href="/" label="Dashboard">
-            <IconGrid />
-          </RailItem>
-          <RailItem active={path.startsWith('/projects')} href="/projects" label="專案">
-            <IconFolder />
-          </RailItem>
-          <RailItem active={path.startsWith('/clients')} href="/clients" label="客戶">
-            <IconBriefcase />
-          </RailItem>
-          <RailItem active={path.startsWith('/team')} href="/team" label="成員">
-            <IconUsersMini />
-          </RailItem>
+          <div className="nav-divider w-[44px] my-2 shrink-0" />
+          {navItems.map((n) => {
+            const Icon = n.icon;
+            return (
+              <RailItem
+                key={n.href}
+                active={navItemActive(path, n.href)}
+                href={n.href}
+                label={n.label}
+              >
+                <Icon />
+              </RailItem>
+            );
+          })}
         </div>
       </div>
 
@@ -330,20 +349,19 @@ function NavRail({ path, onExpand }) {
 function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, viewerInitials, navItems }) {
   return (
     <div className={`flex h-full min-h-full flex-col ${NAV_STYLE.sidebarWidth} ${NAV_STYLE.cardGap}`}>
-      {/* TOP plaster card. Dark pill flush to top edge with extra bottom
-          padding (NAV_STYLE.pillTailPad) so it extends past the last nav row. */}
+      {/* TOP plaster: content-sized dark pill; clip if it would spill past the glass card. */}
       <div
-        className={`nav-plaster flex flex-col min-h-0 ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
+        className={`nav-plaster flex flex-col min-h-0 overflow-hidden ${NAV_STYLE.topCardRadius} ${NAV_STYLE.cardPadding} ${NAV_STYLE.topFlex}`}
       >
         <div
-          className={`nav-pill flex w-full shrink-0 flex-col px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
+          className={`nav-pill flex w-full max-h-full shrink-0 flex-col overflow-y-auto overscroll-contain px-3 pt-4 text-white/85 ${NAV_STYLE.topPillRadius} ${NAV_STYLE.pillTailPad}`}
         >
-          <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-white/10">
+          <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-white/10 shrink-0">
             <CompanyLogo size={22} className="text-white" />
             <p className="text-[12px] font-semibold text-white/95 leading-snug">{STUDIO_NAME}</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <div
               className={`h-10 w-10 rounded-[12px] grid place-items-center text-white text-[12px] font-bold tracking-wide shrink-0 ${NAV_STYLE.brandBg} ${NAV_STYLE.brandShadow}`}
               aria-label="使用者頭像"
@@ -370,8 +388,8 @@ function NavSidebar({ path, onCollapse, viewerTitle, viewerRole, viewerInitials,
             </button>
           </div>
 
-          <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-white/40">
-            NAVIGATION
+          <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-white/40 shrink-0">
+            導覽
           </p>
           <div className="mt-2 flex flex-col gap-1">
             {navItems.map((n) => {

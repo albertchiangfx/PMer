@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../../lib/api';
 import TeamMemberCard from '../../components/TeamMemberCard';
 import BackToDashboard from '../../components/BackToDashboard';
+import ModalPortal from '../../components/ModalPortal';
+import { useModalEscape } from '../../lib/use-modal-escape';
 import {
   pageFrameClass,
   pageFrameHeaderClass,
@@ -116,6 +118,11 @@ export default function TeamPage() {
     setModal(m);
   };
 
+  useModalEscape(() => {
+    setModal(null);
+    setEditUnlocked(false);
+  }, { disabled: !modal });
+
   return (
     <div className={pageFrameClass}>
       <div className={pageFrameHeaderClass}>
@@ -173,6 +180,7 @@ export default function TeamPage() {
       </div>
 
       {modal && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
           onClick={(e) => e.target === e.currentTarget && setModal(null)}
@@ -366,6 +374,7 @@ export default function TeamPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

@@ -16,6 +16,7 @@ import { SCHEDULE_DATA_CHANGED_EVENT } from '../lib/dashboard-sync';
 import { useIsMobileLayout } from '../lib/use-mobile-layout';
 import StudioVerticalSchedule from '../components/StudioVerticalSchedule';
 import { pageFrameClass, pageFrameHeaderClass } from '../lib/page-layout';
+import { isClosedProjectStatus } from '../lib/utils';
 
 /** 本地曆「今天」YYYY-MM-DD（避免 toISOString() 用 UTC 與台灣等地差一天） */
 function localCalendarYmd() {
@@ -416,6 +417,7 @@ export default function Dashboard() {
     const list = [];
     for (const id of ids) {
       const full = projects.find((x) => String(x.id) === id);
+      if (full && isClosedProjectStatus(full.status)) continue;
       const fromTask = taskRowsToday.find((r) => String(r.projectId) === id);
       const fromPerson = personalTasks.find((t) => String(t.project_id) === id);
       const rawFb = fromTask?.raw;
@@ -467,7 +469,7 @@ export default function Dashboard() {
               <span className="v2-eyebrow">multi.design studio · Daily Overview</span>
             ) : null}
             <h1 className="text-xl md:text-3xl font-semibold tracking-tight">
-              {isMobileLayout ? '今日' : 'Dashboard'}
+              {isMobileLayout ? '今日' : '總覽'}
             </h1>
             <p className="mt-0.5 md:mt-1 text-xs md:text-sm v2-meta">{nowLabel}</p>
           </div>
@@ -517,7 +519,7 @@ export default function Dashboard() {
             compact
           />
           <StudioVerticalSchedule
-            projects={projects}
+            projects={projects.filter((p) => !isClosedProjectStatus(p?.status))}
             allocations={allocations}
             members={members}
           />

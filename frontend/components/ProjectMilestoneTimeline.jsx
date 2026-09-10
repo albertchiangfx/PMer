@@ -18,6 +18,8 @@ import {
 } from 'date-fns';
 import { api } from '../lib/api';
 import { notifyMilestoneDataChanged } from '../lib/dashboard-sync';
+import { useModalEscape } from '../lib/use-modal-escape';
+import ModalPortal from './ModalPortal';
 import {
   NODE_KINDS,
   nodeKindMeta,
@@ -286,6 +288,8 @@ export default function ProjectMilestoneTimeline({
   onProjectDatesSaved,
   /** 手機預覽：僅顯示、不可拖曳／改期／新增節點 */
   readOnly = false,
+  /** 展開編輯：收合假日／圖例與節點一覽，減少 chrome */
+  compactChrome = false,
 }) {
   const { data: milestones = [], mutate } = useSWR(
     projectId ? ['project-milestones', projectId] : null,
@@ -450,6 +454,10 @@ export default function ProjectMilestoneTimeline({
   const [gridHover, setGridHover] = useState({ col: null, row: null });
   const [nodeCreateModal, setNodeCreateModal] = useState(null);
   const [nodeCreateSaving, setNodeCreateSaving] = useState(false);
+
+  useModalEscape(() => setNodeCreateModal(null), {
+    disabled: !nodeCreateModal || nodeCreateSaving,
+  });
 
   const draggingRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
@@ -783,6 +791,14 @@ export default function ProjectMilestoneTimeline({
     setActiveSegId(milestoneId);
     setNodeCreateModal({ milestoneId, dateYmd, kind: 'delivery', label: '' });
   }, []);
+
+  const nodeDateOutsideProject = useMemo(() => {
+    if (!nodeCreateModal?.dateYmd || !pStart || !pEnd) return false;
+    const ymd = String(nodeCreateModal.dateYmd).slice(0, 10);
+    const lo = fmtYmd(pStart);
+    const hi = fmtYmd(pEnd);
+    return ymd < lo || ymd > hi;
+  }, [nodeCreateModal?.dateYmd, pStart, pEnd]);
 
   const submitNodeCreate = useCallback(async () => {
     if (!nodeCreateModal) return;
@@ -1266,136 +1282,181 @@ export default function ProjectMilestoneTimeline({
   const projectWorkingDays =
     projStart && projEnd ? countWorkingDaysInclusive(projStart, projEnd, holidayYmdSet) : null;
 
+  const holidayControls = (
+    <div
+      ref={countryPickerRef}
+      className="relative flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600 max-w-full"
+    >
+      <span className="font-semibold text-slate-500 shrink-0">國定假日</span>
+      <span
+        className="inline-block w-3 h-3 rounded-sm border border-amber-200/90 gantt-holiday shrink-0"
+        title="淡琥珀色＝平日國定假日（直欄延伸至下方）"
+      />
+      {BASE_HOLIDAY_COUNTRIES.map((code) => {
+        const on = enabledHolidayCountries.includes(code);
+        return (
+          <button
+            key={code}
+            type="button"
+            onClick={() => toggleHolidayCountry(code)}
+            className={holidayChipCls(on)}
+            title={`${on ? '關閉' : '開啟'}${countryLabel(code)}國定假日標示`}
+            aria-pressed={on}
+          >
+            {countryLabel(code)}
+          </button>
+        );
+      })}
+      {extraHolidayCountries.map((code) => (
+        <span
+          key={code}
+          className="inline-flex items-center gap-0.5 pl-1.5 pr-1 py-0.5 rounded border border-slate-300 bg-slate-50 text-slate-800 font-medium shrink-0"
+        >
+          {countryLabel(code)}
+          <button
+            type="button"
+            onClick={() => removeExtraHolidayCountry(code)}
+            className="w-4 h-4 flex items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+            aria-label={`移除${countryLabel(code)}國定假日`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <button
+        type="button"
+        onClick={() => setCountryPickerOpen((o) => !o)}
+        className="w-6 h-6 flex items-center justify-center rounded border border-dashed border-slate-300 text-slate-500 hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50/50 shrink-0 font-bold leading-none"
+        title="新增其他國家國定假日"
+        aria-expanded={countryPickerOpen}
+      >
+        +
+      </button>
+      {countryPickerOpen ? (
+        <div className="absolute right-0 top-full mt-1 z-[300] min-w-[9rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {ADDABLE_HOLIDAY_COUNTRIES.filter((c) => !enabledHolidayCountries.includes(c.code))
+            .length === 0 ? (
+            <p className="px-3 py-2 text-slate-400 text-[10px]">已無可新增國家</p>
+          ) : (
+            ADDABLE_HOLIDAY_COUNTRIES.filter((c) => !enabledHolidayCountries.includes(c.code)).map(
+              (c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  className="block w-full text-left px-3 py-1.5 hover:bg-amber-50 text-slate-700"
+                  onClick={() => addExtraHolidayCountry(c.code)}
+                >
+                  {c.label}
+                </button>
+              )
+            )
+          )}
+        </div>
+      ) : null}
+      {holidaysLoading ? <span className="text-slate-400 shrink-0">載入中…</span> : null}
+    </div>
+  );
+
+  const legendControls = (
+    <div className="flex items-center gap-2.5 flex-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600">
+      <span className="font-semibold text-slate-500 shrink-0">節點圖例</span>
+      <ul className="flex items-center gap-x-2.5 flex-nowrap">
+        {NODE_KINDS.map((k) => (
+          <li key={k.id} className="flex items-center gap-1 shrink-0">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+              style={{ backgroundColor: k.color }}
+            />
+            {k.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  const exportButton = (
+    <button
+      type="button"
+      onClick={() => {
+        void (async () => {
+          try {
+            const result = await exportClientTimeline(project, canonical);
+            if (result && !result.ok && result.message) alert(result.message);
+          } catch (err) {
+            console.error(err);
+            alert(err?.message || '匯出失敗，請稍後再試。');
+          }
+        })();
+      }}
+      disabled={!canonical.length}
+      className={`rounded-lg border border-indigo-200 bg-indigo-600 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed ${
+        compactChrome ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+      }`}
+      title="產生含專案、客戶、時間軸、項目、節點與預算的 HTML，可轉 PDF 寄給客戶"
+    >
+      匯出客戶時間軸
+    </button>
+  );
+
   return (
-    <div className="surface overflow-hidden rounded-[18px] border border-white/60 h-full min-h-0 flex flex-col">
+    <div
+      className={
+        compactChrome
+          ? 'bg-white overflow-hidden h-full min-h-0 flex flex-col'
+          : 'surface overflow-hidden rounded-[18px] border border-white/60 h-full min-h-0 flex flex-col'
+      }
+    >
       {readOnly ? (
         <div className="shrink-0 px-4 py-2.5 border-b border-amber-100 bg-amber-50/90 text-[12px] text-amber-950">
           僅供預覽，無法拖曳或編輯。請使用電腦版調整時程。
         </div>
       ) : null}
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
+      <div
+        className={`shrink-0 flex flex-wrap items-center justify-between border-b border-slate-200/80 ${
+          compactChrome ? 'gap-2 px-2.5 py-1.5' : 'gap-3 px-4 pt-3 pb-2'
+        }`}
+      >
         <p className="text-[10px] text-slate-500 shrink-0">
           滾輪左右 · Alt+滾輪上下 · Ctrl+滾輪縮放
         </p>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div
-            ref={countryPickerRef}
-            className="relative flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600 max-w-full"
-          >
-            <span className="font-semibold text-slate-500 shrink-0">國定假日</span>
-            <span
-              className="inline-block w-3 h-3 rounded-sm border border-amber-200/90 gantt-holiday shrink-0"
-              title="淡琥珀色＝平日國定假日（直欄延伸至下方）"
-            />
-            {BASE_HOLIDAY_COUNTRIES.map((code) => {
-              const on = enabledHolidayCountries.includes(code);
-              return (
-                <button
-                  key={code}
-                  type="button"
-                  onClick={() => toggleHolidayCountry(code)}
-                  className={holidayChipCls(on)}
-                  title={`${on ? '關閉' : '開啟'}${countryLabel(code)}國定假日標示`}
-                  aria-pressed={on}
-                >
-                  {countryLabel(code)}
-                </button>
-              );
-            })}
-            {extraHolidayCountries.map((code) => (
-              <span
-                key={code}
-                className="inline-flex items-center gap-0.5 pl-1.5 pr-1 py-0.5 rounded border border-slate-300 bg-slate-50 text-slate-800 font-medium shrink-0"
-              >
-                {countryLabel(code)}
-                <button
-                  type="button"
-                  onClick={() => removeExtraHolidayCountry(code)}
-                  className="w-4 h-4 flex items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                  aria-label={`移除${countryLabel(code)}國定假日`}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <button
-              type="button"
-              onClick={() => setCountryPickerOpen((o) => !o)}
-              className="w-6 h-6 flex items-center justify-center rounded border border-dashed border-slate-300 text-slate-500 hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50/50 shrink-0 font-bold leading-none"
-              title="新增其他國家國定假日"
-              aria-expanded={countryPickerOpen}
-            >
-              +
-            </button>
-            {countryPickerOpen ? (
-              <div className="absolute right-0 top-full mt-1 z-[300] min-w-[9rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                {ADDABLE_HOLIDAY_COUNTRIES.filter((c) => !enabledHolidayCountries.includes(c.code))
-                  .length === 0 ? (
-                  <p className="px-3 py-2 text-slate-400 text-[10px]">已無可新增國家</p>
-                ) : (
-                  ADDABLE_HOLIDAY_COUNTRIES.filter((c) => !enabledHolidayCountries.includes(c.code)).map(
-                    (c) => (
-                      <button
-                        key={c.code}
-                        type="button"
-                        className="block w-full text-left px-3 py-1.5 hover:bg-amber-50 text-slate-700"
-                        onClick={() => addExtraHolidayCountry(c.code)}
-                      >
-                        {c.label}
-                      </button>
-                    )
-                  )
-                )}
+        <div className={`flex flex-wrap items-center shrink-0 ${compactChrome ? 'gap-1.5' : 'gap-3'}`}>
+          {compactChrome ? (
+            <details className="relative group/display-opts">
+              <summary className="cursor-pointer list-none inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                顯示選項
+                <span className="text-slate-400 text-[10px]" aria-hidden>
+                  ▾
+                </span>
+              </summary>
+              <div className="absolute right-0 top-full mt-1 z-[300] flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-lg min-w-[16rem] max-w-[min(100vw-2rem,28rem)]">
+                {holidayControls}
+                {legendControls}
               </div>
-            ) : null}
-            {holidaysLoading ? (
-              <span className="text-slate-400 shrink-0">載入中…</span>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2.5 flex-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600">
-            <span className="font-semibold text-slate-500 shrink-0">節點圖例</span>
-            <ul className="flex items-center gap-x-2.5 flex-nowrap">
-              {NODE_KINDS.map((k) => (
-                <li key={k.id} className="flex items-center gap-1 shrink-0">
-                  <span
-                    className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                    style={{ backgroundColor: k.color }}
-                  />
-                  {k.label}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              void (async () => {
-                try {
-                  const result = await exportClientTimeline(project, canonical);
-                  if (result && !result.ok && result.message) alert(result.message);
-                } catch (err) {
-                  console.error(err);
-                  alert(err?.message || '匯出失敗，請稍後再試。');
-                }
-              })();
-            }}
-            disabled={!canonical.length}
-            className="rounded-lg border border-indigo-200 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="產生含專案、客戶、時間軸、項目、節點與預算的 HTML，可轉 PDF 寄給客戶"
-          >
-            匯出客戶時間軸
-          </button>
+            </details>
+          ) : (
+            <>
+              {holidayControls}
+              {legendControls}
+            </>
+          )}
+          {exportButton}
         </div>
       </div>
 
-      <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
+      <div
+        className={`shrink-0 border-b border-slate-100 flex flex-wrap items-center ${
+          compactChrome ? 'gap-1 px-2.5 py-1.5' : 'gap-1.5 px-4 py-2'
+        }`}
+      >
         <span className="text-[10px] font-semibold text-slate-500 shrink-0">選取項目</span>
         {displaySegs.map((seg, i) => (
           <button
             key={seg.id}
             type="button"
             onClick={() => setActiveSegId(seg.id)}
-            className={`text-[10px] px-2 py-0.5 rounded-md border font-medium ${
+            className={`text-[10px] rounded-md border font-medium ${
+              compactChrome ? 'px-1.5 py-0.5' : 'px-2 py-0.5'
+            } ${
               activeSegId === seg.id
                 ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -1930,40 +1991,92 @@ export default function ProjectMilestoneTimeline({
       </div>
 
       {allDetailNodesFlat.length > 0 && (
-        <div className="shrink-0 px-4 py-3 border-t border-slate-200/80 bg-slate-50/80">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
-            時程節點一覽（共 {allDetailNodesFlat.length}）
-          </p>
-          <ul className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-            {allDetailNodesFlat.map((n) => (
-              <li key={`${n.segId}-${n.date}-${n.label}`}>
-                <button
-                  type="button"
-                  disabled={readOnly}
-                  className={`text-[10px] px-2 py-0.5 rounded-md border ${
-                    activeSegId === n.segId
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
-                      : 'border-indigo-200 bg-white text-slate-700'
-                  } ${readOnly ? '' : 'hover:bg-indigo-50'}`}
-                  title={readOnly ? `${n.milestoneLabel}` : `${n.milestoneLabel} — 點選後在專案／項目列新增節點`}
-                  onClick={() => !readOnly && setActiveSegId(n.segId)}
-                >
-                  <span
-                    className="inline-block w-1.5 h-1.5 rounded-sm mr-0.5 align-middle"
-                    style={{ backgroundColor: nodeKindMeta(n.kind).color }}
-                  />
-                  <span className="text-indigo-600 tabular-nums">{n.date}</span>
-                  <span className="text-slate-400 mx-1">·</span>
-                  <span className="font-medium">{n.label}</span>
-                  <span className="text-slate-400 ml-1">({n.milestoneLabel})</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div
+          className={`shrink-0 border-t border-slate-200/80 bg-slate-50/80 ${
+            compactChrome ? 'px-2.5 py-1.5' : 'px-4 py-3'
+          }`}
+        >
+          {compactChrome ? (
+            <details>
+              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wide text-slate-500 [&::-webkit-details-marker]:hidden">
+                時程節點一覽（共 {allDetailNodesFlat.length}）
+                <span className="ml-1 text-slate-400 font-normal normal-case" aria-hidden>
+                  ▾
+                </span>
+              </summary>
+              <ul className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto mt-2">
+                {allDetailNodesFlat.map((n) => (
+                  <li key={`${n.segId}-${n.date}-${n.label}`}>
+                    <button
+                      type="button"
+                      disabled={readOnly}
+                      className={`text-[10px] px-2 py-0.5 rounded-md border ${
+                        activeSegId === n.segId
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                          : 'border-indigo-200 bg-white text-slate-700'
+                      } ${readOnly ? '' : 'hover:bg-indigo-50'}`}
+                      title={
+                        readOnly
+                          ? `${n.milestoneLabel}`
+                          : `${n.milestoneLabel} — 點選後在專案／項目列新增節點`
+                      }
+                      onClick={() => !readOnly && setActiveSegId(n.segId)}
+                    >
+                      <span
+                        className="inline-block w-1.5 h-1.5 rounded-sm mr-0.5 align-middle"
+                        style={{ backgroundColor: nodeKindMeta(n.kind).color }}
+                      />
+                      <span className="text-indigo-600 tabular-nums">{n.date}</span>
+                      <span className="text-slate-400 mx-1">·</span>
+                      <span className="font-medium">{n.label}</span>
+                      <span className="text-slate-400 ml-1">({n.milestoneLabel})</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                時程節點一覽（共 {allDetailNodesFlat.length}）
+              </p>
+              <ul className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                {allDetailNodesFlat.map((n) => (
+                  <li key={`${n.segId}-${n.date}-${n.label}`}>
+                    <button
+                      type="button"
+                      disabled={readOnly}
+                      className={`text-[10px] px-2 py-0.5 rounded-md border ${
+                        activeSegId === n.segId
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                          : 'border-indigo-200 bg-white text-slate-700'
+                      } ${readOnly ? '' : 'hover:bg-indigo-50'}`}
+                      title={
+                        readOnly
+                          ? `${n.milestoneLabel}`
+                          : `${n.milestoneLabel} — 點選後在專案／項目列新增節點`
+                      }
+                      onClick={() => !readOnly && setActiveSegId(n.segId)}
+                    >
+                      <span
+                        className="inline-block w-1.5 h-1.5 rounded-sm mr-0.5 align-middle"
+                        style={{ backgroundColor: nodeKindMeta(n.kind).color }}
+                      />
+                      <span className="text-indigo-600 tabular-nums">{n.date}</span>
+                      <span className="text-slate-400 mx-1">·</span>
+                      <span className="font-medium">{n.label}</span>
+                      <span className="text-slate-400 ml-1">({n.milestoneLabel})</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
       {nodeCreateModal && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px]"
           onClick={(e) => e.target === e.currentTarget && !nodeCreateSaving && setNodeCreateModal(null)}
@@ -2060,6 +2173,15 @@ export default function ProjectMilestoneTimeline({
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
+
+              {nodeDateOutsideProject && pStart && pEnd ? (
+                <div
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 leading-relaxed"
+                  role="status"
+                >
+                  此日期不在專案期間（{fmtYmd(pStart)}～{fmtYmd(pEnd)}）內，仍可儲存，但請確認是否為預期排程。
+                </div>
+              ) : null}
             </div>
 
             <div className="flex gap-2 px-5 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
@@ -2082,6 +2204,7 @@ export default function ProjectMilestoneTimeline({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

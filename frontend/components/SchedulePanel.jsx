@@ -12,6 +12,9 @@ import {
   MILESTONE_DATA_CHANGED_EVENT,
 } from '../lib/dashboard-sync';
 import { validateIntervalWithinProject } from '../lib/projectScheduleBounds';
+import { useModalEscape } from '../lib/use-modal-escape';
+import ModalPortal from './ModalPortal';
+import { isClosedProjectStatus } from '../lib/utils';
 
 export default function SchedulePanel({ defaultTab = 'studio', title = '工作時程', embedded = false }) {
   const [members, setMembers] = useState([]);
@@ -65,8 +68,14 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
       api.getAllocations(),
     ]);
     setMembers(m);
-    setProjects(Array.isArray(p) ? p : []);
-    setAllocations(a);
+    // 已完成／已取消不進工作室時程（仍可在專案列表查看）
+    const all = Array.isArray(p) ? p : [];
+    const open = all.filter((row) => !isClosedProjectStatus(row?.status));
+    const openIds = new Set(open.map((row) => String(row.id)));
+    setProjects(open);
+    setAllocations(
+      (Array.isArray(a) ? a : []).filter((row) => openIds.has(String(row.project_id)))
+    );
     notifyScheduleDataChanged();
   }, []);
 
@@ -397,7 +406,9 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
 }
 
 function Modal({ title, onClose, children }) {
+  useModalEscape(onClose);
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -416,6 +427,7 @@ function Modal({ title, onClose, children }) {
         <div className="p-6">{children}</div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

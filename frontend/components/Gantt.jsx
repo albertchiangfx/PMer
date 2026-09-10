@@ -404,6 +404,8 @@ export default function Gantt({
       } catch (err) {
         if (err.status === 409) {
           setConflicts((prev) => ({ ...prev, [origAlloc.id]: true }));
+        } else {
+          alert(err.message || '更新失敗');
         }
       }
       setDragging(null);

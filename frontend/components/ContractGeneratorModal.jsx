@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { useModalEscape } from '../lib/use-modal-escape';
+import ModalPortal from './ModalPortal';
 
 /**
  * 合約 PDF 產生器：
@@ -62,6 +64,8 @@ export default function ContractGeneratorModal({ open, contract, onClose, onGene
     };
   }, [open, contract?.id, templateId, clauseIds]);
 
+  useModalEscape(onClose, { disabled: !open || generating });
+
   if (!open) return null;
 
   const toggleClause = (id) =>
@@ -101,9 +105,10 @@ export default function ContractGeneratorModal({ open, contract, onClose, onGene
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
-      onClick={(e) => e.target === e.currentTarget && onClose?.()}
+      onClick={(e) => e.target === e.currentTarget && !generating && onClose?.()}
     >
       <div className="bg-white rounded-apple-xl shadow-apple-xl w-full max-w-5xl h-[88vh] overflow-hidden animate-slide-up flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -236,5 +241,6 @@ export default function ContractGeneratorModal({ open, contract, onClose, onGene
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

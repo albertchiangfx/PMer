@@ -5,14 +5,17 @@ import Link from 'next/link';
 import { api } from '../../../lib/api';
 import { notifyScheduleDataChanged } from '../../../lib/dashboard-sync';
 import { validateIntervalWithinProject } from '../../../lib/projectScheduleBounds';
-import { fmtCurrency, statusStyle, fmt, initials } from '../../../lib/utils';
+import { fmtCurrency, statusStyle, statusLabel, fmt, initials } from '../../../lib/utils';
 import TaskCard from '../../../components/TaskCard';
 import Gantt from '../../../components/Gantt';
 import ProjectMilestoneTimeline from '../../../components/ProjectMilestoneTimeline';
+import ProjectGanttFullscreen from '../../../components/ProjectGanttFullscreen';
 import ProjectMilestonesPanel from '../../../components/ProjectMilestonesPanel';
 import ProjectScheduleMobileOverview from '../../../components/ProjectScheduleMobileOverview';
 import ProjectScheduleVerticalTimeline from '../../../components/ProjectScheduleVerticalTimeline';
 import { useIsMobileLayout } from '../../../lib/use-mobile-layout';
+import { useModalEscape } from '../../../lib/use-modal-escape';
+import ModalPortal from '../../../components/ModalPortal';
 import ProjectFormModal, {
   defaultProjectForm,
   projectFormToPayload,
@@ -37,6 +40,9 @@ const TASK_TYPES = [
 ];
 const PRIORITIES = ['low', 'medium', 'high'];
 const TASK_STATUSES = ['todo', 'in-progress', 'review', 'done'];
+/** Embedded Gantt and「展開編輯」share the same visible window so expand does not jump. */
+const PROJECT_GANTT_RANGE_WEEKS = 12;
+const PROJECT_GANTT_PAST_WEEKS = 4;
 
 function routeParamId(raw) {
   if (raw == null) return '';
@@ -68,6 +74,8 @@ export default function ProjectDetailPage() {
   const isMobileLayout = useIsMobileLayout();
   const [tab, setTab] = useState('gantt');
   const [ganttMode, setGanttMode] = useState('milestones');
+  const [ganttExpanded, setGanttExpanded] = useState(false);
+  const expandGanttBtnRef = useRef(null);
   const [projDropdownOpen, setProjDropdownOpen] = useState(false);
   const projDropdownRef = useRef(null);
   const [clients, setClients] = useState([]);
@@ -77,8 +85,17 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     const qTab = searchParams?.get('tab');
-    if (qTab === 'client') {
-      setTab('client');
+    const allowed = new Set(['gantt', 'milestones', 'client', 'team', 'tasks', 'schedule']);
+    if (qTab && allowed.has(qTab)) {
+      if (qTab === 'schedule' && !isMobileLayout) {
+        setTab('gantt');
+        return;
+      }
+      if (qTab === 'gantt' && isMobileLayout) {
+        setTab('schedule');
+        return;
+      }
+      setTab(qTab);
       return;
     }
     setTab(isMobileLayout ? 'schedule' : 'gantt');
@@ -87,6 +104,10 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (!isMobileLayout && tab === 'schedule') setTab('gantt');
   }, [isMobileLayout, tab]);
+
+  useEffect(() => {
+    if (tab !== 'gantt' || isMobileLayout) setGanttExpanded(false);
+  }, [tab, isMobileLayout]);
 
   function defaultTaskForm() {
     return {
@@ -257,9 +278,13 @@ export default function ProjectDetailPage() {
 
   const delTask = async (t) => {
     if (!confirm(`刪除任務「${t.name}」？`)) return;
-    await api.deleteTask(t.id);
-    await load();
-    notifyScheduleDataChanged();
+    try {
+      await api.deleteTask(t.id);
+      await load();
+      notifyScheduleDataChanged();
+    } catch (err) {
+      alert(err?.message || String(err));
+    }
   };
 
   const saveProjectAlloc = async (e) => {
@@ -438,7 +463,7 @@ export default function ProjectDetailPage() {
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-xs font-semibold ${s.bg} ${s.text}`}
             >
               <span className={`w-2 h-2 rounded-full ${s.dot}`} />
-              {project.status}
+              {statusLabel(project.status)}
             </span>
           </div>
         </div>
@@ -647,39 +672,57 @@ export default function ProjectDetailPage() {
       {tab === 'gantt' && (
         <>
           <div className="hidden md:flex flex-col flex-1 min-h-0 gap-3 overflow-hidden">
-            <div className="shrink-0 inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm w-fit">
+            <div className="shrink-0 flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm w-fit">
+                <button
+                  type="button"
+                  onClick={() => setGanttMode('milestones')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    ganttMode === 'milestones'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  項目時程
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGanttMode('members')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    ganttMode === 'members'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  成員分配
+                </button>
+              </div>
               <button
+                ref={expandGanttBtnRef}
                 type="button"
-                onClick={() => setGanttMode('milestones')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  ganttMode === 'milestones'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={() => setGanttExpanded(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800 shadow-sm hover:bg-indigo-100"
+                title="以滿視窗編輯甘特圖"
               >
-                項目時程
-              </button>
-              <button
-                type="button"
-                onClick={() => setGanttMode('members')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  ganttMode === 'members'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                成員分配
+                <IconExpandGantt className="h-4 w-4" />
+                展開編輯
               </button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-hidden">
-              {ganttMode === 'members' ? (
+              {ganttExpanded ? (
+                <div className="h-full min-h-0 flex items-center justify-center rounded-[18px] bg-slate-50/80">
+                  <p className="text-xs text-slate-400 px-4 text-center leading-relaxed">
+                    甘特圖已在展開編輯視窗開啟
+                  </p>
+                </div>
+              ) : ganttMode === 'members' ? (
                 <Gantt
                   embedded
                   members={members}
                   allocations={projectAllocations}
                   onUpdate={load}
-                  rangeWeeks={12}
+                  rangeWeeks={PROJECT_GANTT_RANGE_WEEKS}
                   showRowDelete
                   lockMemberRowOnMove
                   labelColumnTitle="成員"
@@ -689,8 +732,8 @@ export default function ProjectDetailPage() {
                 <ProjectMilestoneTimeline
                   projectId={id}
                   project={project}
-                  rangeWeeks={12}
-                  pastWeeks={4}
+                  rangeWeeks={PROJECT_GANTT_RANGE_WEEKS}
+                  pastWeeks={PROJECT_GANTT_PAST_WEEKS}
                   onProjectDatesSaved={() => load()}
                 />
               )}
@@ -703,6 +746,25 @@ export default function ProjectDetailPage() {
         </>
       )}
       </div>
+
+      <ProjectGanttFullscreen
+        open={ganttExpanded}
+        onClose={() => setGanttExpanded(false)}
+        returnFocusRef={expandGanttBtnRef}
+        projectId={id}
+        project={project}
+        projectName={project?.name}
+        ganttMode={ganttMode}
+        onGanttModeChange={setGanttMode}
+        members={members}
+        allocations={projectAllocations}
+        onAllocationsUpdate={load}
+        scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
+        onProjectDatesSaved={() => load()}
+        rangeWeeks={PROJECT_GANTT_RANGE_WEEKS}
+        pastWeeks={PROJECT_GANTT_PAST_WEEKS}
+        emptyHint="尚無時間分配，請關閉後在專案頁按『新增分配』。"
+      />
 
       {/* Task Modal */}
       {taskModal && (
@@ -890,8 +952,31 @@ function Stat({ label, value }) {
     </div>
   );
 }
-function Modal({ title, onClose, children }) {
+
+function IconExpandGantt({ className }) {
   return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="M21 3l-7 7" />
+      <path d="M3 21l7-7" />
+    </svg>
+  );
+}
+
+function Modal({ title, onClose, children }) {
+  useModalEscape(onClose);
+  return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -909,6 +994,7 @@ function Modal({ title, onClose, children }) {
         <div className="p-6">{children}</div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 function Label({ children }) {

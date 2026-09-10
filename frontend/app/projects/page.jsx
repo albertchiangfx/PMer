@@ -3,7 +3,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { api } from '../../lib/api';
-import { fmtCurrency, statusStyle, fmt } from '../../lib/utils';
+import {
+  fmtCurrency,
+  statusStyle,
+  statusLabel,
+  fmt,
+  resolveProjectDisplayStatus,
+} from '../../lib/utils';
 import BackToDashboard from '../../components/BackToDashboard';
 import {
   MILESTONE_DATA_CHANGED_EVENT,
@@ -57,8 +63,9 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     const fn = () => {
-      mutateMsSum(undefined, { revalidate: true });
-      mutateMsLists(undefined, { revalidate: true });
+      // Revalidate without clearing cache (passing undefined as data caused full-page flash).
+      mutateMsSum();
+      mutateMsLists();
     };
     window.addEventListener(MILESTONE_DATA_CHANGED_EVENT, fn);
     return () => window.removeEventListener(MILESTONE_DATA_CHANGED_EVENT, fn);
@@ -77,14 +84,53 @@ export default function ProjectsPage() {
   }, [msLists]);
 
   const refreshMilestones = useCallback(async () => {
-    await Promise.all([
-      mutateMsSum(undefined, { revalidate: true }),
-      mutateMsLists(undefined, { revalidate: true }),
-    ]);
+    await Promise.all([mutateMsSum(), mutateMsLists()]);
   }, [mutateMsSum, mutateMsLists]);
 
-  const load = useCallback(async () => {
+  const applyOptimisticMilestone = useCallback(
+    (projectId, milestoneId, completed) => {
+      const pidLc = String(projectId).toLowerCase();
+      mutateMsLists(
+        (curr) => {
+          if (!curr || typeof curr !== 'object') return curr;
+          const next = { ...curr };
+          for (const [k, list] of Object.entries(next)) {
+            if (!Array.isArray(list)) continue;
+            if (String(k).toLowerCase() !== pidLc) continue;
+            next[k] = list.map((m) =>
+              String(m.id) === String(milestoneId) ? { ...m, completed: !!completed } : m
+            );
+          }
+          return next;
+        },
+        { revalidate: false }
+      );
+      mutateMsSum(
+        (curr) => {
+          if (!curr || typeof curr !== 'object') return curr;
+          const next = { ...curr };
+          for (const [k, sum] of Object.entries(next)) {
+            if (String(k).toLowerCase() !== pidLc || !sum) continue;
+            const list = listsByLc[pidLc] || [];
+            const total = Number(sum.total) || list.length || 0;
+            let done = Number(sum.completed) || 0;
+            const prev = list.find((m) => String(m.id) === String(milestoneId));
+            const was = !!prev?.completed;
+            if (was === !!completed) break;
+            done += completed ? 1 : -1;
+            next[k] = { ...sum, total, completed: Math.max(0, Math.min(total, done)) };
+          }
+          return next;
+        },
+        { revalidate: false }
+      );
+    },
+    [mutateMsLists, mutateMsSum, listsByLc]
+  );
+
+  const load = useCallback(async ({ soft = false } = {}) => {
     setLoadError(null);
+    if (!soft) setLoading(true);
     try {
       const [p, c] = await Promise.all([api.getProjects(), api.getClients()]);
       setProjects(Array.isArray(p) ? p : []);
@@ -92,21 +138,17 @@ export default function ProjectsPage() {
     } catch (e) {
       console.error(e);
       setLoadError(e?.message || '無法載入專案或客戶資料');
-      setProjects([]);
-      setClients([]);
+      if (!soft) {
+        setProjects([]);
+        setClients([]);
+      }
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      await load();
-      if (!cancelled) setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void load();
   }, [load]);
 
   const openCreate = () => {
@@ -137,7 +179,7 @@ export default function ProjectsPage() {
         }
       } else await api.updateProject(modal.id, data);
       setModal(null);
-      await load();
+      await load({ soft: true });
       notifyScheduleDataChanged();
     } catch (err) {
       console.error(err);
@@ -149,8 +191,12 @@ export default function ProjectsPage() {
 
   const del = async (p) => {
     if (!confirm(`刪除「${p.name}」？此操作無法撤銷。`)) return;
-    await api.deleteProject(p.id);
-    load();
+    try {
+      await api.deleteProject(p.id);
+      void load({ soft: true });
+    } catch (err) {
+      alert(err?.message || String(err));
+    }
   };
 
   const filtered = useMemo(() => {
@@ -170,7 +216,9 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
         <div className="min-w-0">
           <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">專案</h1>
-          <p className="text-gray-400 mt-0.5 md:mt-1 text-xs md:text-sm">{projects.length} 個專案</p>
+          <p className="text-gray-400 mt-0.5 md:mt-1 text-xs md:text-sm">
+            {loading && projects.length === 0 ? '載入中…' : `${projects.length} 個專案`}
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -186,11 +234,7 @@ export default function ProjectsPage() {
           <button
             type="button"
             onClick={() => {
-              void (async () => {
-                setLoading(true);
-                await load();
-                setLoading(false);
-              })();
+              void load();
             }}
             className="shrink-0 px-3 py-1.5 rounded-apple bg-white border border-rose-200 text-rose-900 font-medium text-xs hover:bg-rose-100"
           >
@@ -216,7 +260,7 @@ export default function ProjectsPage() {
             <option value="">全部狀態</option>
             {PROJECT_STATUS_FILTER_OPTS.filter(Boolean).map((s) => (
               <option key={s} value={s}>
-                {s}
+                {statusLabel(s)}
               </option>
             ))}
           </select>
@@ -251,9 +295,10 @@ export default function ProjectsPage() {
       </div>
 
       <div className={pageFrameScrollInsetClass}>
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
+      {loading && projects.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-20">
           <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400">載入中…</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2.5 md:gap-4">
@@ -267,6 +312,7 @@ export default function ProjectsPage() {
                 onDelete={del}
                 milestoneSummary={summaryByLc[idLc]}
                 milestones={listsByLc[idLc] || []}
+                onOptimisticMilestone={applyOptimisticMilestone}
                 onMilestonesChanged={refreshMilestones}
               />
             );
@@ -309,12 +355,19 @@ function ProjectRow({
   onDelete,
   milestoneSummary,
   milestones = [],
+  onOptimisticMilestone,
   onMilestonesChanged,
 }) {
-  const s = statusStyle(project.status);
   const [msBusyId, setMsBusyId] = useState(null);
-  const empty = !milestoneSummary || !milestoneSummary.total;
-  const pct = empty ? 0 : Math.round((milestoneSummary.completed / milestoneSummary.total) * 100);
+  const fromList = Array.isArray(milestones) && milestones.length > 0;
+  const msTotal = fromList ? milestones.length : milestoneSummary?.total || 0;
+  const msCompleted = fromList
+    ? milestones.filter((m) => m.completed).length
+    : milestoneSummary?.completed || 0;
+  const empty = !msTotal;
+  const pct = empty ? 0 : Math.round((msCompleted / msTotal) * 100);
+  const display = resolveProjectDisplayStatus(project.status, msCompleted, msTotal);
+  const s = statusStyle(display.statusKey);
   const sortedMs = useMemo(() => {
     return [...milestones].sort((a, b) => {
       const ao = a.sort_order ?? 0;
@@ -325,12 +378,17 @@ function ProjectRow({
   }, [milestones]);
 
   const toggleMilestone = async (ms) => {
+    const next = !ms.completed;
     try {
       setMsBusyId(ms.id);
-      await api.updateProjectMilestone(ms.id, { completed: !ms.completed });
-      await onMilestonesChanged?.();
+      onOptimisticMilestone?.(project.id, ms.id, next);
+      await api.updateProjectMilestone(ms.id, { completed: next });
       notifyMilestoneDataChanged();
+      // Soft revalidate in background — cache already updated optimistically.
+      void onMilestonesChanged?.();
     } catch (e) {
+      // Roll back by revalidating from server.
+      await onMilestonesChanged?.();
       alert(e?.message || String(e));
     } finally {
       setMsBusyId(null);
@@ -355,7 +413,7 @@ function ProjectRow({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0 mt-0.5">
               <p className="text-[11px] text-gray-400">{project.client_name || '無客戶'}</p>
               <Link
-                href={`/projects/${project.id}/schedule`}
+                href={`/projects/${project.id}?tab=gantt`}
                 className="text-[11px] font-medium text-indigo-500 hover:text-indigo-600"
               >
                 甘特
@@ -394,7 +452,7 @@ function ProjectRow({
               className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${s.bg} ${s.text}`}
             >
               <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-              {project.status}
+              {display.label}
             </span>
           </div>
           <div className="flex gap-2 justify-end shrink-0 opacity-0 group-hover:opacity-100 min-w-[4.5rem]">
@@ -426,7 +484,9 @@ function ProjectRow({
           <span>
             任務 {project.task_count || 0}
           </span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] ${s.bg} ${s.text}`}>{project.status}</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] ${s.bg} ${s.text}`}>
+            {display.label}
+          </span>
         </div>
       </div>
 

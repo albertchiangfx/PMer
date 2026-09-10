@@ -36,6 +36,7 @@ export default function InvoicesPage() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -45,16 +46,18 @@ export default function InvoicesPage() {
   const [sortDir, setSortDir] = useState('desc');
 
   const load = useCallback(async () => {
-    const [i, p, c, cl] = await Promise.all([
+    const [i, p, c, cl, me] = await Promise.all([
       api.getInvoices(),
       api.getProjects(),
       api.getContracts(),
       api.getClients(),
+      api.me().catch(() => null),
     ]);
     setInvoices(i);
     setProjects(p);
     setContracts(c);
     setClients(cl);
+    setIsAdmin(me?.role === 'admin');
   }, []);
 
   useEffect(() => {
@@ -129,12 +132,14 @@ export default function InvoicesPage() {
             <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">全部發票</h1>
             <p className="text-gray-400 mt-1 text-xs md:text-sm">共 {invoices.length} 份</p>
           </div>
-          <button
-            onClick={() => setModal('create')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
-          >
-            ＋ 新發票
-          </button>
+          {isAdmin ? (
+            <button
+              onClick={() => setModal('create')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
+            >
+              ＋ 新發票
+            </button>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-3 gap-3 md:gap-4 mb-4">
@@ -284,12 +289,22 @@ export default function InvoicesPage() {
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setModal(inv)}
-                            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                          >
-                            編輯
-                          </button>
+                          {isAdmin ? (
+                            <>
+                              <button
+                                onClick={() => setModal(inv)}
+                                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                              >
+                                編輯
+                              </button>
+                              <button
+                                onClick={() => del(inv)}
+                                className="text-xs text-red-500 hover:text-red-600 font-medium"
+                              >
+                                刪除
+                              </button>
+                            </>
+                          ) : null}
                           <a
                             href={api.downloadInvoicePDF(inv.id)}
                             target="_blank"
@@ -298,12 +313,6 @@ export default function InvoicesPage() {
                           >
                             PDF
                           </a>
-                          <button
-                            onClick={() => del(inv)}
-                            className="text-xs text-red-500 hover:text-red-600 font-medium"
-                          >
-                            刪除
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -316,7 +325,7 @@ export default function InvoicesPage() {
       </div>
 
       <InvoiceFormModal
-        open={!!modal}
+        open={!!modal && isAdmin}
         mode={modal === 'create' ? 'create' : 'edit'}
         initial={modal && modal !== 'create' ? modal : null}
         projects={projects}

@@ -68,6 +68,7 @@ function QuotationsPageContent() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'create' | quotation
   const [preview, setPreview] = useState(null); // null | quotation
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -77,14 +78,16 @@ function QuotationsPageContent() {
   const [sortDir, setSortDir] = useState('desc');
 
   const load = useCallback(async () => {
-    const [q, p, c] = await Promise.all([
+    const [q, p, c, me] = await Promise.all([
       api.getQuotations(),
       api.getProjects(),
       api.getClients(),
+      api.me().catch(() => null),
     ]);
     setQuotations(q);
     setProjects(p);
     setClients(c);
+    setIsAdmin(me?.role === 'admin');
   }, []);
 
   useEffect(() => {
@@ -119,8 +122,12 @@ function QuotationsPageContent() {
 
   const del = async (q) => {
     if (!confirm(`刪除報價單「${q.quote_number}」？`)) return;
-    await api.deleteQuotation(q.id);
-    load();
+    try {
+      await api.deleteQuotation(q.id);
+      load();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
   };
 
   const cloneOne = async (q) => {
@@ -208,12 +215,14 @@ function QuotationsPageContent() {
             </h1>
             <p className="text-gray-400 mt-1 text-xs md:text-sm">共 {quotations.length} 份</p>
           </div>
-          <button
-            onClick={() => setModal('create')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
-          >
-            ＋ 新報價單
-          </button>
+          {isAdmin ? (
+            <button
+              onClick={() => setModal('create')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
+            >
+              ＋ 新報價單
+            </button>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-3 gap-3 md:gap-4 mb-4">
@@ -306,12 +315,14 @@ function QuotationsPageContent() {
         ) : filtered.length === 0 ? (
           <div className="bg-white rounded-apple-lg shadow-apple p-16 text-center">
             <p className="text-gray-400 text-sm">沒有符合條件的報價單</p>
-            <button
-              onClick={() => setModal('create')}
-              className="mt-4 text-indigo-600 text-sm font-medium hover:text-indigo-700"
-            >
-              + 建立第一份報價單
-            </button>
+            {isAdmin ? (
+              <button
+                onClick={() => setModal('create')}
+                className="mt-4 text-indigo-600 text-sm font-medium hover:text-indigo-700"
+              >
+                + 建立第一份報價單
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2.5 md:gap-4">
@@ -324,10 +335,11 @@ function QuotationsPageContent() {
                   projectColorById.get(String(q.project_id)) ||
                   '#6366f1'
                 }
+                canWrite={isAdmin}
                 onPreview={() => setPreview(q)}
-                onEdit={() => openEdit(q)}
-                onClone={() => cloneOne(q)}
-                onDelete={() => del(q)}
+                onEdit={isAdmin ? () => openEdit(q) : null}
+                onClone={isAdmin ? () => cloneOne(q) : null}
+                onDelete={isAdmin ? () => del(q) : null}
               />
             ))}
           </div>
@@ -335,7 +347,7 @@ function QuotationsPageContent() {
       </div>
 
       <QuotationFormModal
-        open={!!modal}
+        open={!!modal && isAdmin}
         mode={modal === 'create' ? 'create' : 'edit'}
         initial={modal && modal !== 'create' ? modal : null}
         projects={projects}
@@ -371,7 +383,7 @@ function Spinner() {
   );
 }
 
-function QuotationRow({ quotation: q, accentColor = '#6366f1', onPreview, onEdit, onClone, onDelete }) {
+function QuotationRow({ quotation: q, accentColor = '#6366f1', canWrite, onPreview, onEdit, onClone, onDelete }) {
   const s = QUOTE_BADGE[q.status] || QUOTE_BADGE.draft;
   const label = QUOTE_STATUS_LABEL[q.status] || q.status;
   const titleText = q.title || q.project_name || q.quote_number;
@@ -464,27 +476,31 @@ function QuotationRow({ quotation: q, accentColor = '#6366f1', onPreview, onEdit
             >
               PDF
             </button>
-            <button
-              type="button"
-              onClick={onEdit}
-              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              編輯
-            </button>
-            <button
-              type="button"
-              onClick={onClone}
-              className="text-xs text-slate-600 hover:text-slate-800 font-medium"
-            >
-              複製
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="text-xs text-red-500 hover:text-red-600 font-medium"
-            >
-              刪除
-            </button>
+            {canWrite ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  編輯
+                </button>
+                <button
+                  type="button"
+                  onClick={onClone}
+                  className="text-xs text-slate-600 hover:text-slate-800 font-medium"
+                >
+                  複製
+                </button>
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="text-xs text-red-500 hover:text-red-600 font-medium"
+                >
+                  刪除
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -506,15 +522,19 @@ function QuotationRow({ quotation: q, accentColor = '#6366f1', onPreview, onEdit
         >
           PDF
         </button>
-        <button type="button" onClick={onEdit} className="text-indigo-600 font-medium">
-          編輯
-        </button>
-        <button type="button" onClick={onClone} className="text-slate-600 font-medium">
-          複製
-        </button>
-        <button type="button" onClick={onDelete} className="text-red-500 font-medium">
-          刪除
-        </button>
+        {canWrite ? (
+          <>
+            <button type="button" onClick={onEdit} className="text-indigo-600 font-medium">
+              編輯
+            </button>
+            <button type="button" onClick={onClone} className="text-slate-600 font-medium">
+              複製
+            </button>
+            <button type="button" onClick={onDelete} className="text-red-500 font-medium">
+              刪除
+            </button>
+          </>
+        ) : null}
         {q.pdf_path ? (
           <a
             href={q.pdf_path}

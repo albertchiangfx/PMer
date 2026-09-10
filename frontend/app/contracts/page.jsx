@@ -37,6 +37,7 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'create' | { contract }
   const [generator, setGenerator] = useState(null); // null | { contract }
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -46,14 +47,16 @@ export default function ContractsPage() {
   const [sortDir, setSortDir] = useState('desc');
 
   const load = useCallback(async () => {
-    const [c, p, cl] = await Promise.all([
+    const [c, p, cl, me] = await Promise.all([
       api.getContracts(),
       api.getProjects(),
       api.getClients(),
+      api.me().catch(() => null),
     ]);
     setContracts(c);
     setProjects(p);
     setClients(cl);
+    setIsAdmin(me?.role === 'admin');
   }, []);
 
   useEffect(() => {
@@ -124,12 +127,14 @@ export default function ContractsPage() {
             <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">全部合約</h1>
             <p className="text-gray-400 mt-1 text-xs md:text-sm">共 {contracts.length} 份</p>
           </div>
-          <button
-            onClick={() => setModal('create')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
-          >
-            ＋ 新合約
-          </button>
+          {isAdmin ? (
+            <button
+              onClick={() => setModal('create')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-apple shadow-apple-sm transition-colors"
+            >
+              ＋ 新合約
+            </button>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-3 gap-3 md:gap-4 mb-4">
@@ -276,24 +281,28 @@ export default function ContractsPage() {
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setGenerator(c)}
-                            className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold"
-                          >
-                            產生 PDF
-                          </button>
-                          <button
-                            onClick={() => setModal(c)}
-                            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                          >
-                            編輯
-                          </button>
-                          <button
-                            onClick={() => del(c)}
-                            className="text-xs text-red-500 hover:text-red-600 font-medium"
-                          >
-                            刪除
-                          </button>
+                          {isAdmin ? (
+                            <>
+                              <button
+                                onClick={() => setGenerator(c)}
+                                className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold"
+                              >
+                                產生 PDF
+                              </button>
+                              <button
+                                onClick={() => setModal(c)}
+                                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                              >
+                                編輯
+                              </button>
+                              <button
+                                onClick={() => del(c)}
+                                className="text-xs text-red-500 hover:text-red-600 font-medium"
+                              >
+                                刪除
+                              </button>
+                            </>
+                          ) : null}
                           {c.file_path && (
                             <a
                               href={c.file_path}
@@ -316,7 +325,7 @@ export default function ContractsPage() {
       </div>
 
       <ContractFormModal
-        open={!!modal}
+        open={!!modal && isAdmin}
         mode={modal === 'create' ? 'create' : 'edit'}
         initial={modal && modal !== 'create' ? modal : null}
         projects={projects}
@@ -326,7 +335,7 @@ export default function ContractsPage() {
       />
 
       <ContractGeneratorModal
-        open={!!generator}
+        open={!!generator && isAdmin}
         contract={generator}
         onClose={() => setGenerator(null)}
         onGenerated={load}

@@ -18,8 +18,8 @@ export default function CollaborationPage() {
   const [copiedId, setCopiedId] = useState(null);
   const [busy, setBusy] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ soft = false } = {}) => {
+    if (!soft) setLoading(true);
     try {
       const data = await api.getClientHubsOverview();
       setRows(Array.isArray(data) ? data : []);
@@ -31,7 +31,7 @@ export default function CollaborationPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const filtered = useMemo(() => {
@@ -50,7 +50,7 @@ export default function CollaborationPage() {
       try {
         const hub = await api.createClientHub({ project_id: row.project_id });
         token = hub.public_token;
-        await load();
+        await load({ soft: true });
       } catch (e) {
         alert(e?.message || '建立失敗');
         return;
@@ -96,9 +96,10 @@ export default function CollaborationPage() {
       </div>
 
       <div className={pageFrameScrollInsetClass}>
-        {loading ? (
-          <div className="flex justify-center py-16">
+        {loading && rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-gray-400">載入中…</p>
           </div>
         ) : filtered.length === 0 ? (
           <p className="text-gray-400 text-sm py-8 text-center">沒有符合的專案</p>

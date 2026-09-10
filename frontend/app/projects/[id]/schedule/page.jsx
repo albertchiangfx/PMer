@@ -7,6 +7,8 @@ import { format } from 'date-fns';
 import { api } from '../../../../lib/api';
 import { validateIntervalWithinProject } from '../../../../lib/projectScheduleBounds';
 import Gantt from '../../../../components/Gantt';
+import ModalPortal from '../../../../components/ModalPortal';
+import { useModalEscape } from '../../../../lib/use-modal-escape';
 
 export default function ProjectSchedulePage() {
   const { id } = useParams();
@@ -257,7 +259,9 @@ export default function ProjectSchedulePage() {
 }
 
 function Modal({ title, onClose, children }) {
+  useModalEscape(onClose);
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -276,6 +280,7 @@ function Modal({ title, onClose, children }) {
         <div className="p-6">{children}</div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

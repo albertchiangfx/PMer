@@ -51,6 +51,25 @@ function nextMilestoneHint(milestones) {
   return { label: pending[0].label, date: null };
 }
 
+/**
+ * Public status label must not contradict milestone progress.
+ * When milestones exist: 100% → 已完成; incomplete → never show 已完成
+ * (override project.status=completed to 製作中/收尾中 from %).
+ * No milestones → trust project.status as before.
+ */
+function resolvePublicStatusLabel(projectStatus, completed, total) {
+  const fallback = PROJECT_STATUS_PUBLIC[projectStatus] || projectStatus;
+  if (!total) return fallback;
+  if (completed >= total) return '已完成';
+  if (projectStatus === 'completed') {
+    const pct = Math.round((completed / total) * 100);
+    if (pct >= 75) return '收尾中';
+    return '製作中';
+  }
+  if (projectStatus === 'cancelled' || projectStatus === 'paused') return fallback;
+  return fallback;
+}
+
 async function loadHubByToken(db, token) {
   const { rows } = await db.query(
     `SELECT h.*, p.name AS project_name, p.status AS project_status,
@@ -126,7 +145,7 @@ router.get('/hub/:token', async (req, res, next) => {
         name: hub.project_name,
         color: hub.project_color || null,
         status: hub.project_status,
-        status_label: PROJECT_STATUS_PUBLIC[hub.project_status] || hub.project_status,
+        status_label: resolvePublicStatusLabel(hub.project_status, completed, total),
         start_date: hub.start_date,
         end_date: hub.end_date,
       },

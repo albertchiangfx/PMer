@@ -77,7 +77,7 @@ export default function DashboardProjectWidget({
 
   useEffect(() => {
     const onMilestonesChanged = () => {
-      mutateSummary(undefined, { revalidate: true });
+      mutateSummary();
     };
     window.addEventListener(MILESTONE_DATA_CHANGED_EVENT, onMilestonesChanged);
     return () => window.removeEventListener(MILESTONE_DATA_CHANGED_EVENT, onMilestonesChanged);

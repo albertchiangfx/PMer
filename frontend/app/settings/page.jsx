@@ -34,7 +34,9 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    load().catch(() => {});
+    load().catch((err) => {
+      alert(err?.message || String(err) || '載入失敗');
+    });
   }, []);
 
   const activationUrl = (token) =>
@@ -68,6 +70,8 @@ export default function SettingsPage() {
       } catch {
         // ignore
       }
+    } catch (err) {
+      alert(err?.message || String(err));
     } finally {
       setBusy(false);
     }
@@ -78,6 +82,8 @@ export default function SettingsPage() {
     try {
       await api.adminUpdateUser(id, patch);
       await load();
+    } catch (err) {
+      alert(err?.message || String(err));
     } finally {
       setBusy(false);
     }
@@ -89,6 +95,8 @@ export default function SettingsPage() {
     try {
       await api.adminRevokeSessions(id);
       await load();
+    } catch (err) {
+      alert(err?.message || String(err));
     } finally {
       setBusy(false);
     }
@@ -107,6 +115,8 @@ export default function SettingsPage() {
         // ignore
       }
       await load();
+    } catch (err) {
+      alert(err?.message || String(err));
     } finally {
       setBusy(false);
     }

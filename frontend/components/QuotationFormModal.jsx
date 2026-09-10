@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { fmtCurrency } from '../lib/utils';
+import { useModalEscape } from '../lib/use-modal-escape';
 import ModalPortal from './ModalPortal';
 
 const QUOTE_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
@@ -242,6 +243,8 @@ export default function QuotationFormModal({
     return Array.from(groups.entries()); // [[section, items[]], ...]
   }, [services]);
 
+  useModalEscape(onClose, { disabled: !open || busy });
+
   if (!open) return null;
 
   const handleSubmit = async (e) => {
@@ -251,7 +254,8 @@ export default function QuotationFormModal({
       return;
     }
     if (!items.length) {
-      if (!confirm('沒有任何項目，仍要建立空白報價單？')) return;
+      alert('請至少加入一個報價項目');
+      return;
     }
     setBusy(true);
     try {
@@ -283,11 +287,11 @@ export default function QuotationFormModal({
     <ModalPortal>
     <div
       className="fixed inset-0 z-50 overflow-y-auto modal-backdrop animate-fade-in"
-      onClick={(e) => e.target === e.currentTarget && onClose?.()}
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose?.()}
     >
       <div
         className="min-h-full w-full flex justify-center px-4 py-6"
-        onClick={(e) => e.target === e.currentTarget && onClose?.()}
+        onClick={(e) => e.target === e.currentTarget && !busy && onClose?.()}
       >
         <div className="surface rounded-apple-xl w-full max-w-5xl animate-slide-up flex flex-col self-start">
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-slate-200/80 bg-white/90 backdrop-blur-md rounded-t-apple-xl">

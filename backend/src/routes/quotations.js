@@ -13,6 +13,9 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
+const { requireRole } = require('../middleware/auth');
+
+const requireAdmin = requireRole('admin');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 const { renderQuotation } = require('../quote-generator/render');
@@ -108,7 +111,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdmin, async (req, res, next) => {
   const db = req.app.locals.db;
   const client = await db.connect();
   try {
@@ -126,6 +129,11 @@ router.post('/', async (req, res, next) => {
       notes = null,
       items = [],
     } = req.body || {};
+
+    if (!Array.isArray(items) || items.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '至少需要一個報價項目' });
+    }
 
     const qNumber = quote_number || (await nextQuoteNumber(client));
     const { subtotal, tax, total } = computeTotals(items, tax_rate);
@@ -183,7 +191,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', requireAdmin, async (req, res, next) => {
   const db = req.app.locals.db;
   const client = await db.connect();
   try {
@@ -214,6 +222,10 @@ router.put('/:id', async (req, res, next) => {
 
     const newRate = tax_rate != null ? dec(tax_rate, prev.tax_rate) : Number(prev.tax_rate);
     const newItems = Array.isArray(items) ? items : null;
+    if (newItems && newItems.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '至少需要一個報價項目' });
+    }
     let totals = {
       subtotal: Number(prev.subtotal),
       tax: Number(prev.tax_due),
@@ -299,7 +311,7 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const { rowCount } = await req.app.locals.db.query('DELETE FROM quotations WHERE id = $1', [
       req.params.id,
@@ -311,7 +323,7 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/:id/clone', async (req, res, next) => {
+router.post('/:id/clone', requireAdmin, async (req, res, next) => {
   const db = req.app.locals.db;
   const client = await db.connect();
   try {
@@ -396,7 +408,7 @@ router.post('/:id/preview-html', async (req, res, next) => {
   }
 });
 
-router.post('/:id/generate-pdf', async (req, res, next) => {
+router.post('/:id/generate-pdf', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const data = await loadQuotationWithItems(db, req.params.id);
@@ -434,7 +446,7 @@ router.post('/:id/generate-pdf', async (req, res, next) => {
   }
 });
 
-router.post('/:id/publish', async (req, res, next) => {
+router.post('/:id/publish', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { rows: existing } = await db.query(`SELECT * FROM quotations WHERE id = $1`, [
@@ -459,7 +471,7 @@ router.post('/:id/publish', async (req, res, next) => {
   }
 });
 
-router.post('/:id/unpublish', async (req, res, next) => {
+router.post('/:id/unpublish', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { rowCount } = await db.query(

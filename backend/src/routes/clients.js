@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('../middleware/auth');
+
+const requireAdmin = requireRole('admin');
 
 router.get('/', async (req, res, next) => {
   try {
@@ -26,7 +29,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdmin, async (req, res, next) => {
   try {
     const { name, contact_email, contact_phone, address } = req.body;
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
@@ -42,7 +45,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', requireAdmin, async (req, res, next) => {
   try {
     const { name, contact_email, contact_phone, address } = req.body;
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
@@ -65,7 +68,7 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-router.patch('/:id/archive', async (req, res, next) => {
+router.patch('/:id/archive', requireAdmin, async (req, res, next) => {
   try {
     const { rows } = await req.app.locals.db.query(
       `UPDATE clients SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -87,7 +90,7 @@ router.patch('/:id/archive', async (req, res, next) => {
   }
 });
 
-router.patch('/:id/unarchive', async (req, res, next) => {
+router.patch('/:id/unarchive', requireAdmin, async (req, res, next) => {
   try {
     const { rows } = await req.app.locals.db.query(
       `UPDATE clients SET archived_at = NULL, updated_at = CURRENT_TIMESTAMP
@@ -101,7 +104,7 @@ router.patch('/:id/unarchive', async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { rows: cr } = await db.query(

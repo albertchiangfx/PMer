@@ -3,6 +3,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
+const { requireRole } = require('../middleware/auth');
+
+const requireAdmin = requireRole('admin');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 const storage = multer.diskStorage({
@@ -70,7 +73,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', upload.single('file'), async (req, res, next) => {
+router.post('/', requireAdmin, upload.single('file'), async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const {
@@ -116,7 +119,7 @@ router.post('/', upload.single('file'), async (req, res, next) => {
   }
 });
 
-router.put('/:id', upload.single('file'), async (req, res, next) => {
+router.put('/:id', requireAdmin, upload.single('file'), async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const {
@@ -168,7 +171,7 @@ router.put('/:id', upload.single('file'), async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const { rowCount } = await req.app.locals.db.query('DELETE FROM contracts WHERE id=$1', [
       req.params.id,
@@ -246,7 +249,7 @@ router.post('/:id/preview-html', async (req, res, next) => {
   }
 });
 
-router.post('/:id/generate-pdf', async (req, res, next) => {
+router.post('/:id/generate-pdf', requireAdmin, async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const ctx = await loadContractContext(db, req.params.id);
