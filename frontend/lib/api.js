@@ -47,6 +47,7 @@ async function request(path, options = {}) {
       headers: { 'Content-Type': 'application/json', ...optHeaders },
       signal,
       body: rest.body && typeof rest.body !== 'string' ? JSON.stringify(rest.body) : rest.body,
+      credentials: 'include',
       cache: 'no-store',
     });
   } catch (e) {
@@ -88,6 +89,21 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Auth
+  me: () => request('/auth/me'),
+  login: (data) => request('/auth/login', { method: 'POST', body: data }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  activate: (data) => request('/auth/activate', { method: 'POST', body: data }),
+  changePassword: (data) => request('/auth/change-password', { method: 'POST', body: data }),
+  adminCreateUser: (data) => request('/auth/admin/create-user', { method: 'POST', body: data }),
+  adminListUsers: () => request('/auth/admin/users'),
+  adminUpdateUser: (id, data) => request(`/auth/admin/users/${encodeURIComponent(id)}`, { method: 'POST', body: data }),
+  adminRevokeSessions: (id) =>
+    request(`/auth/admin/users/${encodeURIComponent(id)}/revoke-sessions`, { method: 'POST' }),
+  adminNewActivation: (id) =>
+    request(`/auth/admin/users/${encodeURIComponent(id)}/new-activation`, { method: 'POST' }),
+  adminAuthConfig: () => request('/auth/admin/config'),
+
   // Projects
   getProjects: (params) => request('/projects' + toQS(params)),
   getProject: (id) => request(`/projects/${id}`),

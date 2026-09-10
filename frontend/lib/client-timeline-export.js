@@ -7,7 +7,6 @@ import {
   parseISO,
   startOfWeek,
 } from 'date-fns';
-import { fmtCurrency } from './utils';
 import { NODE_KINDS, nodeKindMeta } from './timeline-detail-nodes';
 import {
   countWorkingDaysInclusive,
@@ -17,36 +16,17 @@ import {
 
 const LABEL_COL_W = 168;
 const MS_ROW_H = 26;
-const MIN_EXPORT_DAY_W = 12;
-const MIN_EXPORT_WEEK_W = 24;
-/** 超過此天數改為「每週一欄」 */
-const EXPORT_WEEK_THRESHOLD = 70;
+const MIN_EXPORT_DAY_W = 8;
+/** 單欄寬度低於此值（px 估算）時改拆成上下兩段甘特 */
+const READABLE_UNIT_W = 12;
 /** A4 橫向可印內容寬（297mm − 12mm×2 邊界）@ 96dpi — 客戶版時間軸固定滿此寬 */
 const A4_LANDSCAPE_CONTENT_PX = Math.round((273 * 96) / 25.4);
-/** A4 橫向安全可印高度（預留瀏覽器頁首/頁尾與邊界）@ 96dpi */
-const A4_LANDSCAPE_SAFE_H_PX = Math.round((172 * 96) / 25.4);
-const PRINT_ZOOM_MIN = 0.72;
+const A4_LANDSCAPE_PAGE_W_MM = 297;
+const A4_LANDSCAPE_PAGE_H_MM = 210;
 
-/** 估算匯出頁總高度（px），供單頁 PDF 縮放 */
-function estimateExportHeight({ segCount, nodeCount, briefLen, hasChart }) {
-  const briefLines = briefLen > 0 ? Math.max(1, Math.ceil(briefLen / 52)) : 0;
-  const metaH = 48 + briefLines * 14;
-  const titleH = 32;
-  const legendH = 28;
-  const ganttH = hasChart ? 20 + 28 + 26 + Math.max(0, segCount) * MS_ROW_H : 20;
-  const tableRowH = 21;
-  const leftTableH = segCount > 0 ? 22 + (segCount + 1) * tableRowH : 18;
-  const rightTableH = nodeCount > 0 ? 22 + (nodeCount + 1) * tableRowH : 18;
-  const notesH = 14 + Math.max(leftTableH, rightTableH);
-  const footerH = 12;
-  const gaps = 24;
-  return titleH + metaH + legendH + ganttH + notesH + footerH + gaps;
-}
-
-function computePrintZoom(estimatedH) {
-  if (estimatedH <= A4_LANDSCAPE_SAFE_H_PX) return 1;
-  const zoom = A4_LANDSCAPE_SAFE_H_PX / estimatedH;
-  return Math.max(PRINT_ZOOM_MIN, Math.min(1, zoom));
+/** 固定 1:1，避免各專案列印縮放比例不一致；內容過高時由瀏覽器自然分頁 */
+function computePrintZoom() {
+  return 1;
 }
 
 function computeExportLayout(unitCount, minUnitW = MIN_EXPORT_DAY_W) {
@@ -85,8 +65,8 @@ function buildExportWeeks(pStart, pEnd) {
 }
 
 function clampRangeIdx(units, rangeStart, rangeEnd, overlapFn) {
-  let startIdx = 0;
-  let endIdx = units.length - 1;
+  let startIdx = -1;
+  let endIdx = -1;
   for (let i = 0; i < units.length; i++) {
     if (overlapFn(units[i], rangeStart, rangeEnd)) {
       startIdx = i;
@@ -99,6 +79,7 @@ function clampRangeIdx(units, rangeStart, rangeEnd, overlapFn) {
       break;
     }
   }
+  if (startIdx < 0 || endIdx < 0) return { startIdx: -1, endIdx: -1 };
   if (endIdx < startIdx) endIdx = startIdx;
   return { startIdx, endIdx };
 }
@@ -169,6 +150,12 @@ function buildMonthBands(days) {
   return bands;
 }
 
+function monthLabelForSpan(span, d) {
+  if (span <= 2) return format(d, 'M月');
+  if (span <= 6) return format(d, 'yyyy/M月');
+  return format(d, 'yyyy年M月');
+}
+
 function buildMonthCells(days, row) {
   if (!days.length) return '';
   const parts = [];
@@ -181,7 +168,7 @@ function buildMonthCells(days, row) {
     const span = j - i;
     const alt = monthIdx % 2 === 0 ? 'month-alt-a' : 'month-alt-b';
     parts.push(
-      `<div class="month-cell ${alt}" style="grid-row:${row};grid-column:${gridCol(i)}/span ${span}">${format(days[i], 'yyyy年M月')}</div>`
+      `<div class="month-cell ${alt}" style="grid-row:${row};grid-column:${gridCol(i)}/span ${span}">${monthLabelForSpan(span, days[i])}</div>`
     );
     i = j;
     monthIdx += 1;
@@ -202,7 +189,7 @@ function buildDateHeaderCells(days, monthBands, row, holidayYmdSet) {
   return days
     .map((d, i) => {
       const band = monthBands[i] || 'month-band-a';
-      return `<div class="day-cell head-cell ${band}${dayTintClass(d, holidayYmdSet)}" style="grid-row:${row};grid-column:${gridCol(i)}">
+      return `<div class="day-cell head-cell ${band}${dayTintClass(d, holidayYmdSet)}" data-col="${i}" data-grid-row="date" style="grid-row:${row};grid-column:${gridCol(i)}">
         <span class="head-d">${format(d, 'd')}</span>
         <span class="head-w">${weekdays[getDay(d)]}</span>
       </div>`;
@@ -210,13 +197,17 @@ function buildDateHeaderCells(days, monthBands, row, holidayYmdSet) {
     .join('');
 }
 
-function buildTimelineCells(days, monthBands, row, holidayYmdSet) {
+function buildTimelineCells(days, monthBands, row, holidayYmdSet, gridRowKey) {
   return days
     .map((d, i) => {
       const band = monthBands[i] || 'month-band-a';
-      return `<div class="timeline-cell ${band}${dayTintClass(d, holidayYmdSet)}" style="grid-row:${row};grid-column:${gridCol(i)}"></div>`;
+      return `<div class="timeline-cell ${band}${dayTintClass(d, holidayYmdSet)}" data-col="${i}" data-grid-row="${esc(gridRowKey)}" style="grid-row:${row};grid-column:${gridCol(i)}"></div>`;
     })
     .join('');
+}
+
+function buildRowLabelHtml(row, gridRowKey, nameHtml, extraClass = '') {
+  return `<span class="row-label ${extraClass}" data-grid-row="${esc(gridRowKey)}" style="grid-row:${row};grid-column:1"><span class="row-label-name">${nameHtml}</span></span>`;
 }
 
 /** 節點標記畫在進度條之上（DOM 與 z-index 皆在 bar 之後） */
@@ -282,39 +273,59 @@ function buildDailyChart(days, projName, segs, pStart, pEnd, holidayYmdSet) {
   row++;
 
   const { startIdx: pSi, endIdx: pEi } = clampSegIdx(days, pStart, pEnd);
-  const projWd = countWorkingDaysInclusive(pStart, pEnd, holidayYmdSet);
-  parts.push(
-    `<span class="row-label" style="grid-row:${row};grid-column:1">專案<span class="wd-tag"> · ${projWd}工作天</span></span>`
-  );
-  parts.push(buildTimelineCells(days, monthBands, row, holidayYmdSet));
-  parts.push(
-    buildChartBar(row, pSi, pEi, 'chart-bar--proj', `<span>${esc(projName)}</span>`)
-  );
+  parts.push(buildRowLabelHtml(row, 'project', '專案'));
+  parts.push(buildTimelineCells(days, monthBands, row, holidayYmdSet, 'project'));
+  if (pSi >= 0) parts.push(buildChartBar(row, pSi, pEi, 'chart-bar--proj', ''));
   row++;
 
   segs.forEach((s, i) => {
     const { startIdx, endIdx } = clampSegIdx(days, s.start, s.end);
     const bg = MILESTONE_COLORS[i % MILESTONE_COLORS.length];
-    const wd = countWorkingDaysInclusive(s.start, s.end, holidayYmdSet);
-    parts.push(
-      `<span class="row-label ms-label" style="grid-row:${row};grid-column:1">${esc(s.label)}<span class="wd-tag"> · ${wd}工作天</span></span>`
-    );
-    parts.push(buildTimelineCells(days, monthBands, row, holidayYmdSet));
-    parts.push(
-      buildChartBar(
-        row,
-        startIdx,
-        endIdx,
-        'chart-bar--ms',
-        `<span class="ms-bar-label">${esc(s.label)}</span>`,
-        `background:${bg}`
-      )
-    );
+    const gridKey = `ms-${i}`;
+    parts.push(buildRowLabelHtml(row, gridKey, esc(s.label), 'ms-label'));
+    parts.push(buildTimelineCells(days, monthBands, row, holidayYmdSet, gridKey));
+    if (startIdx >= 0) {
+      parts.push(buildChartBar(row, startIdx, endIdx, 'chart-bar--ms', '', `background:${bg}`));
+    }
     parts.push(buildNodeMarkerCells(days, row, s.detailNodes));
     row++;
   });
 
   return `<div class="chart-grid" style="grid-template-columns:${cols}">${parts.join('')}</div>`;
+}
+
+/** 欄太窄時拆成兩段，每段各自滿版 A4 寬 */
+function planDayChunks(days) {
+  if (!days.length) return [];
+  const { unitW } = computeExportLayout(days.length);
+  if (unitW >= READABLE_UNIT_W || days.length < 16) {
+    return [{ days }];
+  }
+  const mid = Math.ceil(days.length / 2);
+  return [
+    {
+      days: days.slice(0, mid),
+      rangeLabel: `${ymd(days[0])} — ${ymd(days[mid - 1])}`,
+    },
+    {
+      days: days.slice(mid),
+      rangeLabel: `${ymd(days[mid])} — ${ymd(days[days.length - 1])}`,
+    },
+  ];
+}
+
+function buildExportTimelineHtml(exportDays, projName, segs, pStart, pEnd, holidayYmdSet) {
+  const chunks = planDayChunks(exportDays);
+  return chunks
+    .map((chunk) => {
+      const grid = buildDailyChart(chunk.days, projName, segs, pStart, pEnd, holidayYmdSet);
+      const label =
+        chunks.length > 1 && chunk.rangeLabel
+          ? `<div class="timeline-pane-label">${esc(chunk.rangeLabel)}</div>`
+          : '';
+      return `<div class="timeline-pane${chunks.length > 1 ? ' timeline-pane--split' : ''}">${label}${grid}</div>`;
+    })
+    .join('');
 }
 
 function buildWeekMonthCells(weeks, row) {
@@ -403,9 +414,11 @@ function buildWeeklyChart(weeks, projName, segs, pStart, pEnd, holidayYmdSet) {
     `<span class="row-label" style="grid-row:${row};grid-column:1">專案<span class="wd-tag"> · ${projWd}工作天</span></span>`
   );
   parts.push(buildWeekTimelineCells(weeks, monthBands, row, holidayYmdSet));
-  parts.push(
-    buildChartBar(row, pSi, pEi, 'chart-bar--proj', `<span>${esc(projName)}</span>`)
-  );
+  if (pSi >= 0) {
+    parts.push(
+      buildChartBar(row, pSi, pEi, 'chart-bar--proj', `<span>${esc(projName)}</span>`)
+    );
+  }
   row++;
 
   segs.forEach((s, i) => {
@@ -416,16 +429,18 @@ function buildWeeklyChart(weeks, projName, segs, pStart, pEnd, holidayYmdSet) {
       `<span class="row-label ms-label" style="grid-row:${row};grid-column:1">${esc(s.label)}<span class="wd-tag"> · ${wd}工作天</span></span>`
     );
     parts.push(buildWeekTimelineCells(weeks, monthBands, row, holidayYmdSet));
-    parts.push(
-      buildChartBar(
-        row,
-        startIdx,
-        endIdx,
-        'chart-bar--ms',
-        `<span class="ms-bar-label">${esc(s.label)}</span>`,
-        `background:${bg}`
-      )
-    );
+    if (startIdx >= 0) {
+      parts.push(
+        buildChartBar(
+          row,
+          startIdx,
+          endIdx,
+          'chart-bar--ms',
+          `<span class="ms-bar-label">${esc(s.label)}</span>`,
+          `background:${bg}`
+        )
+      );
+    }
     parts.push(buildWeekNodeMarkerCells(weeks, row, s.detailNodes));
     row++;
   });
@@ -444,14 +459,8 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
   const client = project?.client_name || '—';
   const pStart = project?.start_date;
   const pEnd = project?.end_date;
-  const budget =
-    project?.budget != null && project?.budget !== '' ? fmtCurrency(project.budget) : '—';
   const period =
     pStart && pEnd ? `${ymd(pStart)} — ${ymd(pEnd)}` : '尚未設定專案起訖';
-  const description = String(project?.description || '').trim();
-  const briefHtml = description
-    ? esc(description).replace(/\n/g, '<br>')
-    : '<span class="muted">（無簡述）</span>';
 
   const segs = (segments || []).map((s) => ({
     label: s.label || '項目',
@@ -460,51 +469,24 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     detailNodes: Array.isArray(s.detailNodes) ? s.detailNodes : [],
   }));
 
-  const allNodes = [];
-  for (const s of segs) {
-    for (const n of s.detailNodes) {
-      if (n?.date && n?.label) {
-        allNodes.push({
-          date: n.date,
-          label: n.label,
-          kind: n.kind,
-          milestoneLabel: s.label,
-        });
-      }
-    }
-  }
-  allNodes.sort((a, b) => {
-    const da = String(a.date || '');
-    const db = String(b.date || '');
-    return da.localeCompare(db) || String(a.milestoneLabel).localeCompare(String(b.milestoneLabel));
-  });
-
-  const pStartD = toDate(pStart);
-  const pEndD = toDate(pEnd);
   const exportDays = buildExportDays(project);
-  const useWeeks = exportDays.length > EXPORT_WEEK_THRESHOLD;
-  const weeks = useWeeks && pStartD && pEndD ? buildExportWeeks(pStartD, pEndD) : [];
-  const unitCount = useWeeks ? weeks.length : exportDays.length;
-  const minUnit = useWeeks ? MIN_EXPORT_WEEK_W : MIN_EXPORT_DAY_W;
-  const { unitW, chartW } = computeExportLayout(unitCount, minUnit);
-  const headDFont = unitW >= 18 ? '0.8rem' : unitW >= 12 ? '0.68rem' : '0.58rem';
-  const headWFont = unitW >= 18 ? '0.62rem' : '0.52rem';
+  const unitCount = exportDays.length;
+  const dayChunks = planDayChunks(exportDays);
+  const unitW = Math.min(
+    ...dayChunks.map((c) => computeExportLayout(c.days.length).unitW),
+    unitCount > 0 ? computeExportLayout(unitCount).unitW : MIN_EXPORT_DAY_W
+  );
+  const chartW = A4_LANDSCAPE_CONTENT_PX;
+  const headDFont = unitW >= 18 ? '0.8rem' : unitW >= 12 ? '0.68rem' : unitW >= 8 ? '0.58rem' : '0.5rem';
+  const headWFont = unitW >= 18 ? '0.62rem' : unitW >= 12 ? '0.52rem' : '0.46rem';
   const headCellH = 30;
   const nodeLegendHtml = buildNodeLegendHtml();
-  const estHeight = estimateExportHeight({
-    segCount: segs.length,
-    nodeCount: allNodes.length,
-    briefLen: description.length,
-    hasChart: unitCount > 0,
-  });
-  const printZoom = computePrintZoom(estHeight);
-  const printZoomCss = printZoom >= 0.999 ? '1' : printZoom.toFixed(3);
+  const printZoom = computePrintZoom();
+  const printZoomCss = '1';
 
   const chartHtml =
     unitCount > 0
-      ? useWeeks
-        ? buildWeeklyChart(weeks, projName, segs, pStart, pEnd, holidayYmdSet)
-        : buildDailyChart(exportDays, projName, segs, pStart, pEnd, holidayYmdSet)
+      ? buildExportTimelineHtml(exportDays, projName, segs, pStart, pEnd, holidayYmdSet)
       : '';
 
   const timelineBlock =
@@ -513,34 +495,6 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
           <div class="timeline-inner">${chartHtml}</div>
         </div>`
       : '<p class="muted pad">請先在專案資料設定開始／結束日期，才能產生時間軸圖。</p>';
-
-  const milestoneTable = segs.length
-    ? `<table class="align-table">
-        <thead><tr><th>項目</th><th>工作天</th><th>開始</th><th>結束</th></tr></thead>
-        <tbody>
-          ${segs
-            .map((s) => {
-              const wd = countWorkingDaysInclusive(s.start, s.end, holidayYmdSet);
-              return `<tr><td>${esc(s.label)}</td><td class="col-wd">${wd}</td><td class="col-date">${esc(ymd(s.start) || '—')}</td><td class="col-date">${esc(ymd(s.end) || '—')}</td></tr>`;
-            })
-            .join('')}
-        </tbody>
-      </table>`
-    : '<p class="muted">尚無項目。</p>';
-
-  const nodeTable = allNodes.length
-    ? `<table class="align-table">
-        <thead><tr><th>日期</th><th>項目</th><th>節點</th></tr></thead>
-        <tbody>
-          ${allNodes
-            .map(
-              (n) =>
-                `<tr><td class="col-date">${esc(n.date)}</td><td>${esc(n.milestoneLabel)}</td><td>${esc(n.label)}</td></tr>`
-            )
-            .join('')}
-        </tbody>
-      </table>`
-    : '<p class="muted">尚無時程節點。</p>';
 
   const downloadName = `${safeFilename(project?.name)}_客戶時間軸_${format(new Date(), 'yyyyMMdd')}.html`;
 
@@ -557,10 +511,17 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     body {
       font-family: "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
       color: #0f172a;
-      background: #e2e8f0;
+      background: #cbd5e1;
       margin: 0;
-      padding: 56px 16px 24px;
+      padding: 56px 0 24px;
       line-height: 1.45;
+    }
+    .preview-stage {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+      min-height: calc(100vh - 56px);
     }
     .toolbar {
       position: fixed;
@@ -580,15 +541,24 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       box-shadow: 0 2px 12px rgba(15, 23, 42, 0.2);
     }
     .page-sheet {
-      width: ${chartW}px;
-      max-width: 100%;
-      margin: 0 auto 24px;
+      width: ${A4_LANDSCAPE_PAGE_W_MM}mm;
+      height: ${A4_LANDSCAPE_PAGE_H_MM}mm;
+      max-width: ${A4_LANDSCAPE_PAGE_W_MM}mm;
+      margin: 0;
       padding: 8mm;
       background: #fff;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.1);
-      overflow-x: auto;
+      border: 1px solid #94a3b8;
+      border-radius: 2px;
+      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+      overflow: hidden;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .page-body {
+      width: 100%;
+      flex: 0 0 auto;
     }
     .page-sheet > .doc-title,
     .page-sheet > .meta-row,
@@ -599,10 +569,7 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       width: 100%;
     }
     .notes-panel {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px 20px;
-      align-items: start;
+      display: block;
       margin-top: 10px;
       padding-top: 10px;
       border-top: 1px solid #e2e8f0;
@@ -619,7 +586,7 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       text-align: left;
     }
     @media (max-width: 800px) {
-      .notes-panel { grid-template-columns: 1fr; }
+      .notes-panel { display: block; }
     }
     .meta-row .label-gutter {
       background: #f8fafc;
@@ -696,7 +663,7 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     }
     .meta-row {
       display: grid;
-      grid-template-columns: ${LABEL_COL_W}px 1fr 1fr 1.4fr;
+      grid-template-columns: ${LABEL_COL_W}px 1fr;
       gap: 0;
       padding: 0;
       background: #f8fafc;
@@ -730,6 +697,18 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       display: block;
       width: 100%;
     }
+    .timeline-pane--split + .timeline-pane--split {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed #cbd5e1;
+    }
+    .timeline-pane-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #64748b;
+      padding: 0 0 4px 2px;
+      letter-spacing: 0.02em;
+    }
     .chart-grid {
       display: grid;
       width: 100%;
@@ -739,22 +718,40 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     }
     .row-label {
       grid-column: 1;
+      position: relative;
+      z-index: 2;
       font-size: 0.75rem;
       font-weight: 700;
       color: #64748b;
       padding: 0 10px;
-      text-align: left;
       background: #f8fafc;
       border-right: 2px solid #94a3b8;
       border-bottom: 1px solid #e2e8f0;
       display: flex;
       align-items: center;
-      justify-content: flex-start;
       box-sizing: border-box;
+      width: 100%;
+    }
+    .row-label-name {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .row-label.ms-label {
-      justify-content: flex-start;
-      text-align: left;
+      min-height: ${MS_ROW_H}px;
+    }
+    .row-label.row-hl,
+    .head-cell.col-hl,
+    .timeline-cell.col-hl,
+    .timeline-cell.row-hl {
+      background-color: rgba(99, 102, 241, 0.1) !important;
+    }
+    .head-cell.col-hl.row-hl,
+    .timeline-cell.col-hl.row-hl {
+      background-color: rgba(99, 102, 241, 0.16) !important;
     }
     .timeline-cell,
     .day-cell {
@@ -830,9 +827,6 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       border: 1px solid rgba(15, 23, 42, 0.12);
       flex-shrink: 0;
     }
-    .row-label.ms-label {
-      min-height: ${MS_ROW_H}px;
-    }
     .head-cell.weekend,
     .timeline-cell.weekend {
       background-color: #fff5f5 !important;
@@ -841,12 +835,7 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     .timeline-cell.holiday {
       background-color: rgba(251, 191, 36, 0.16) !important;
     }
-    .wd-tag {
-      font-size: 0.68rem;
-      font-weight: 500;
-      color: #64748b;
-      white-space: nowrap;
-    }
+    .wd-tag { display: none; }
     .align-table .col-wd {
       font-variant-numeric: tabular-nums;
       text-align: right;
@@ -857,12 +846,15 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       align-items: center;
       justify-content: center;
       min-height: 22px;
-      padding: 2px 8px;
+      padding: 2px 2px;
       font-size: 0.7rem;
       font-weight: 700;
       color: #475569;
       text-align: center;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
       border-right: 1px solid #cbd5e1;
       border-bottom: 1px solid #cbd5e1;
       box-sizing: border-box;
@@ -907,7 +899,7 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     .chart-bar--ms {
       justify-content: center;
       border: 1px solid rgba(15, 23, 42, 0.1);
-      padding: 0 8px;
+      padding: 0;
     }
     .node-marker {
       z-index: 10;
@@ -924,17 +916,6 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .ms-bar-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      color: #1e293b;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      padding: 0 8px;
-      text-align: center;
-      max-width: 100%;
-    }
     .muted { color: #94a3b8; }
     .pad { padding: 12px 0; }
     .footer {
@@ -946,7 +927,7 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     @media print {
       html, body {
         width: 100%;
-        height: auto;
+        height: 100%;
         margin: 0 !important;
         padding: 0 !important;
         background: #fff !important;
@@ -954,18 +935,35 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
         print-color-adjust: exact;
       }
       .toolbar { display: none !important; }
+      .preview-stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100vh;
+        min-height: 200mm;
+        padding: 0;
+        margin: 0;
+      }
       .page-sheet {
-        width: ${chartW}px !important;
-        max-width: 100% !important;
+        width: ${A4_LANDSCAPE_PAGE_W_MM}mm !important;
+        height: ${A4_LANDSCAPE_PAGE_H_MM}mm !important;
+        max-width: none !important;
         margin: 0 auto !important;
-        padding: 2mm !important;
+        padding: 5mm !important;
         border: none !important;
         border-radius: 0 !important;
         box-shadow: none !important;
         overflow: hidden !important;
         page-break-inside: avoid;
         break-inside: avoid-page;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
         zoom: ${printZoomCss};
+      }
+      .page-body {
+        width: 100%;
       }
       .doc-title { font-size: 1rem; margin-bottom: 6px; }
       .meta-row { margin-bottom: 6px; font-size: 0.76rem; }
@@ -1011,19 +1009,22 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
         background: #4f46e5 !important;
         background-image: none !important;
       }
+      .row-hl, .col-hl { background: transparent !important; }
     }
   </style>
 </head>
 <body>
   <div class="toolbar">
-    <span>單頁 A4<strong>橫向</strong>：版面<strong>橫向</strong>、<strong>取消頁首及頁尾</strong>、勾選<strong>背景圖形</strong>${printZoom < 0.999 ? `（內容較多，已自動縮放 ${Math.round(printZoom * 100)}%）` : ''}</span>
+    <span>單頁 A4<strong>橫向</strong>：版面<strong>橫向</strong>、<strong>取消頁首及頁尾</strong>、勾選<strong>背景圖形</strong></span>
     <div style="display:flex;gap:8px;flex-shrink:0">
       <button type="button" onclick="window.print()">列印 / 另存 PDF</button>
       <button type="button" onclick="saveExportHtml()">下載 HTML</button>
     </div>
   </div>
 
+  <div class="preview-stage">
   <section class="page-sheet" aria-label="客戶時間軸">
+    <div class="page-body">
     <div class="doc-title">
       <span class="brand">multi.design</span>
       <span class="sep">·</span>
@@ -1034,23 +1035,13 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     <dl class="meta-row">
       <div class="label-gutter" aria-hidden="true"></div>
       <div><dt>專案時程</dt><dd>${esc(period)}</dd></div>
-      <div><dt>預算</dt><dd>${esc(budget)}</dd></div>
-      <div class="meta-brief"><dt>專案製作物簡述</dt><dd>${briefHtml}</dd></div>
     </dl>
     ${nodeLegendHtml}
     ${timelineBlock}
-    <div class="notes-panel">
-      <div class="notes-block">
-        <h3>項目</h3>
-        ${milestoneTable}
-      </div>
-      <div class="notes-block">
-        <h3>時程節點</h3>
-        ${nodeTable}
-      </div>
-    </div>
     <p class="footer">multi.design</p>
+    </div>
   </section>
+  </div>
   <script>
   function saveExportHtml() {
     var a = document.createElement('a');
@@ -1060,6 +1051,34 @@ export function buildClientTimelineHtml(project, segments, options = {}) {
     a.click();
     a.remove();
   }
+  (function () {
+    var wrap = document.querySelector('.timeline-wrap');
+    if (!wrap) return;
+    var clear = function () {
+      wrap.querySelectorAll('.col-hl, .row-hl').forEach(function (el) {
+        el.classList.remove('col-hl', 'row-hl');
+      });
+      wrap.querySelectorAll('.row-label.row-hl').forEach(function (el) {
+        el.classList.remove('row-hl');
+      });
+    };
+    wrap.addEventListener('mouseover', function (e) {
+      var cell = e.target.closest('[data-col][data-grid-row]');
+      if (!cell || !wrap.contains(cell)) return;
+      var col = cell.getAttribute('data-col');
+      var row = cell.getAttribute('data-grid-row');
+      clear();
+      wrap.querySelectorAll('[data-col="' + col + '"]').forEach(function (el) {
+        el.classList.add('col-hl');
+      });
+      wrap.querySelectorAll('[data-grid-row="' + row + '"]').forEach(function (el) {
+        el.classList.add('row-hl');
+      });
+      var label = wrap.querySelector('.row-label[data-grid-row="' + row + '"]');
+      if (label) label.classList.add('row-hl');
+    });
+    wrap.addEventListener('mouseleave', clear);
+  })();
   </script>
 </body>
 </html>`;

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { shellRowHeightClass } from '../lib/page-layout';
 import { STUDIO_NAME } from '../lib/studio-brand';
 import CompanyLogo from './CompanyLogo';
+import { api } from '../lib/api';
 
 function viewerInitials(name) {
   const trimmed = String(name || '').trim();
@@ -99,11 +100,16 @@ function isPublicClientRoute(path) {
   return path?.startsWith('/c/');
 }
 
+function isAuthRoute(path) {
+  return path === '/login' || path === '/set-password' || path?.startsWith('/activate');
+}
+
 export default function AppShell({ children }) {
   const path = usePathname();
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [viewerTitle, setViewerTitle] = useState('');
   const [viewerRole, setViewerRole] = useState('');
+  const [authChecked, setAuthChecked] = useState(false);
   const [navHover, setNavHover] = useState(false);
 
   useEffect(() => {
@@ -116,16 +122,31 @@ export default function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
-    try {
-      const name = localStorage.getItem('sp.viewerMemberName') || '';
-      const role = localStorage.getItem('sp.viewerMemberRole') || '';
-      const title = name || '';
-      setViewerTitle(title);
-      setViewerRole(role || '');
-    } catch {
-      // ignore
-    }
-  }, []);
+    // Important: avoid fetching /me on auth routes.
+    // If we fetch on /login (before user logs in), we'd cache "not logged in"
+    // and then bounce / -> /login -> / after login completes.
+    if (isPublicClientRoute(path) || isAuthRoute(path)) return;
+
+    let cancelled = false;
+    setAuthChecked(false);
+    api
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        setViewerTitle(me?.display_name || me?.username || '');
+        setViewerRole(me?.role || '');
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setViewerTitle('');
+        setViewerRole('');
+        setAuthChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
 
   const initials = useMemo(() => viewerInitials(viewerTitle), [viewerTitle]);
 
@@ -147,6 +168,22 @@ export default function AppShell({ children }) {
 
   if (isPublicClientRoute(path)) {
     return <>{children}</>;
+  }
+
+  if (isAuthRoute(path)) {
+    return <>{children}</>;
+  }
+
+  // Redirect only after we've actually checked /me, to avoid login->dashboard flicker.
+  if (
+    authChecked &&
+    !viewerTitle &&
+    typeof window !== 'undefined' &&
+    path !== '/login' &&
+    !path.startsWith('/activate')
+  ) {
+    window.location.href = `/login?next=${encodeURIComponent(path)}`;
+    return null;
   }
 
   return (

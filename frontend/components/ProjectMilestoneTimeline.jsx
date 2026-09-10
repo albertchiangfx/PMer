@@ -447,6 +447,7 @@ export default function ProjectMilestoneTimeline({
   const miniMoveRef = useRef(false);
   /** 在節點列新增節點時，預設歸屬的里程碑 */
   const [activeSegId, setActiveSegId] = useState(null);
+  const [gridHover, setGridHover] = useState({ col: null, row: null });
   const [nodeCreateModal, setNodeCreateModal] = useState(null);
   const [nodeCreateSaving, setNodeCreateSaving] = useState(false);
 
@@ -463,6 +464,20 @@ export default function ProjectMilestoneTimeline({
     }
     return segments;
   }, [dragActive, segments, dragTick]);
+
+  const hoverRowBand = useMemo(() => {
+    const { row } = gridHover;
+    if (row == null) return null;
+    if (row === 'date') return { top: ROW_MONTH_H, height: ROW_DATE_H };
+    if (row === 'project') return { top: ROW_MONTH_H + ROW_DATE_H, height: ROW_PROJECT_H };
+    const idx = displaySegs.findIndex((s) => s.id === row);
+    if (idx < 0) return null;
+    return {
+      top: ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H + idx * ROW_MS_ROW_H,
+      height: ROW_MS_ROW_H,
+    };
+  }, [gridHover, displaySegs]);
+  const clearGridHover = useCallback(() => setGridHover({ col: null, row: null }), []);
 
   const allDetailNodesFlat = useMemo(() => {
     const items = [];
@@ -1226,7 +1241,10 @@ export default function ProjectMilestoneTimeline({
   const todayPx = dateToX(today) + dayW / 2;
 
   const rowLabelCls =
-    'flex items-center gap-1.5 px-2.5 text-[11px] font-semibold text-slate-700 border-b border-slate-200 bg-slate-50 shrink-0 text-left';
+    'flex items-center justify-between gap-1.5 px-2.5 text-[11px] font-semibold text-slate-700 border-b border-slate-200 bg-slate-50 shrink-0 w-full';
+  const rowLabelWdCls =
+    'text-[9px] text-slate-500 font-normal tabular-nums whitespace-nowrap shrink-0 text-right';
+  const rowLabelHlCls = 'bg-indigo-50/90 ring-1 ring-inset ring-indigo-200/60';
   const projBarLayout = barLayoutInChart(projStart, projEnd, dateToX, dayW, chartMinW);
   const projBarLeft = projBarLayout?.left ?? 0;
   const projBarW = projBarLayout?.width ?? 0;
@@ -1417,12 +1435,13 @@ export default function ProjectMilestoneTimeline({
                 >
                   日期
                 </div>
-                <div className={rowLabelCls} style={{ height: ROW_PROJECT_H }}>
+                <div
+                  className={`${rowLabelCls} ${gridHover.row === 'project' ? rowLabelHlCls : ''}`}
+                  style={{ height: ROW_PROJECT_H }}
+                >
                   <span>專案</span>
                   {projectWorkingDays != null ? (
-                    <span className="text-[9px] text-slate-500 font-normal tabular-nums whitespace-nowrap">
-                      · {projectWorkingDays}工作天
-                    </span>
+                    <span className={rowLabelWdCls}>{projectWorkingDays}工作天</span>
                   ) : null}
                 </div>
                 {displaySegs.map((seg, i) => (
@@ -1433,7 +1452,9 @@ export default function ProjectMilestoneTimeline({
                     onClick={() => void toggleMilestoneCompleted(seg.id)}
                     className={`${rowLabelCls} ${readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-slate-100'} ${
                       seg.completed ? 'text-emerald-800 bg-emerald-50/80' : ''
-                    } ${activeSegId === seg.id ? 'ring-1 ring-inset ring-indigo-400' : ''}`}
+                    } ${activeSegId === seg.id ? 'ring-1 ring-inset ring-indigo-400' : ''} ${
+                      gridHover.row === seg.id ? rowLabelHlCls : ''
+                    }`}
                     style={{ height: ROW_MS_ROW_H }}
                     title={
                       seg.completed
@@ -1449,12 +1470,11 @@ export default function ProjectMilestoneTimeline({
                           : MILESTONE_COLORS[i % MILESTONE_COLORS.length],
                       }}
                     />
-                    <span className="leading-tight line-clamp-2 break-words min-w-0 flex-1">
+                    <span className="leading-tight line-clamp-2 break-words min-w-0 flex-1 text-left">
                       {seg.label}
-                      <span className="text-[9px] text-slate-500 font-normal tabular-nums whitespace-nowrap">
-                        {' '}
-                        · {workingDaysBySegId.get(seg.id) ?? '—'}工作天
-                      </span>
+                    </span>
+                    <span className={rowLabelWdCls}>
+                      {workingDaysBySegId.get(seg.id) ?? '—'}工作天
                     </span>
                   </button>
                 ))}
@@ -1490,8 +1510,28 @@ export default function ProjectMilestoneTimeline({
             <div
               className="relative shrink-0 overflow-hidden z-[1]"
               style={{ width: chartMinW, minWidth: chartMinW, height: chartBodyH }}
+              onMouseLeave={clearGridHover}
             >
-              {projectSpan && (
+              {gridHover.col != null ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute z-[2] bg-indigo-500/[0.06]"
+                  style={{
+                    left: gridHover.col * dayW,
+                    width: dayW,
+                    top: ROW_MONTH_H,
+                    height: chartBodyH - ROW_MONTH_H,
+                  }}
+                />
+              ) : null}
+              {hoverRowBand ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute z-[2] bg-indigo-500/[0.08] left-0 right-0"
+                  style={{ top: hoverRowBand.top, height: hoverRowBand.height }}
+                />
+              ) : null}
+              {projectSpan ? (
                 <div
                   aria-hidden
                   className="pointer-events-none absolute bg-indigo-50/35 border-x border-indigo-200/25"
@@ -1503,7 +1543,7 @@ export default function ProjectMilestoneTimeline({
                     zIndex: 0,
                   }}
                 />
-              )}
+              ) : null}
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
@@ -1561,7 +1601,7 @@ export default function ProjectMilestoneTimeline({
               </div>
               {/* 日期列 */}
               <div
-                className="absolute left-0 right-0 flex border-b border-slate-300 pointer-events-none select-none"
+                className="absolute left-0 right-0 flex border-b border-slate-300"
                 style={{ top: ROW_MONTH_H, height: ROW_DATE_H }}
               >
                 {layoutDays.map((d, i) => {
@@ -1571,19 +1611,26 @@ export default function ProjectMilestoneTimeline({
                   const ymdCell = fmtYmd(d);
                   const hol = !wknd && holidayYmdSet.has(ymdCell);
                   const holTitle = hol ? holidayTooltip(ymdCell, holidayByDate) : '';
+                  const colHl = gridHover.col === i;
+                  const rowHl = gridHover.row === 'date';
                   return (
                     <div
                       key={`hd-${i}`}
                       style={{ width: dayW, minWidth: dayW }}
                       title={holTitle || undefined}
-                      className={`flex flex-col items-center justify-center shrink-0 border-r border-slate-200 ${
-                        hol
-                          ? 'gantt-holiday'
-                          : wknd
-                            ? 'bg-red-50/90'
-                            : band === 'month-band-b'
-                              ? 'bg-slate-100/90'
-                              : 'bg-slate-50'
+                      onMouseEnter={() => setGridHover({ col: i, row: 'date' })}
+                      className={`flex flex-col items-center justify-center shrink-0 border-r border-slate-200 cursor-default ${
+                        colHl && rowHl
+                          ? 'bg-indigo-100/80'
+                          : colHl
+                            ? 'bg-indigo-50/70'
+                            : hol
+                              ? 'gantt-holiday'
+                              : wknd
+                                ? 'bg-red-50/90'
+                                : band === 'month-band-b'
+                                  ? 'bg-slate-100/90'
+                                  : 'bg-slate-50'
                       }`}
                     >
                       <span
@@ -1626,8 +1673,9 @@ export default function ProjectMilestoneTimeline({
                         }
                         className={`shrink-0 border-r border-slate-200/50 bg-transparent ${
                           readOnly ? '' : 'hover:bg-white/20'
-                        }`}
+                        } ${gridHover.col === i && gridHover.row === 'project' ? 'bg-indigo-100/50' : ''}`}
                         style={{ width: dayW, minWidth: dayW, height: '100%' }}
+                        onMouseEnter={() => setGridHover({ col: i, row: 'project' })}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1655,13 +1703,10 @@ export default function ProjectMilestoneTimeline({
                   }}
                   title={
                     readOnly
-                      ? '專案整體區間'
+                      ? project?.name || '專案整體區間'
                       : '專案整體區間（拖曳平移；左右緣調整起訖，項目連動）'
                   }
                 >
-                  <span className="pointer-events-none text-[10px] font-bold text-white truncate px-2 max-w-full">
-                    {project?.name || '專案'}
-                  </span>
                   <button
                     type="button"
                     aria-label="調整專案開始"
@@ -1734,15 +1779,6 @@ export default function ProjectMilestoneTimeline({
                         zIndex: 5,
                       }}
                     />
-                    <div
-                      aria-hidden
-                      className="absolute flex items-center justify-center pointer-events-none z-[20] px-1"
-                      style={{ left, width, top: 0, height: ROW_MS_ROW_H }}
-                    >
-                      <span className="text-[9px] font-bold text-slate-800 truncate max-w-full text-center leading-tight drop-shadow-[0_0_2px_rgba(255,255,255,0.9)]">
-                        {seg.label}
-                      </span>
-                    </div>
                     <button
                       type="button"
                       aria-label="平移項目"
@@ -1780,6 +1816,10 @@ export default function ProjectMilestoneTimeline({
                               hasNode
                                 ? 'hover:brightness-95 ring-1 ring-inset ring-white/40'
                                 : 'bg-transparent hover:bg-indigo-100/50'
+                            } ${
+                              gridHover.col === i && gridHover.row === seg.id
+                                ? 'bg-indigo-100/40'
+                                : ''
                             }`}
                             style={{
                               width: dayW,
@@ -1787,6 +1827,7 @@ export default function ProjectMilestoneTimeline({
                               height: ROW_MS_ROW_H,
                               backgroundColor: hasNode ? nodeMeta.color : undefined,
                             }}
+                            onMouseEnter={() => setGridHover({ col: i, row: seg.id })}
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => {
                               e.stopPropagation();

@@ -16,8 +16,12 @@ const nextConfig = {
    */
   async rewrites() {
     const target = process.env.API_PROXY_TARGET || 'http://127.0.0.1:3001';
+    const devTarget = process.env.API_DEV_PROXY_TARGET || 'http://backend-dev:3001';
     return {
-      beforeFiles: [{ source: '/api/:path*', destination: `${target}/api/:path*` }],
+      beforeFiles: [
+        { source: '/api-dev/:path*', destination: `${devTarget}/api/:path*` },
+        { source: '/api/:path*', destination: `${target}/api/:path*` },
+      ],
     };
   },
 };

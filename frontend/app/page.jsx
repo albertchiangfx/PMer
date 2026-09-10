@@ -110,6 +110,7 @@ function memberIdEquals(a, b) {
 
 export default function Dashboard() {
   const isMobileLayout = useIsMobileLayout();
+  const [me, setMe] = useState(null);
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -117,12 +118,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [dataTick, setDataTick] = useState(0);
 
+  const isAdmin = me?.role === 'admin';
+
   const loadCore = useCallback(async () => {
-    const [m, a, p] = await Promise.all([
+    const [meRow, m, a, p] = await Promise.all([
+      api.me().catch(() => null),
       api.getTeamMembers(),
       api.getAllocations(),
       api.getProjects(),
     ]);
+    setMe(meRow);
     setMembers(m);
     setAllocations(Array.isArray(a) ? a : []);
     setProjects(Array.isArray(p) ? p : []);
@@ -142,6 +147,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!members.length) return;
+
+    // Non-admin: lock viewer to self.
+    if (!isAdmin) {
+      const selfId = me?.team_member_id ? String(me.team_member_id) : '';
+      if (selfId && viewerId !== selfId) setViewerId(selfId);
+      return;
+    }
 
     // 已選的人若不在名單內（被刪除等）→ 改選仍在的成員
     if (viewerId && !members.some((m) => memberIdEquals(m.id, viewerId))) {
@@ -167,16 +179,17 @@ export default function Dashboard() {
     }
     const firstActive = members.find((m) => m.status === 'active') || members[0];
     if (firstActive) setViewerId(String(firstActive.id));
-  }, [members, viewerId]);
+  }, [members, viewerId, isAdmin, me?.team_member_id]);
 
   useEffect(() => {
     if (!viewerId) return;
+    if (!isAdmin) return;
     try {
       localStorage.setItem('sp.viewerMemberId', String(viewerId));
     } catch {
       // ignore
     }
-  }, [viewerId]);
+  }, [viewerId, isAdmin]);
 
   useEffect(() => {
     if (!viewerId || !members.length) return;
@@ -458,7 +471,7 @@ export default function Dashboard() {
             </h1>
             <p className="mt-0.5 md:mt-1 text-xs md:text-sm v2-meta">{nowLabel}</p>
           </div>
-          {members.length > 0 && (
+          {isAdmin && members.length > 0 && (
             <label className="flex flex-col gap-1 text-xs text-slate-500 w-full md:w-auto md:shrink-0">
               <span className="font-medium text-slate-600">檢視身分</span>
               <select

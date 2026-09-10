@@ -2,8 +2,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
 const { Pool } = require('pg');
 const path = require('path');
+const { authMiddleware } = require('./middleware/auth');
+const { requireAuth } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,10 +25,35 @@ pool.on('error', (err) => {
 
 app.locals.db = pool;
 
-app.use(cors({ origin: '*' }));
+// CORS: allow cookie-based auth from dev frontend (different port/origin).
+// - With credentials, origin cannot be '*', so we reflect the request origin.
+app.use(
+  cors({
+    origin(origin, cb) {
+      // allow non-browser clients (curl) and same-origin requests
+      if (!origin) return cb(null, true);
+      return cb(null, origin);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
 app.use(morgan('combined'));
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(__dirname, '../uploads')));
+
+// Attach req.user if session cookie present
+app.use(authMiddleware());
+
+// Auth routes (login, me, activate)
+app.use('/api/auth', require('./routes/auth'));
+
+// Require auth for all internal APIs below (public routes are separate)
+app.use('/api', (req, res, next) => {
+  // allow auth + public + health
+  if (req.path.startsWith('/auth') || req.path.startsWith('/public') || req.path === '/health') return next();
+  return requireAuth()(req, res, next);
+});
 
 app.use('/api/holidays', require('./routes/holidays'));
 app.use('/api/clients', require('./routes/clients'));

@@ -5,6 +5,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS team_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Link to auth user (null for legacy/imported members)
+  user_id UUID,
   name VARCHAR(255) NOT NULL,
   role VARCHAR(100) DEFAULT 'Team Member',
   hourly_rate DECIMAL(10, 2) DEFAULT 0,
@@ -247,6 +249,46 @@ CREATE TABLE IF NOT EXISTS member_personal_tasks (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ── Auth: users + sessions + activation tokens ───────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username VARCHAR(64) NOT NULL UNIQUE,
+  display_name VARCHAR(255),
+  role VARCHAR(50) NOT NULL DEFAULT 'pm',
+  password_hash TEXT,
+  must_change_password BOOLEAN NOT NULL DEFAULT true,
+  disabled_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_activation_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  revoked_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TIMESTAMP
+);
+
+-- Link team members to auth users (added after users table exists)
+ALTER TABLE team_members
+  ADD CONSTRAINT IF NOT EXISTS fk_team_members_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE team_members
+  ADD CONSTRAINT IF NOT EXISTS uq_team_members_user_id UNIQUE (user_id);
+
 CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_member_personal_tasks_member ON member_personal_tasks(team_member_id);
 CREATE INDEX IF NOT EXISTS idx_member_personal_tasks_project ON member_personal_tasks(project_id);
@@ -273,6 +315,11 @@ CREATE INDEX IF NOT EXISTS idx_quotations_client ON quotations(client_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations(status);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items(quotation_id);
 CREATE INDEX IF NOT EXISTS idx_quotation_services_active ON quotation_services(is_active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_user_activation_tokens_user ON user_activation_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_activation_tokens_expires ON user_activation_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
 
 -- Auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -283,7 +330,7 @@ $$ LANGUAGE plpgsql;
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks','quotation_services','quotations'])
+  FOR t IN SELECT unnest(ARRAY['team_members','clients','projects','tasks','allocations','time_allocations','contracts','invoices','project_milestones','member_personal_tasks','quotation_services','quotations','users'])
   LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_updated_at ON %I', t);
     EXECUTE format('CREATE TRIGGER trg_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t);
