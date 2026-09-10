@@ -495,7 +495,7 @@ export default function ProjectDetailPage() {
 
       <div
         className={`flex flex-col flex-1 min-h-0 ${
-          tab === 'milestones' ? 'overflow-hidden' : pageFrameScrollClass
+          tab === 'milestones' || tab === 'gantt' ? 'overflow-hidden' : pageFrameScrollClass
         }`}
       >
       {tab === 'schedule' && isMobileLayout && (
@@ -646,8 +646,8 @@ export default function ProjectDetailPage() {
 
       {tab === 'gantt' && (
         <>
-          <div className="hidden md:block space-y-4">
-            <div className="inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm">
+          <div className="hidden md:flex flex-col flex-1 min-h-0 gap-3 overflow-hidden">
+            <div className="shrink-0 inline-flex rounded-xl border border-slate-200/90 bg-white/80 p-1 shadow-sm w-fit">
               <button
                 type="button"
                 onClick={() => setGanttMode('milestones')}
@@ -672,26 +672,29 @@ export default function ProjectDetailPage() {
               </button>
             </div>
 
-            {ganttMode === 'members' ? (
-              <Gantt
-                members={members}
-                allocations={projectAllocations}
-                onUpdate={load}
-                rangeWeeks={12}
-                showRowDelete
-                lockMemberRowOnMove
-                labelColumnTitle="成員"
-                scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
-              />
-            ) : (
-              <ProjectMilestoneTimeline
-                projectId={id}
-                project={project}
-                rangeWeeks={12}
-                pastWeeks={4}
-                onProjectDatesSaved={() => load()}
-              />
-            )}
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {ganttMode === 'members' ? (
+                <Gantt
+                  embedded
+                  members={members}
+                  allocations={projectAllocations}
+                  onUpdate={load}
+                  rangeWeeks={12}
+                  showRowDelete
+                  lockMemberRowOnMove
+                  labelColumnTitle="成員"
+                  scheduleBoundaryForAllocation={scheduleBoundaryForAllocation}
+                />
+              ) : (
+                <ProjectMilestoneTimeline
+                  projectId={id}
+                  project={project}
+                  rangeWeeks={12}
+                  pastWeeks={4}
+                  onProjectDatesSaved={() => load()}
+                />
+              )}
+            </div>
           </div>
 
           <div className="md:hidden">

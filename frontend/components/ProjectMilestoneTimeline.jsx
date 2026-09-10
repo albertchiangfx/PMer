@@ -1182,7 +1182,7 @@ export default function ProjectMilestoneTimeline({
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e) => {
-      // Match Gantt.jsx: Ctrl+wheel zoom; plain vertical wheel pans horizontally.
+      // Match Gantt.jsx: Ctrl+wheel zoom; Alt+wheel vertical; plain vertical wheel pans horizontally.
       // React onWheel is passive; native listener allows preventDefault.
       if (e.ctrlKey) {
         e.preventDefault();
@@ -1201,9 +1201,15 @@ export default function ProjectMilestoneTimeline({
         });
         return;
       }
-      if (e.shiftKey) return;
       const dy = e.deltaY;
       if (dy === 0) return;
+      if (e.altKey) {
+        e.preventDefault();
+        el.scrollTop += dy;
+        return;
+      }
+      // Shift+wheel：交由系統（多為橫向）
+      if (e.shiftKey) return;
       e.preventDefault();
       el.scrollLeft += dy;
     };
@@ -1261,13 +1267,16 @@ export default function ProjectMilestoneTimeline({
     projStart && projEnd ? countWorkingDaysInclusive(projStart, projEnd, holidayYmdSet) : null;
 
   return (
-    <div className="surface overflow-hidden rounded-[18px] border border-white/60">
+    <div className="surface overflow-hidden rounded-[18px] border border-white/60 h-full min-h-0 flex flex-col">
       {readOnly ? (
-        <div className="px-4 py-2.5 border-b border-amber-100 bg-amber-50/90 text-[12px] text-amber-950">
+        <div className="shrink-0 px-4 py-2.5 border-b border-amber-100 bg-amber-50/90 text-[12px] text-amber-950">
           僅供預覽，無法拖曳或編輯。請使用電腦版調整時程。
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center justify-end gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 pt-3 pb-2 border-b border-slate-200/80">
+        <p className="text-[10px] text-slate-500 shrink-0">
+          滾輪左右 · Alt+滾輪上下 · Ctrl+滾輪縮放
+        </p>
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <div
             ref={countryPickerRef}
@@ -1379,7 +1388,7 @@ export default function ProjectMilestoneTimeline({
         </div>
       </div>
 
-      <div className="px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
+      <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
         <span className="text-[10px] font-semibold text-slate-500 shrink-0">選取項目</span>
         {displaySegs.map((seg, i) => (
           <button
@@ -1406,7 +1415,8 @@ export default function ProjectMilestoneTimeline({
 
       <div
         ref={containerRef}
-        className="gantt-scroll overflow-x-auto overflow-y-auto max-h-[min(70vh,720px)] select-none"
+        className="gantt-scroll flex-1 min-h-0 overflow-x-auto overflow-y-auto select-none"
+        title="滾輪左右 · Alt+滾輪上下 · Ctrl+滾輪縮放"
         onScroll={(e) => {
           const left = e.target.scrollLeft;
           scrollLeftRef.current = left;
@@ -1920,7 +1930,7 @@ export default function ProjectMilestoneTimeline({
       </div>
 
       {allDetailNodesFlat.length > 0 && (
-        <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/80">
+        <div className="shrink-0 px-4 py-3 border-t border-slate-200/80 bg-slate-50/80">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
             時程節點一覽（共 {allDetailNodesFlat.length}）
           </p>
