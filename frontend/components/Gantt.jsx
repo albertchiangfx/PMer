@@ -275,6 +275,11 @@ export default function Gantt({
     (e, rowIdx, alloc, type) => {
       e.preventDefault();
       e.stopPropagation();
+      try {
+        e.currentTarget?.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore unsupported capture */
+      }
       setDragging({
         id: alloc.id,
         type,
@@ -287,7 +292,7 @@ export default function Gantt({
       });
       setGhost(null);
     },
-    [dateToX]
+    [dateToX, dayW]
   );
 
   useEffect(() => {
@@ -300,7 +305,17 @@ export default function Gantt({
     const srcRow = memberRows[dragging.rowIdx];
     const origRowMidY = srcRow ? yOffsets[dragging.rowIdx] + srcRow.rowH / 2 : 0;
 
+    let ghostRaf = null;
+    const scheduleGhostPaint = () => {
+      if (ghostRaf != null) return;
+      ghostRaf = requestAnimationFrame(() => {
+        ghostRaf = null;
+        setGhost(ghostRef.current);
+      });
+    };
+
     const onMove = (e) => {
+      const dw = dayWRef.current;
       const dx = e.clientX - dragging.origClientX;
       const dy = e.clientY - dragging.origClientY;
       const { type, origAlloc, startX, endX, rowIdx } = dragging;
@@ -311,11 +326,11 @@ export default function Gantt({
       let ghostRowIdx = rowIdx;
 
       if (type === 'move') {
-        const snappedDx = Math.round(dx / dayW) * dayW;
+        const snappedDx = Math.round(dx / dw) * dw;
         const newStartX = startX + snappedDx;
         const newEndX = endX + snappedDx;
         newStart = xToDate(newStartX);
-        newEnd = xToDate(newEndX - dayW);
+        newEnd = xToDate(newEndX - dw);
 
         let newRowIdx = rowIdx;
         let resolvedMemberId = memberKey(origAlloc);
@@ -338,13 +353,13 @@ export default function Gantt({
         newMemberId = resolvedMemberId;
       } else if (type === 'resize-right') {
         newStart = parseISO(origAlloc.start_date);
-        const snappedDx = Math.round(dx / dayW) * dayW;
-        newEnd = xToDate(Math.max(endX + snappedDx - dayW, startX + dayW - 1));
+        const snappedDx = Math.round(dx / dw) * dw;
+        newEnd = xToDate(Math.max(endX + snappedDx - dw, startX + dw - 1));
         newMemberId = memberKey(origAlloc);
       } else {
         newEnd = parseISO(origAlloc.end_date);
-        const snappedDx = Math.round(dx / dayW) * dayW;
-        newStart = xToDate(Math.min(startX + snappedDx, endX - dayW));
+        const snappedDx = Math.round(dx / dw) * dw;
+        newStart = xToDate(Math.min(startX + snappedDx, endX - dw));
         newMemberId = memberKey(origAlloc);
       }
 
@@ -361,7 +376,7 @@ export default function Gantt({
 
       const hasConflict = checkGhostConflict(newMemberId, clStart, clEnd, origAlloc.id);
       const barTitle = origAlloc.task_name || origAlloc.project_name || 'Allocation';
-      setGhost({
+      ghostRef.current = {
         rowIdx: ghostRowIdx,
         memberId: newMemberId,
         startDate: clStart,
@@ -370,7 +385,8 @@ export default function Gantt({
         projectName: origAlloc.project_name,
         color: origAlloc.project_color || 'var(--apple-blue)',
         conflict: hasConflict,
-      });
+      };
+      scheduleGhostPaint();
     };
 
     const onUp = async () => {
@@ -417,6 +433,7 @@ export default function Gantt({
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      if (ghostRaf != null) cancelAnimationFrame(ghostRaf);
     };
   }, [
     dragging,
@@ -658,13 +675,13 @@ export default function Gantt({
             }}
           >
             <div
-              className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60"
+              className="sticky top-0 z-20 bg-white border-b border-slate-200/80"
               style={{ height: headerH }}
             >
               <div style={{ display: 'flex', height: '100%' }}>
                 <div
                   style={{ width: LABEL_W, minWidth: LABEL_W }}
-                  className={`flex px-4 border-r border-white/60 sticky left-0 z-30 bg-white/70 backdrop-blur ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
+                  className={`flex px-4 border-r border-slate-200/80 sticky left-0 z-30 bg-white ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
                 >
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     {labelColumnTitle}

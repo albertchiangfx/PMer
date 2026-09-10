@@ -217,7 +217,7 @@ export default function ProjectsPage() {
         <div className="min-w-0">
           <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">專案</h1>
           <p className="text-gray-400 mt-0.5 md:mt-1 text-xs md:text-sm">
-            {loading && projects.length === 0 ? '載入中…' : `${projects.length} 個專案`}
+            {loading && projects.length === 0 ? '\u00a0' : `${projects.length} 個專案`}
           </p>
         </div>
         <button
@@ -298,7 +298,7 @@ export default function ProjectsPage() {
       {loading && projects.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-20">
           <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-400">載入中…</p>
+          <p className="text-sm text-slate-500">載入中…</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2.5 md:gap-4">
@@ -443,9 +443,11 @@ function ProjectRow({
               {project.budget ? fmtCurrency(project.budget) : '—'}
             </p>
           </div>
-          <div className="w-[2.25rem] shrink-0 text-right">
-            <p className="text-[10px] text-gray-400 leading-none mb-0.5">任務</p>
-            <p className="text-sm font-semibold text-gray-900 tabular-nums">{project.task_count || 0}</p>
+          <div className="w-[3.25rem] shrink-0 text-right">
+            <p className="text-[10px] text-gray-400 leading-none mb-0.5">里程碑</p>
+            <p className="text-sm font-semibold text-gray-900 tabular-nums">
+              {msTotal ? `${msCompleted}/${msTotal}` : '—'}
+            </p>
           </div>
           <div className="w-[5.25rem] shrink-0 flex justify-end">
             <span
@@ -482,7 +484,7 @@ function ProjectRow({
             {project.budget ? fmtCurrency(project.budget) : '—'}
           </span>
           <span>
-            任務 {project.task_count || 0}
+            里程碑 {msTotal ? `${msCompleted}/${msTotal}` : '—'}
           </span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] ${s.bg} ${s.text}`}>
             {display.label}

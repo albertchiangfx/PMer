@@ -69,7 +69,7 @@ export default function SchedulePage() {
           {loading ? (
             <div className="py-12 text-center text-sm text-slate-500">載入時程…</div>
           ) : (
-            <SchedulePanel title="工作時程" />
+            <SchedulePanel title="" />
           )}
         </div>
       )}

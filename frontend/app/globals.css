@@ -179,6 +179,11 @@ body {
     overflow: hidden;
   }
 
+  .dashboard-tasks-region--empty {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
   .dashboard-schedule-region {
     /* 允許 shrink，避免螢幕較矮時被切掉底部時程列 */
     flex: 0 1 var(--dashboard-schedule-height);

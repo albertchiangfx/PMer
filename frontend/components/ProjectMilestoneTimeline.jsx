@@ -291,7 +291,7 @@ export default function ProjectMilestoneTimeline({
   /** 展開編輯：收合假日／圖例與節點一覽，減少 chrome */
   compactChrome = false,
 }) {
-  const { data: milestones = [], mutate } = useSWR(
+  const { data: milestones = [], mutate, isLoading: milestonesLoading } = useSWR(
     projectId ? ['project-milestones', projectId] : null,
     () => api.getProjectMilestones(projectId)
   );
@@ -340,8 +340,23 @@ export default function ProjectMilestoneTimeline({
     [today, pastWeeks]
   );
   const totalDays = (pastWeeks + rangeWeeks) * 7 - 1;
-  const pStart = project?.start_date ? parseISO(String(project.start_date).slice(0, 10)) : null;
-  const pEnd = project?.end_date ? parseISO(String(project.end_date).slice(0, 10)) : null;
+  /** Survives parent reload after project-bar save so the bar does not snap back. */
+  const [optimisticProjectDates, setOptimisticProjectDates] = useState(null);
+  const propStartYmd = project?.start_date ? String(project.start_date).slice(0, 10) : null;
+  const propEndYmd = project?.end_date ? String(project.end_date).slice(0, 10) : null;
+  useEffect(() => {
+    if (!optimisticProjectDates) return;
+    if (
+      propStartYmd === optimisticProjectDates.start &&
+      propEndYmd === optimisticProjectDates.end
+    ) {
+      setOptimisticProjectDates(null);
+    }
+  }, [propStartYmd, propEndYmd, optimisticProjectDates]);
+  const effectiveStartYmd = optimisticProjectDates?.start || propStartYmd;
+  const effectiveEndYmd = optimisticProjectDates?.end || propEndYmd;
+  const pStart = effectiveStartYmd ? parseISO(effectiveStartYmd) : null;
+  const pEnd = effectiveEndYmd ? parseISO(effectiveEndYmd) : null;
   const [dayW, setDayW] = useState(DEFAULT_DAY_W);
   const dayWRef = useRef(dayW);
   useEffect(() => {
@@ -435,15 +450,6 @@ export default function ProjectMilestoneTimeline({
     layoutFreezeRef.current?.days?.length ? layoutFreezeRef.current.days : days;
   const layoutTimelineStart =
     layoutFreezeRef.current?.timelineStart ?? timelineStart;
-  const projectSpan = useMemo(() => {
-    if (!pStart || !pEnd || !layoutDays.length) return null;
-    const i0 = differenceInCalendarDays(pStart, layoutTimelineStart);
-    const i1 = differenceInCalendarDays(pEnd, layoutTimelineStart);
-    return {
-      startIdx: Math.max(0, i0),
-      endIdx: Math.min(layoutDays.length - 1, i1),
-    };
-  }, [pStart, pEnd, layoutDays.length, layoutTimelineStart]);
   const totalW = layoutDays.length * dayW;
   const chartMinW = Math.max(totalW, timelineViewportW);
 
@@ -464,6 +470,21 @@ export default function ProjectMilestoneTimeline({
   /** Bumps on drag-frame repaint so we read fresh `draftRef` without `setDraft` every mousemove. */
   const [dragTick, setPaint] = useState(0);
   const repaint = useCallback(() => setPaint((n) => n + 1), []);
+
+  const projectSpan = useMemo(() => {
+    const pd = draggingRef.current;
+    const spanStart =
+      dragActive && pd?.kind === 'project' && pd.previewStart ? pd.previewStart : pStart;
+    const spanEnd =
+      dragActive && pd?.kind === 'project' && pd.previewEnd ? pd.previewEnd : pEnd;
+    if (!spanStart || !spanEnd || !layoutDays.length) return null;
+    const i0 = differenceInCalendarDays(spanStart, layoutTimelineStart);
+    const i1 = differenceInCalendarDays(spanEnd, layoutTimelineStart);
+    return {
+      startIdx: Math.max(0, i0),
+      endIdx: Math.min(layoutDays.length - 1, i1),
+    };
+  }, [pStart, pEnd, layoutDays.length, layoutTimelineStart, dragActive, dragTick]);
 
   const displaySegs = useMemo(() => {
     const d = draggingRef.current;
@@ -666,21 +687,39 @@ export default function ProjectMilestoneTimeline({
         : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
     }`;
 
+  /** Snapshot at drag start so chip text does not recompute every drag frame. */
+  const workingDaysFreezeRef = useRef(null);
+
   useEffect(() => {
     return () => {
       draggingRef.current = null;
       setDragActive(false);
       layoutFreezeRef.current = null;
+      workingDaysFreezeRef.current = null;
     };
   }, [projectId]);
 
   const workingDaysBySegId = useMemo(() => {
+    if (dragActive && workingDaysFreezeRef.current) {
+      return workingDaysFreezeRef.current;
+    }
     const m = new Map();
     for (const s of displaySegs) {
       m.set(s.id, countWorkingDaysInclusive(s.start, s.end, holidayYmdSet));
     }
     return m;
-  }, [displaySegs, holidayYmdSet]);
+  }, [displaySegs, holidayYmdSet, dragActive]);
+
+  const freezeWorkingDaysChips = useCallback(
+    (segs) => {
+      const m = new Map();
+      for (const s of segs || []) {
+        m.set(s.id, countWorkingDaysInclusive(s.start, s.end, holidayYmdSet));
+      }
+      workingDaysFreezeRef.current = m;
+    },
+    [holidayYmdSet]
+  );
 
   const msRowsH = displaySegs.length * ROW_MS_ROW_H;
   const chartBodyH = ROW_MONTH_H + ROW_DATE_H + ROW_PROJECT_H + msRowsH;
@@ -704,6 +743,11 @@ export default function ProjectMilestoneTimeline({
       if (readOnly || !canonical.length) return;
       e.preventDefault();
       e.stopPropagation();
+      try {
+        e.currentTarget?.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore unsupported capture */
+      }
       miniMoveRef.current = false;
       initDraftFromCanonical();
       const snap = (draftRef.current || []).map((s) => ({
@@ -714,6 +758,7 @@ export default function ProjectMilestoneTimeline({
           ? s.detailNodes.map((n) => ({ ...n }))
           : [],
       }));
+      freezeWorkingDaysChips(snap);
       const segId = snap[index]?.id;
       if (segId) setActiveSegId(segId);
       layoutFreezeRef.current = {
@@ -731,7 +776,7 @@ export default function ProjectMilestoneTimeline({
       };
       setDragActive(true);
     },
-    [readOnly, canonical.length, initDraftFromCanonical, displayDays, rangeStart]
+    [readOnly, canonical.length, initDraftFromCanonical, displayDays, rangeStart, freezeWorkingDaysChips]
   );
 
   const onProjectBarMouseDown = useCallback(
@@ -739,6 +784,11 @@ export default function ProjectMilestoneTimeline({
       if (readOnly || !pStart || !pEnd) return;
       e.preventDefault();
       e.stopPropagation();
+      try {
+        e.currentTarget?.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore unsupported capture */
+      }
       miniMoveRef.current = false;
       initDraftFromCanonical();
       const snap = (draftRef.current || []).map((s) => ({
@@ -749,6 +799,7 @@ export default function ProjectMilestoneTimeline({
           ? s.detailNodes.map((n) => ({ ...n }))
           : [],
       }));
+      freezeWorkingDaysChips(snap);
       layoutFreezeRef.current = {
         days: displayDays,
         timelineStart: displayDays[0] ?? rangeStart,
@@ -767,7 +818,7 @@ export default function ProjectMilestoneTimeline({
       };
       setDragActive(true);
     },
-    [readOnly, pStart, pEnd, initDraftFromCanonical, displayDays, rangeStart]
+    [readOnly, pStart, pEnd, initDraftFromCanonical, displayDays, rangeStart, freezeWorkingDaysChips]
   );
 
   const toggleMilestoneCompleted = useCallback(
@@ -980,6 +1031,26 @@ export default function ProjectMilestoneTimeline({
           setDraft(copy);
         }
       }
+      if (d.kind === 'project') {
+        const list = draftRef.current;
+        if (list?.length) {
+          const copy = list.map((s) => ({
+            ...s,
+            start: new Date(s.start),
+            end: new Date(s.end),
+            detailNodes: Array.isArray(s.detailNodes)
+              ? s.detailNodes.map((n) => ({ ...n }))
+              : [],
+          }));
+          draftRef.current = copy;
+          setDraft(copy);
+        }
+        const ns = d.previewStart || addDays(d.origStart, Math.round((d.dxPx || 0) / dayW));
+        const ne = d.previewEnd || addDays(d.origEnd, Math.round((d.dxPx || 0) / dayW));
+        if (differenceInCalendarDays(ne, ns) >= 0) {
+          setOptimisticProjectDates({ start: fmtYmd(ns), end: fmtYmd(ne) });
+        }
+      }
       draggingRef.current = null;
       setDragActive(false);
 
@@ -988,6 +1059,7 @@ export default function ProjectMilestoneTimeline({
         if (sid) setActiveSegId(sid);
         draftRef.current = null;
         setDraft(null);
+        workingDaysFreezeRef.current = null;
         clearLayoutFreeze();
         return;
       }
@@ -1001,6 +1073,7 @@ export default function ProjectMilestoneTimeline({
           clearLayoutFreeze();
           draftRef.current = null;
           setDraft(null);
+          workingDaysFreezeRef.current = null;
           return;
         }
         const list = draftRef.current;
@@ -1016,6 +1089,7 @@ export default function ProjectMilestoneTimeline({
             color: project.color || '#6366f1',
           });
           if (list?.length) {
+            const milestoneUpdates = [];
             for (const s of list) {
               const row = milestonesRef.current.find((m) => m.id === s.id);
               const priorTs = ymdFromApi(row?.timeline_start_date);
@@ -1028,12 +1102,15 @@ export default function ProjectMilestoneTimeline({
               const priorNodes = JSON.stringify(parseTimelineDetailNodes(row?.timeline_detail_nodes));
               const nextNodesJson = JSON.stringify(nextNodes);
               if (priorTs === nextTs && priorTe === nextTe && priorNodes === nextNodesJson) continue;
-              await api.updateProjectMilestone(s.id, {
-                timeline_start_date: nextTs,
-                timeline_end_date: nextTe,
-                ...(priorNodes !== nextNodesJson ? { timeline_detail_nodes: nextNodes } : {}),
-              });
+              milestoneUpdates.push(
+                api.updateProjectMilestone(s.id, {
+                  timeline_start_date: nextTs,
+                  timeline_end_date: nextTe,
+                  ...(priorNodes !== nextNodesJson ? { timeline_detail_nodes: nextNodes } : {}),
+                })
+              );
             }
+            if (milestoneUpdates.length) await Promise.all(milestoneUpdates);
           }
           notifyMilestoneDataChanged();
           if (list?.length) {
@@ -1044,9 +1121,12 @@ export default function ProjectMilestoneTimeline({
           scheduleScrollRestore();
           draftRef.current = null;
           setDraft(null);
+          workingDaysFreezeRef.current = null;
         } catch (err) {
           console.error(err);
           clearLayoutFreeze();
+          workingDaysFreezeRef.current = null;
+          setOptimisticProjectDates(null);
           alert(err?.message || '專案／項目時程更新失敗');
         }
         return;
@@ -1056,10 +1136,11 @@ export default function ProjectMilestoneTimeline({
         const list = draftRef.current;
         if (!list?.length) {
           clearLayoutFreeze();
+          workingDaysFreezeRef.current = null;
           return;
         }
         try {
-          let saved = 0;
+          const milestoneUpdates = [];
           for (const s of list) {
             const ns = fmtYmd(s.start);
             const ne = fmtYmd(s.end);
@@ -1072,14 +1153,16 @@ export default function ProjectMilestoneTimeline({
             const priorNodes = JSON.stringify(parseTimelineDetailNodes(row?.timeline_detail_nodes));
             const nextNodesJson = JSON.stringify(nextNodes);
             if (priorTs === ns && priorTe === ne && priorNodes === nextNodesJson) continue;
-            await api.updateProjectMilestone(s.id, {
-              timeline_start_date: ns,
-              timeline_end_date: ne,
-              ...(priorNodes !== nextNodesJson ? { timeline_detail_nodes: nextNodes } : {}),
-            });
-            saved += 1;
+            milestoneUpdates.push(
+              api.updateProjectMilestone(s.id, {
+                timeline_start_date: ns,
+                timeline_end_date: ne,
+                ...(priorNodes !== nextNodesJson ? { timeline_detail_nodes: nextNodes } : {}),
+              })
+            );
           }
-          if (saved > 0) {
+          if (milestoneUpdates.length > 0) {
+            await Promise.all(milestoneUpdates);
             notifyMilestoneDataChanged();
             const nextCache = applyListToMilestoneCache(list);
             await mutate(nextCache, { revalidate: false });
@@ -1089,9 +1172,11 @@ export default function ProjectMilestoneTimeline({
           }
           draftRef.current = null;
           setDraft(null);
+          workingDaysFreezeRef.current = null;
         } catch (err) {
           console.error(err);
           clearLayoutFreeze();
+          workingDaysFreezeRef.current = null;
           const msg = String(err?.message || '');
           const hint404 =
             err?.status === 404
@@ -1111,6 +1196,8 @@ export default function ProjectMilestoneTimeline({
       setDragActive(false);
       draftRef.current = null;
       setDraft(null);
+      workingDaysFreezeRef.current = null;
+      setOptimisticProjectDates(null);
       clearLayoutFreeze();
     };
 
@@ -1121,12 +1208,10 @@ export default function ProjectMilestoneTimeline({
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     window.addEventListener('keydown', onKey);
-    window.addEventListener('blur', cancelDrag);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('blur', cancelDrag);
       if (moveRaf != null) cancelAnimationFrame(moveRaf);
     };
   }, [
@@ -1237,6 +1322,15 @@ export default function ProjectMilestoneTimeline({
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
         請先在專案資料中設定「開始／結束日期」，項目時程才能對齊甘特橫軸。
+      </div>
+    );
+  }
+
+  if (milestonesLoading) {
+    return (
+      <div className="flex items-center justify-center gap-3 py-16">
+        <div className="w-7 h-7 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-slate-500">載入項目時程…</p>
       </div>
     );
   }
@@ -1485,6 +1579,7 @@ export default function ProjectMilestoneTimeline({
         }}
       >
         <div
+          className={compactChrome ? 'min-h-full' : undefined}
           style={{
             width: PINNED_LEFT_W + chartMinW,
             position: 'relative',

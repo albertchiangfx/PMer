@@ -204,7 +204,7 @@ export default function Dashboard() {
     }
   }, [viewerId, members]);
 
-  const { data: taskAllocations = [], mutate: mutateTaskAlloc } = useSWR(
+  const { data: taskAllocations = [], mutate: mutateTaskAlloc, isLoading: taskAllocLoading } = useSWR(
     viewerId ? ['time-allocations', viewerId] : null,
     ([, id]) =>
       api.getTimeAllocations({ team_member_id: id }).then((rows) => {
@@ -214,14 +214,14 @@ export default function Dashboard() {
     { revalidateOnFocus: false }
   );
 
-  const { data: viewerTasks = [], mutate: mutateViewerTasks } = useSWR(
+  const { data: viewerTasks = [], mutate: mutateViewerTasks, isLoading: viewerTasksLoading } = useSWR(
     viewerId ? ['viewer-tasks', viewerId] : null,
     ([, id]) =>
       api.getTasks({ team_member_id: id }).then((rows) => (Array.isArray(rows) ? rows : [])),
     { revalidateOnFocus: false }
   );
 
-  const { data: personalTasks = [], mutate: mutatePersonalTasks } = useSWR(
+  const { data: personalTasks = [], mutate: mutatePersonalTasks, isLoading: personalTasksLoading } = useSWR(
     viewerId ? ['personal-tasks', viewerId] : null,
     ([, id]) => api.getPersonalTasks({ member_id: id }),
     { revalidateOnFocus: false }
@@ -306,7 +306,11 @@ export default function Dashboard() {
               raw.project_client_name ? ` · ${raw.project_client_name}` : ''
             }${!notesTrim && raw.notes ? ` · ${raw.notes}` : ''}`;
       const badge = kind === 'task' ? raw.task_status || '—' : '排程';
-      const href = raw.project_id ? `/projects/${raw.project_id}` : '/schedule';
+      const href = raw.project_id
+        ? kind === 'task'
+          ? `/projects/${raw.project_id}#tasks`
+          : `/projects/${raw.project_id}`
+        : '/schedule';
       const s0 = toYmd(raw.start_date) || toYmd(raw.task_start_date);
       const e0 = toYmd(raw.end_date) || toYmd(raw.task_end_date);
       const progressPct = allocationProgressPct(s0, e0, today);
@@ -457,6 +461,8 @@ export default function Dashboard() {
 
   const todayTaskCount = todayTaskRows.filter((r) => r.kind === 'task').length;
   const projectCount = viewerProjectSummaries.length;
+  const todayCountsLoading =
+    !!viewerId && (taskAllocLoading || viewerTasksLoading || personalTasksLoading);
 
   if (loading) return <LoadingScreen />;
 
@@ -466,7 +472,7 @@ export default function Dashboard() {
         <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-4">
           <div className="min-w-0">
             {!isMobileLayout ? (
-              <span className="v2-eyebrow">multi.design studio · Daily Overview</span>
+              <span className="v2-eyebrow">multi.design studio · 每日總覽</span>
             ) : null}
             <h1 className="text-xl md:text-3xl font-semibold tracking-tight">
               {isMobileLayout ? '今日' : '總覽'}
@@ -496,11 +502,11 @@ export default function Dashboard() {
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="v2-chip accent">
               <span className="v2-chip-dot" aria-hidden />
-              今日任務 {todayTaskCount}
+              今日任務 {todayCountsLoading ? '…' : todayTaskCount}
             </span>
             <span className="v2-chip">
               <span className="v2-chip-dot" aria-hidden />
-              相關專案 {projectCount}
+              相關專案 {todayCountsLoading ? '…' : projectCount}
             </span>
           </div>
         ) : null}
@@ -526,7 +532,11 @@ export default function Dashboard() {
         </>
       ) : (
         <>
-          <div className="dashboard-tasks-region pt-3 min-h-0">
+          <div
+            className={`dashboard-tasks-region pt-3 min-h-0${
+              todayTaskCount === 0 && projectCount === 0 ? ' dashboard-tasks-region--empty' : ''
+            }`}
+          >
             <DashboardProjectWidget
               key={viewerId || 'none'}
               viewerId={viewerId}

@@ -214,12 +214,14 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
 
   return (
     <div className={embedded ? 'flex flex-col flex-1 min-h-0 h-full' : ''}>
-      <div className={`shrink-0 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between ${headerMb}`}>
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 text-left">{title}</h2>
+      {title ? (
+        <div className={`shrink-0 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between ${headerMb}`}>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 text-left">{title}</h2>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap justify-start lg:justify-end" />
         </div>
-        <div className="flex items-center gap-3 flex-wrap justify-start lg:justify-end" />
-      </div>
+      ) : null}
 
       <div className={`shrink-0 flex flex-wrap items-center justify-between gap-2 ${tabsMb}`}>
         <div className="flex items-center gap-4">
@@ -249,6 +251,18 @@ export default function SchedulePanel({ defaultTab = 'studio', title = '工作�
           </button>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          {scheduleTab === 'members' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setAllocForm(defaultAllocForm());
+                setAllocModalOpen(true);
+              }}
+              className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+            >
+              ＋ 新增分配
+            </button>
+          ) : null}
           <p
             className="text-[10px] text-slate-400 leading-snug text-right hidden sm:block"
             title="在甘特圖區域內滾動"

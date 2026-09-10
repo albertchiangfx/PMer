@@ -140,7 +140,7 @@ export default function ClientsPage() {
           <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">客戶</h1>
           <p className="text-gray-400 mt-0.5 text-xs md:text-sm">
             {loading && clients.length === 0
-              ? '載入中…'
+              ? '\u00a0'
               : `${clients.length} 位客戶 · 待簽約／待收款一目了然`}
           </p>
         </div>

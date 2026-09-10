@@ -71,8 +71,9 @@ export default function DashboardProjectWidget({
     viewerId && projectIds.length
       ? ['milestone-sum', viewerId, [...projectIds].sort().join('|')]
       : null;
-  const { data: summary = {}, mutate: mutateSummary } = useSWR(summaryKey, () =>
-    api.getMilestoneSummaryByProjects(projectIds)
+  const { data: summary = {}, mutate: mutateSummary, isLoading: summaryLoading } = useSWR(
+    summaryKey,
+    () => api.getMilestoneSummaryByProjects(projectIds)
   );
 
   useEffect(() => {
@@ -120,9 +121,10 @@ export default function DashboardProjectWidget({
   }, [projects, personalTasks]);
 
   const progressFor = (pid) => {
+    if (summaryLoading) return { pct: 0, empty: false, loading: true };
     const s = summaryByPid[String(pid).toLowerCase()];
-    if (!s || !s.total) return { pct: 0, empty: true };
-    return { pct: Math.round((s.completed / s.total) * 100), empty: false };
+    if (!s || !s.total) return { pct: 0, empty: true, loading: false };
+    return { pct: Math.round((s.completed / s.total) * 100), empty: false, loading: false };
   };
 
   const sectionMt = inFrame ? '' : compact ? 'mt-3' : 'mt-6';
@@ -146,7 +148,7 @@ export default function DashboardProjectWidget({
   if (!projectsForList.length) {
     return (
       <section
-        className={`${sectionMt} surface ${sectionRound} ${sectionPad} py-8 md:py-10 text-center text-sm text-stone-500`}
+        className={`${sectionMt} surface ${sectionRound} ${sectionPad} py-4 md:py-5 text-center text-sm text-stone-500`}
       >
         {compact
           ? '此成員今日尚無任務；可從上方進入專案或工作時程。'
@@ -176,7 +178,7 @@ export default function DashboardProjectWidget({
                 : { fontFamily: "Georgia, 'Noto Serif TC', serif" }
             }
           >
-            {compact ? '任務總覽' : 'Tasks overview'}
+            任務總覽
           </h2>
           {!compact ? (
             <p className="mt-1 text-[11px] text-stone-500 tracking-wide">
@@ -195,7 +197,7 @@ export default function DashboardProjectWidget({
       <div className={listScrollClass}>
         {projectsForList.map((p) => {
           const idLc = String(p.id).toLowerCase();
-          const { pct, empty } = progressFor(p.id);
+          const { pct, empty, loading: msLoading } = progressFor(p.id);
           const dayRows = todayByProject[idLc] || [];
           const taskRows = dayRows.filter((r) => r.kind === 'task');
           const personalForProject = personalTasks.filter(
@@ -226,7 +228,7 @@ export default function DashboardProjectWidget({
                           {p.name}
                         </h3>
                         <span className="text-xs font-bold tabular-nums text-slate-600 shrink-0">
-                          {empty ? '—' : `${pct}%`}
+                          {msLoading ? '…' : empty ? '—' : `${pct}%`}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5 truncate">{metaLine}</p>
@@ -234,12 +236,13 @@ export default function DashboardProjectWidget({
                         <div
                           className="h-full rounded-full"
                           style={{
-                            width: empty ? '4%' : `${pct}%`,
+                            width: msLoading ? '12%' : empty ? '4%' : `${pct}%`,
                             background: p.color || '#6366f1',
+                            opacity: msLoading ? 0.35 : 1,
                           }}
                         />
                       </div>
-                      {empty ? (
+                      {!msLoading && empty ? (
                         <p className="mt-1 text-[10px] text-stone-400">
                           尚未設定里程碑 ·{' '}
                           <span className="text-indigo-600">至專案設定</span>
@@ -337,14 +340,14 @@ export default function DashboardProjectWidget({
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: empty ? '4%' : `${pct}%`,
+                          width: msLoading ? '12%' : empty ? '4%' : `${pct}%`,
                           background: p.color || '#6366f1',
-                          opacity: 0.85,
+                          opacity: msLoading ? 0.35 : 0.85,
                         }}
                       />
                     </div>
                   </div>
-                  {empty && (
+                  {!msLoading && empty && (
                     <p className="mt-1 text-[10px] text-stone-400">
                       尚未設定里程碑 ·{' '}
                       <Link
@@ -358,7 +361,7 @@ export default function DashboardProjectWidget({
                 </div>
 
                 <span className="text-xs font-semibold tabular-nums shrink-0 text-slate-500 pt-1">
-                  {empty ? '—' : `${pct}%`}
+                  {msLoading ? '…' : empty ? '—' : `${pct}%`}
                 </span>
 
                 <span className="text-[11px] text-stone-400 whitespace-nowrap shrink-0 hidden sm:block pt-1">

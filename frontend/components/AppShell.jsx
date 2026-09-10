@@ -30,8 +30,8 @@ const NAV = [
   { href: '/schedule', label: '時程', icon: IconCalendar },
   { href: '/tasks', label: '任務', icon: IconStack },
   { href: '/clients', label: '客戶', mobileLabel: '客戶', icon: IconBriefcase },
-  { href: '/quotations', label: '報價單', icon: IconDoc, adminOnly: true },
-  { href: '/contracts', label: '合約', icon: IconDocMini, adminOnly: true },
+  { href: '/quotations', label: '報價單', icon: IconQuote, adminOnly: true },
+  { href: '/contracts', label: '合約', icon: IconContract, adminOnly: true },
   { href: '/invoices', label: '發票', icon: IconReceipt, adminOnly: true },
   { href: '/collaboration', label: '客戶協作', icon: IconCollaboration },
   { href: '/team', label: '成員', icon: IconUsers },
@@ -545,7 +545,7 @@ function IconClock() {
     </svg>
   );
 }
-function IconDocMini() {
+function IconContract() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -556,8 +556,9 @@ function IconDocMini() {
     >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
-      <path d="M16 13H8" />
-      <path d="M16 17H8" />
+      <path d="M8 13h3" />
+      <path d="M8 17h8" />
+      <path d="M16.5 12.5c.8-.8 2.1-.8 2.9 0 .8.8.8 2.1 0 2.9L16 18.8l-2 .5.5-2 3.4-3.3Z" />
     </svg>
   );
 }
@@ -650,7 +651,7 @@ function IconCollaboration() {
     </svg>
   );
 }
-function IconDoc() {
+function IconQuote() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -659,10 +660,11 @@ function IconDoc() {
       strokeWidth="1.8"
       className="h-5 w-5"
     >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M16 13H8" />
-      <path d="M16 17H8" />
+      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+      <path d="M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1H9V5Z" />
+      <path d="M9 12h6" />
+      <path d="M9 16h4" />
+      <path d="M9.5 9.5h.01" />
     </svg>
   );
 }

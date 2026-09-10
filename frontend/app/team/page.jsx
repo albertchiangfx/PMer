@@ -131,7 +131,7 @@ export default function TeamPage() {
         <div className="min-w-0">
           <h1 className="text-xl md:text-3xl font-bold text-gray-900 tracking-tight">團隊成員</h1>
           <p className="text-gray-400 mt-1 text-sm">
-            {members.filter((m) => m.status === 'active').length} 位活躍成員
+            {loading ? '\u00a0' : `${members.filter((m) => m.status === 'active').length} 位活躍成員`}
           </p>
         </div>
         {isAdmin ? (

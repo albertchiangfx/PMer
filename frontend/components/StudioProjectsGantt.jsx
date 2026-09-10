@@ -283,6 +283,11 @@ export default function StudioProjectsGantt({
       if (!span.start || !span.end) return;
       e.preventDefault();
       e.stopPropagation();
+      try {
+        e.currentTarget?.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore unsupported capture */
+      }
       setDragging({
         projectId: row.project.id,
         type,
@@ -296,13 +301,23 @@ export default function StudioProjectsGantt({
       });
       setGhost(null);
     },
-    [dateToX, enableProjectBarDrag, clearTooltipHideTimer]
+    [dateToX, dayW, enableProjectBarDrag, clearTooltipHideTimer]
   );
 
   useEffect(() => {
     if (!dragging) return;
 
+    let ghostRaf = null;
+    const scheduleGhostPaint = () => {
+      if (ghostRaf != null) return;
+      ghostRaf = requestAnimationFrame(() => {
+        ghostRaf = null;
+        setGhost(ghostRef.current);
+      });
+    };
+
     const onMove = (e) => {
+      const dw = dayWRef.current;
       const dx = e.clientX - dragging.origClientX;
       const { type, origSpan, startX, endX, rowIdx } = dragging;
       const origStart = parseISO(origSpan.start);
@@ -312,28 +327,29 @@ export default function StudioProjectsGantt({
       let newEnd;
 
       if (type === 'move') {
-        const snappedDx = Math.round(dx / dayW) * dayW;
+        const snappedDx = Math.round(dx / dw) * dw;
         const newStartX = startX + snappedDx;
         const newEndX = endX + snappedDx;
         newStart = xToDate(newStartX);
-        newEnd = xToDate(newEndX - dayW);
+        newEnd = xToDate(newEndX - dw);
       } else if (type === 'resize-right') {
         newStart = origStart;
-        const snappedDx = Math.round(dx / dayW) * dayW;
-        newEnd = xToDate(Math.max(endX + snappedDx - dayW, startX + dayW - 1));
+        const snappedDx = Math.round(dx / dw) * dw;
+        newEnd = xToDate(Math.max(endX + snappedDx - dw, startX + dw - 1));
       } else {
         newEnd = origEnd;
-        const snappedDx = Math.round(dx / dayW) * dayW;
-        newStart = xToDate(Math.min(startX + snappedDx, endX - dayW));
+        const snappedDx = Math.round(dx / dw) * dw;
+        newStart = xToDate(Math.min(startX + snappedDx, endX - dw));
       }
 
-      setGhost({
+      ghostRef.current = {
         rowIdx,
         startDate: newStart,
         endDate: newEnd,
         title: dragging.origProject.name,
         color: dragging.origProject.color || 'var(--apple-blue)',
-      });
+      };
+      scheduleGhostPaint();
     };
 
     const onUp = async () => {
@@ -358,6 +374,7 @@ export default function StudioProjectsGantt({
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      if (ghostRaf != null) cancelAnimationFrame(ghostRaf);
     };
   }, [dragging, xToDate, onUpdate]);
 
@@ -571,13 +588,13 @@ export default function StudioProjectsGantt({
             }}
           >
             <div
-              className="sticky top-0 z-20 bg-white/70 backdrop-blur border-b border-white/60"
+              className="sticky top-0 z-20 bg-white border-b border-slate-200/80"
               style={{ height: headerH }}
             >
               <div style={{ display: 'flex', height: '100%' }}>
                 <div
                   style={{ width: LABEL_W, minWidth: LABEL_W }}
-                  className={`flex px-4 border-r border-white/60 sticky left-0 z-30 bg-white/70 backdrop-blur ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
+                  className={`flex px-4 border-r border-slate-200/80 sticky left-0 z-30 bg-white ${showMonthOnlyHeader ? 'items-center' : 'items-end pb-2'}`}
                 >
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     專案

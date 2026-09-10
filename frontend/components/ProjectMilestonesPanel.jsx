@@ -71,14 +71,22 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
   };
 
   const persistOrder = async (orderedIds) => {
+    const prev = milestones;
+    const byId = new Map(milestones.map((m) => [m.id, m]));
+    const optimistic = orderedIds.map((id, i) => {
+      const row = byId.get(id);
+      return row ? { ...row, sort_order: i } : null;
+    }).filter(Boolean);
     try {
       setReordering(true);
+      await mutateList(optimistic, { revalidate: false });
       await api.reorderProjectMilestones(orderedIds);
-      await mutateList(undefined, { revalidate: true });
       notifyMilestoneDataChanged();
+      void mutateList();
     } catch (e) {
       alert(e.message || String(e));
-      await mutateList(undefined, { revalidate: true });
+      await mutateList(prev, { revalidate: false });
+      void mutateList();
     } finally {
       setReordering(false);
     }
@@ -138,10 +146,18 @@ export default function ProjectMilestonesPanel({ projectId, projectName }) {
   const hasFinalDelivery = sortedMilestones.some((m) => /final\s*delivery/i.test(String(m.label)));
 
   const onToggleMilestone = async (m) => {
+    const next = !m.completed;
+    const prev = milestones;
     try {
-      await api.updateProjectMilestone(m.id, { completed: !m.completed });
-      await refresh();
+      await mutateList(
+        milestones.map((row) => (row.id === m.id ? { ...row, completed: next } : row)),
+        { revalidate: false }
+      );
+      await api.updateProjectMilestone(m.id, { completed: next });
+      notifyMilestoneDataChanged();
+      void mutateList();
     } catch (e) {
+      await mutateList(prev, { revalidate: false });
       alert(e.message || String(e));
     }
   };
